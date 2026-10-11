@@ -12,19 +12,19 @@ type homeCache struct {
 	tracks   []Row
 }
 
-func (a *App) latestAdditions() ([]Row, error) {
-	cache := &a.home
+func (app *App) latestAdditions() ([]Row, error) {
+	cache := &app.home
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
 	var revision int64
-	if err := a.S.DB.QueryRow("SELECT revision FROM go_home_revision WHERE id=1").Scan(&revision); err != nil {
+	if err := app.Store.DB.QueryRow("SELECT revision FROM go_home_revision WHERE id=1").Scan(&revision); err != nil {
 		return nil, err
 	}
 	if !cache.loaded || cache.revision != revision {
 		// Keep the original SQLite grouping and representative-track selection:
 		// changing the query or its indexes can change the rows Django displays.
-		tracks, err := a.S.Query(tracksSQL + latestAdditionsClause)
+		tracks, err := app.Store.Query(tracksSQL + latestAdditionsClause)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +40,7 @@ func (a *App) latestAdditions() ([]Row, error) {
 		for key, value := range cached {
 			track[key] = value
 		}
-		a.S.decorateTrack(track)
+		app.Store.decorateTrack(track)
 		tracks = append(tracks, track)
 	}
 	return tracks, nil

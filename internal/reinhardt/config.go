@@ -28,11 +28,11 @@ var configKeys = []string{
 	"EMAIL_HOST_PASSWORD", "DEFAULT_FROM_EMAIL",
 }
 
-func printConfig(w io.Writer, c Config, showSecrets bool) error {
+func printConfig(writer io.Writer, config Config, showSecrets bool) error {
 	keys := append([]string(nil), configKeys...)
 	sort.Strings(keys)
 	for _, key := range keys {
-		value := c[key]
+		value := config[key]
 		switch key {
 		case "SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "DISCOGS_TOKEN", "EMAIL_HOST_PASSWORD":
 			if key == "SECRET_KEY" && value == "" {
@@ -41,7 +41,7 @@ func printConfig(w io.Writer, c Config, showSecrets bool) error {
 				value = "[redacted]"
 			}
 		}
-		if _, err := fmt.Fprintf(w, "%s=%q\n", key, value); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s=%q\n", key, value); err != nil {
 			return err
 		}
 	}
@@ -58,7 +58,7 @@ func loadConfig(envFile, database string) (Config, error) {
 
 func loadConfigFromHome(home, envFile, database string) (Config, error) {
 	userDir := filepath.Join(home, ".reinhardt")
-	c := Config{
+	config := Config{
 		"BASE_DIR": userDir, "LISTEN_ADDR": "127.0.0.1:8000",
 		"LANGUAGE_CODE": "en-us", "TIME_ZONE": "UTC", "SANITIZE_TAGS": "true",
 		"SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": "10800", "EMAIL_HOST": "localhost",
@@ -71,49 +71,52 @@ func loadConfigFromHome(home, envFile, database string) (Config, error) {
 		if file == "" {
 			continue
 		}
-		values, e := godotenv.Read(file)
+		values, err := godotenv.Read(file)
 		// The default .env is optional; a misspelled explicit --env-file is an
 		// error. Read into the map rather than changing the process environment.
-		if os.IsNotExist(e) && (file != envFile || envFile == ".env") {
+		if os.IsNotExist(err) && (file != envFile || envFile == ".env") {
 			continue
 		}
-		if e != nil {
-			return nil, fmt.Errorf("read %s: %w", file, e)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", file, err)
 		}
-		for k, v := range values {
-			c[k] = v
+		for key, value := range values {
+			config[key] = value
 		}
 	}
 	for _, entry := range os.Environ() {
-		k, v, ok := strings.Cut(entry, "=")
+		key, value, ok := strings.Cut(entry, "=")
 		if ok {
-			c[k] = v
+			config[key] = value
 		}
 	}
 	// Path() adds the leading slash, and callers append endpoint names directly.
 	// Store nonempty prefixes without a leading slash and with one trailing slash.
-	c["URL_PREFIX"] = strings.Trim(c["URL_PREFIX"], "/")
-	if c["URL_PREFIX"] != "" {
-		c["URL_PREFIX"] += "/"
+	config["URL_PREFIX"] = strings.Trim(config["URL_PREFIX"], "/")
+	if config["URL_PREFIX"] != "" {
+		config["URL_PREFIX"] += "/"
 	}
 	if database != "" {
-		c["DATABASE_PATH"] = database
+		config["DATABASE_PATH"] = database
 	}
-	if c["DATABASE_PATH"] == "" {
-		c["DATABASE_PATH"] = filepath.Join(c["BASE_DIR"], "db.sqlite3")
+	if config["DATABASE_PATH"] == "" {
+		config["DATABASE_PATH"] = filepath.Join(config["BASE_DIR"], "db.sqlite3")
 	}
-	if c["COVERS_DIR"] == "" {
-		c["COVERS_DIR"] = filepath.Join(c["BASE_DIR"], "covers")
+	if config["COVERS_DIR"] == "" {
+		config["COVERS_DIR"] = filepath.Join(config["BASE_DIR"], "covers")
 	}
-	if _, e := time.LoadLocation(c["TIME_ZONE"]); e != nil {
-		return nil, fmt.Errorf("TIME_ZONE: %w", e)
+	if _, err := time.LoadLocation(config["TIME_ZONE"]); err != nil {
+		return nil, fmt.Errorf("TIME_ZONE: %w", err)
 	}
-	return c, nil
+	return config, nil
 }
 
-func (c Config) Bool(k string) bool {
-	v := strings.ToLower(c[k])
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+func (config Config) Bool(key string) bool {
+	value := strings.ToLower(config[key])
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
-func (c Config) Int(k string) int        { n, _ := strconv.Atoi(c[k]); return n }
-func (c Config) Path(path string) string { return "/" + c["URL_PREFIX"] + path }
+func (config Config) Int(key string) int {
+	integerValue, _ := strconv.Atoi(config[key])
+	return integerValue
+}
+func (config Config) Path(path string) string { return "/" + config["URL_PREFIX"] + path }

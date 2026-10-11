@@ -35,72 +35,72 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-func fileExtension(m Row) string { return filepath.Ext(m.S("relative_path")) }
+func fileExtension(track Row) string { return filepath.Ext(track.S("relative_path")) }
 func contentType(path string) string {
-	t := mime.TypeByExtension(filepath.Ext(path))
-	if t == "" {
-		t = "application/octet-stream"
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
 	}
-	return t
+	return contentType
 }
-func serveLocal(w http.ResponseWriter, r *http.Request, m Row, attachment bool) error {
-	f, e := os.Open(m.S("full_path"))
-	if os.IsNotExist(e) {
+func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track Row, attachment bool) error {
+	file, err := os.Open(track.S("full_path"))
+	if os.IsNotExist(err) {
 		return sql.ErrNoRows
 	}
-	if e != nil {
-		return e
+	if err != nil {
+		return err
 	}
-	defer f.Close()
-	info, e := f.Stat()
-	if e != nil {
-		return e
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
 	}
-	w.Header().Set("Content-Type", contentType(m.S("relative_path")))
+	responseWriter.Header().Set("Content-Type", contentType(track.S("relative_path")))
 	disposition := "inline"
 	if attachment {
 		disposition = "attachment"
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": m.S("clean_file_name")}))
+	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": track.S("clean_file_name")}))
 	// Keep the seekable file: ServeContent handles HEAD, conditional requests,
 	// and byte ranges that the browser uses to seek within an audio track.
-	http.ServeContent(w, r, m.S("clean_file_name"), info.ModTime(), f)
+	http.ServeContent(responseWriter, request, track.S("clean_file_name"), info.ModTime(), file)
 	return nil
 }
-func (a *App) audio(w http.ResponseWriter, r *http.Request, parts []string) error {
-	m, e := a.S.Track(parts[1])
-	if e != nil {
-		return e
+func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
+	track, err := app.Store.Track(parts[1])
+	if err != nil {
+		return err
 	}
 	if parts[0] == "download" {
 		if len(parts) < 3 {
 			return sql.ErrNoRows
 		}
-		if parts[2] != m.S("clean_file_name") {
-			a.redirect(w, r, m.S("download_url"))
+		if parts[2] != track.S("clean_file_name") {
+			app.redirect(responseWriter, request, track.S("download_url"))
 			return nil
 		}
-		return serveLocal(w, r, m, false)
+		return serveLocal(responseWriter, request, track, false)
 	}
-	if a.S.C["DELEGATE_DOWNLOAD_PREFIX"] == "" {
-		return serveLocal(w, r, m, false)
+	if app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] == "" {
+		return serveLocal(responseWriter, request, track, false)
 	}
-	req, e := http.NewRequestWithContext(r.Context(), r.Method, m.S("download_url"), nil)
-	if e != nil {
-		return e
+	req, err := http.NewRequestWithContext(request.Context(), request.Method, track.S("download_url"), nil)
+	if err != nil {
+		return err
 	}
 	// Range offsets and Content-Length must describe the original audio bytes;
 	// transparent upstream compression would break those values during relaying.
 	req.Header.Set("Accept-Encoding", "identity")
-	for _, h := range []string{"Range", "If-Range"} {
-		if v := r.Header.Get(h); v != "" {
-			req.Header.Set(h, v)
+	for _, headerName := range []string{"Range", "If-Range"} {
+		if headerValue := request.Header.Get(headerName); headerValue != "" {
+			req.Header.Set(headerName, headerValue)
 		}
 	}
 	// API timeouts include the response body. Delegated audio may stay open for
 	// the duration of a song, so use a client bounded only during connection/headers.
-	resp, e := a.AudioClient.Do(req)
-	if e != nil {
+	resp, err := app.AudioClient.Do(req)
+	if err != nil {
 		return httpError{502, "Audio server unavailable."}
 	}
 	defer resp.Body.Close()
@@ -110,227 +110,227 @@ func (a *App) audio(w http.ResponseWriter, r *http.Request, parts []string) erro
 		}
 		return httpError{502, "Audio stream unavailable."}
 	}
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
-		if v := resp.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
+	for _, headerName := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if headerValue := resp.Header.Get(headerName); headerValue != "" {
+			responseWriter.Header().Set(headerName, headerValue)
 		}
 	}
-	if w.Header().Get("Content-Type") == "" {
-		w.Header().Set("Content-Type", contentType(m.S("relative_path")))
+	if responseWriter.Header().Get("Content-Type") == "" {
+		responseWriter.Header().Set("Content-Type", contentType(track.S("relative_path")))
 	}
-	w.WriteHeader(resp.StatusCode)
-	if r.Method != "HEAD" {
+	responseWriter.WriteHeader(resp.StatusCode)
+	if request.Method != "HEAD" {
 		// Browser seeks commonly cancel a previous stream. That cancellation also
 		// stops the upstream request and should not be logged as a relay failure.
-		if n, err := io.Copy(w, resp.Body); err != nil && r.Context().Err() == nil {
-			log.Printf("audio relay track %s: received/wrote %d bytes (upstream length %s): %v", m.S("id"), n, resp.Header.Get("Content-Length"), err)
+		if bytesCopied, err := io.Copy(responseWriter, resp.Body); err != nil && request.Context().Err() == nil {
+			log.Printf("audio relay track %s: received/wrote %d bytes (upstream length %s): %v", track.S("id"), bytesCopied, resp.Header.Get("Content-Length"), err)
 		}
 	}
 	return nil
 }
 
 func atomicFile(dest string, reader io.Reader, overwrite bool) error {
-	if e := os.MkdirAll(filepath.Dir(dest), 0755); e != nil {
-		return e
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
 	}
 	// Stage beside the destination so link/rename publication stays on the same
 	// filesystem. Readers see a complete file, not an in-progress copy.
-	f, e := os.CreateTemp(filepath.Dir(dest), ".reinhardt-*")
-	if e != nil {
-		return e
+	temporaryFile, err := os.CreateTemp(filepath.Dir(dest), ".reinhardt-*")
+	if err != nil {
+		return err
 	}
-	defer os.Remove(f.Name())
-	if _, e = io.Copy(f, reader); e != nil {
-		f.Close()
-		return e
+	defer os.Remove(temporaryFile.Name())
+	if _, err = io.Copy(temporaryFile, reader); err != nil {
+		temporaryFile.Close()
+		return err
 	}
-	if e = f.Chmod(0644); e != nil {
-		f.Close()
-		return e
+	if err = temporaryFile.Chmod(0644); err != nil {
+		temporaryFile.Close()
+		return err
 	}
-	if e = f.Sync(); e != nil {
-		f.Close()
-		return e
+	if err = temporaryFile.Sync(); err != nil {
+		temporaryFile.Close()
+		return err
 	}
-	if e = f.Close(); e != nil {
-		return e
+	if err = temporaryFile.Close(); err != nil {
+		return err
 	}
 	if !overwrite { // Link fails atomically if a library file already exists.
-		return os.Link(f.Name(), dest)
+		return os.Link(temporaryFile.Name(), dest)
 	}
-	return os.Rename(f.Name(), dest)
+	return os.Rename(temporaryFile.Name(), dest)
 }
 func atomicModify(path string, modify func(string) error) error {
 	// Tag writers can rewrite the whole file. Work on a copy so a failed edit
 	// leaves the original playable; existing Unix readers retain the old inode
 	// after publication. This does not serialize simultaneous edits to one file.
-	src, e := os.Open(path)
-	if e != nil {
-		return e
+	src, err := os.Open(path)
+	if err != nil {
+		return err
 	}
 	defer src.Close()
-	info, e := src.Stat()
-	if e != nil {
-		return e
+	info, err := src.Stat()
+	if err != nil {
+		return err
 	}
-	dst, e := os.CreateTemp(filepath.Dir(path), ".reinhardt-*"+filepath.Ext(path))
-	if e != nil {
-		return e
+	dst, err := os.CreateTemp(filepath.Dir(path), ".reinhardt-*"+filepath.Ext(path))
+	if err != nil {
+		return err
 	}
 	temp := dst.Name()
 	defer os.Remove(temp)
-	if _, e = io.Copy(dst, src); e != nil {
+	if _, err = io.Copy(dst, src); err != nil {
 		dst.Close()
-		return e
+		return err
 	}
-	if e = dst.Close(); e != nil {
-		return e
+	if err = dst.Close(); err != nil {
+		return err
 	}
-	if e = modify(temp); e != nil {
-		return e
+	if err = modify(temp); err != nil {
+		return err
 	}
-	if e = os.Chmod(temp, info.Mode()); e != nil {
-		return e
+	if err = os.Chmod(temp, info.Mode()); err != nil {
+		return err
 	}
 	return os.Rename(temp, path)
 }
-func writeID3(m Row, picture []byte, pictureType string) error {
-	if strings.ToLower(fileExtension(m)) != ".mp3" {
+func writeID3(track Row, picture []byte, pictureType string) error {
+	if strings.ToLower(fileExtension(track)) != ".mp3" {
 		return nil
 	}
-	return atomicModify(m.S("full_path"), func(path string) error {
-		t, e := id3.Open(path, id3.Options{Parse: true})
-		if e != nil {
-			return e
+	return atomicModify(track.S("full_path"), func(path string) error {
+		id3Tag, err := id3.Open(path, id3.Options{Parse: true})
+		if err != nil {
+			return err
 		}
-		defer t.Close()
-		t.SetVersion(3)
-		t.SetDefaultEncoding(id3.EncodingUTF8)
-		for _, f := range []string{"TPE1", "TIT2", "TALB", "TCON", "TDRC", "TYER", "COMM"} {
-			t.DeleteFrames(f)
+		defer id3Tag.Close()
+		id3Tag.SetVersion(3)
+		id3Tag.SetDefaultEncoding(id3.EncodingUTF8)
+		for _, frameID := range []string{"TPE1", "TIT2", "TALB", "TCON", "TDRC", "TYER", "COMM"} {
+			id3Tag.DeleteFrames(frameID)
 		}
-		t.SetArtist(m.S("artist"))
-		t.SetTitle(m.S("title"))
-		t.SetAlbum(m.S("album"))
-		t.SetGenre(m.S("genre"))
-		if m.S("year") != "" {
-			t.AddTextFrame("TYER", id3.EncodingUTF8, m.S("year"))
+		id3Tag.SetArtist(track.S("artist"))
+		id3Tag.SetTitle(track.S("title"))
+		id3Tag.SetAlbum(track.S("album"))
+		id3Tag.SetGenre(track.S("genre"))
+		if track.S("year") != "" {
+			id3Tag.AddTextFrame("TYER", id3.EncodingUTF8, track.S("year"))
 		}
-		if m.S("comment") != "" {
-			t.AddCommentFrame(id3.CommentFrame{Encoding: id3.EncodingUTF8, Language: "eng", Text: m.S("comment")})
+		if track.S("comment") != "" {
+			id3Tag.AddCommentFrame(id3.CommentFrame{Encoding: id3.EncodingUTF8, Language: "eng", Text: track.S("comment")})
 		}
 		if picture != nil {
-			t.DeleteFrames("APIC")
-			t.AddAttachedPicture(id3.PictureFrame{Encoding: id3.EncodingUTF8, MimeType: pictureType, PictureType: 3, Description: "Cover", Picture: picture})
+			id3Tag.DeleteFrames("APIC")
+			id3Tag.AddAttachedPicture(id3.PictureFrame{Encoding: id3.EncodingUTF8, MimeType: pictureType, PictureType: 3, Description: "Cover", Picture: picture})
 		}
-		return t.Save()
+		return id3Tag.Save()
 	})
 }
 
 func decodedImage(reader io.ReadSeeker) (image.Image, string, error) {
 	// An HTTP/upload byte limit does not bound decoded pixel memory. Inspect the
 	// dimensions before allocating the image, then rewind for the actual decoder.
-	conf, kind, e := image.DecodeConfig(reader)
-	if e != nil {
-		return nil, "", e
+	conf, kind, err := image.DecodeConfig(reader)
+	if err != nil {
+		return nil, "", err
 	}
 	if conf.Width <= 0 || conf.Height <= 0 || int64(conf.Width)*int64(conf.Height) > 40000000 {
 		return nil, "", fmt.Errorf("image dimensions too large")
 	}
-	if _, e = reader.Seek(0, io.SeekStart); e != nil {
-		return nil, "", e
+	if _, err = reader.Seek(0, io.SeekStart); err != nil {
+		return nil, "", err
 	}
-	im, _, e := image.Decode(reader)
-	return im, kind, e
+	im, _, err := image.Decode(reader)
+	return im, kind, err
 }
 func normalizedImage(reader io.ReadSeeker) ([]byte, string, error) {
-	im, kind, e := decodedImage(reader)
-	if e != nil {
-		return nil, "", e
+	im, kind, err := decodedImage(reader)
+	if err != nil {
+		return nil, "", err
 	}
-	var b bytes.Buffer
+	var buffer bytes.Buffer
 	if kind == "jpeg" {
-		e = jpeg.Encode(&b, im, &jpeg.Options{Quality: 95})
-		return b.Bytes(), ".jpg", e
+		err = jpeg.Encode(&buffer, im, &jpeg.Options{Quality: 95})
+		return buffer.Bytes(), ".jpg", err
 	}
-	e = png.Encode(&b, im)
-	return b.Bytes(), ".png", e
+	err = png.Encode(&buffer, im)
+	return buffer.Bytes(), ".png", err
 }
-func (a *App) trackDetails(w http.ResponseWriter, r *http.Request, u Row, id string) error {
-	m, e := a.S.Track(id)
-	if e != nil {
-		return e
+func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.Request, user Row, id string) error {
+	track, operationErr := app.Store.Track(id)
+	if operationErr != nil {
+		return operationErr
 	}
 	message := ""
 	status := 200
-	if r.Method == "POST" {
-		if !u.B("is_superuser") {
+	if request.Method == "POST" {
+		if !user.B("is_superuser") {
 			return forbidden()
 		}
 		for _, field := range []string{"artist", "title", "album", "genre", "year", "comment"} {
-			m[field] = strings.TrimSpace(r.FormValue(field))
+			track[field] = strings.TrimSpace(request.FormValue(field))
 		}
-		if m.S("artist") == "" || m.S("title") == "" {
+		if track.S("artist") == "" || track.S("title") == "" {
 			message = "not enough data"
 			status = 400
 		} else {
 			var data []byte
 			var ext string
-			upload, _, err := r.FormFile("track_image")
+			upload, _, err := request.FormFile("track_image")
 			if err != nil && err != http.ErrMissingFile {
 				return bad("Invalid upload")
 			}
 			if err == nil {
 				defer upload.Close()
-				data, ext, e = normalizedImage(upload)
-				if e != nil {
+				data, ext, operationErr = normalizedImage(upload)
+				if operationErr != nil {
 					message = "invalid image"
 					status = 400
-				} else if _, e = os.Stat(m.S("full_path")); e != nil {
+				} else if _, operationErr = os.Stat(track.S("full_path")); operationErr != nil {
 					message = "audio file not found"
 					status = 400
 				}
 			}
 			if status == 200 {
-				if e = writeID3(m, data, contentType("cover"+ext)); e != nil {
-					log.Printf("metadata writing: %v", e)
+				if operationErr = writeID3(track, data, contentType("cover"+ext)); operationErr != nil {
+					log.Printf("metadata writing: %v", operationErr)
 				}
 				if data != nil {
-					if e = atomicFile(m.S("full_path")+ext, bytes.NewReader(data), true); e != nil {
-						return e
+					if operationErr = atomicFile(track.S("full_path")+ext, bytes.NewReader(data), true); operationErr != nil {
+						return operationErr
 					}
-					a.invalidateCovers(m.N("id"))
-					if fileExtension(m) != ".mp3" {
-						if err := embedArtwork(r.Context(), m, m.S("full_path")+ext); err != nil {
+					app.invalidateCovers(track.N("id"))
+					if fileExtension(track) != ".mp3" {
+						if err := embedArtwork(request.Context(), track, track.S("full_path")+ext); err != nil {
 							log.Printf("embed artwork: %v", err)
 						}
 					}
 				}
-				_, e = a.S.DB.Exec(`UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, m["artist"], m["title"], m["album"], m["genre"], m["year"], m["comment"], now(), m.N("id"))
-				if e != nil {
-					return e
+				_, operationErr = app.Store.DB.Exec(`UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, track["artist"], track["title"], track["album"], track["genre"], track["year"], track["comment"], now(), track.N("id"))
+				if operationErr != nil {
+					return operationErr
 				}
-				if e = a.S.enqueueSync(m.N("id")); e != nil {
-					return e
+				if operationErr = app.Store.enqueueSync(track.N("id")); operationErr != nil {
+					return operationErr
 				}
-				a.redirect(w, r, a.S.URL("index"))
+				app.redirect(responseWriter, request, app.Store.URL("index"))
 				return nil
 			}
 		}
 	}
-	return a.render(w, r, u, "reinhardt/track_details_modal.html", TemplateContext{"music_file": m, "message": message}, status)
+	return app.render(responseWriter, request, user, "reinhardt/track_details_modal.html", TemplateContext{"music_file": track, "message": message}, status)
 }
 
-func (a *App) invalidateCovers(id int64) {
-	files, _ := filepath.Glob(filepath.Join(a.S.C["COVERS_DIR"], fmt.Sprintf("*-%d-*", id)))
-	for _, f := range files {
-		os.Remove(f)
+func (app *App) invalidateCovers(id int64) {
+	files, _ := filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("*-%d-*", id)))
+	for _, cachePath := range files {
+		os.Remove(cachePath)
 	}
 }
-func nearbyPicture(m Row) string {
-	path := m.S("full_path")
+func nearbyPicture(track Row) string {
+	path := track.S("full_path")
 	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif"} {
-		if info, e := os.Stat(path + ext); e == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(path + ext); err == nil && info.Mode().IsRegular() {
 			return path + ext
 		}
 	}
@@ -345,58 +345,58 @@ func nearbyPicture(m Row) string {
 	return ""
 }
 func cropSquare(im image.Image, size int) image.Image {
-	b := im.Bounds()
-	side := b.Dx()
-	if b.Dy() < side {
-		side = b.Dy()
+	bounds := im.Bounds()
+	side := bounds.Dx()
+	if bounds.Dy() < side {
+		side = bounds.Dy()
 	}
-	x, y := b.Min.X+(b.Dx()-side)/2, b.Min.Y+(b.Dy()-side)/2
+	cropX, cropY := bounds.Min.X+(bounds.Dx()-side)/2, bounds.Min.Y+(bounds.Dy()-side)/2
 	out := image.NewRGBA(image.Rect(0, 0, size, size))
 	draw.Draw(out, out.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
-	draw.CatmullRom.Scale(out, out.Bounds(), im, image.Rect(x, y, x+side, y+side), draw.Over, nil)
+	draw.CatmullRom.Scale(out, out.Bounds(), im, image.Rect(cropX, cropY, cropX+side, cropY+side), draw.Over, nil)
 	return out
 }
-func fallbackArtwork(m Row, size int) image.Image {
-	h := sha256.Sum256([]byte(m.S("artist") + "/" + m.S("album") + "/" + m.S("title")))
+func fallbackArtwork(track Row, size int) image.Image {
+	colorSeed := sha256.Sum256([]byte(track.S("artist") + "/" + track.S("album") + "/" + track.S("title")))
 	im := image.NewRGBA(image.Rect(0, 0, 512, 512))
 	paper := color.RGBA{242, 232, 213, 255}
-	ink := color.RGBA{36 + h[0]%35, 45 + h[1]%35, 55 + h[2]%35, 255}
-	accent := color.RGBA{130 + h[3]%90, 90 + h[4]%80, 65 + h[5]%80, 255}
+	ink := color.RGBA{36 + colorSeed[0]%35, 45 + colorSeed[1]%35, 55 + colorSeed[2]%35, 255}
+	accent := color.RGBA{130 + colorSeed[3]%90, 90 + colorSeed[4]%80, 65 + colorSeed[5]%80, 255}
 	draw.Draw(im, im.Bounds(), image.NewUniform(paper), image.Point{}, draw.Src)
 	draw.Draw(im, image.Rect(0, 0, 12, 512), image.NewUniform(accent), image.Point{}, draw.Src)
-	for y := 0; y < 400; y++ {
-		for x := 80; x < 512; x++ {
-			dx, dy := x-345, y-165
-			d := dx*dx + dy*dy
-			if d < 225*225 {
-				c := ink
-				if d < 70*70 {
-					c = accent
+	for pixelY := 0; pixelY < 400; pixelY++ {
+		for pixelX := 80; pixelX < 512; pixelX++ {
+			dx, dy := pixelX-345, pixelY-165
+			squaredDistance := dx*dx + dy*dy
+			if squaredDistance < 225*225 {
+				pixelColor := ink
+				if squaredDistance < 70*70 {
+					pixelColor = accent
 				} else {
-					rr := intSqrt(d)
+					rr := intSqrt(squaredDistance)
 					if rr%9 < 2 {
-						c = color.RGBA{ink.R + 20, ink.G + 20, ink.B + 20, 255}
+						pixelColor = color.RGBA{ink.R + 20, ink.G + 20, ink.B + 20, 255}
 					}
 				}
-				if d < 10*10 {
-					c = paper
+				if squaredDistance < 10*10 {
+					pixelColor = paper
 				}
-				im.Set(x, y, c)
+				im.Set(pixelX, pixelY, pixelColor)
 			}
 		}
 	}
-	drawFallbackArtworkText(im, ink, m.S("artist"), m.S("title"))
+	drawFallbackArtworkText(im, ink, track.S("artist"), track.S("title"))
 	return cropSquare(im, size)
 }
-func intSqrt(n int) int {
-	return int(math.Sqrt(float64(n)))
+func intSqrt(value int) int {
+	return int(math.Sqrt(float64(value)))
 }
-func (a *App) artwork(w http.ResponseWriter, r *http.Request, parts []string) error {
+func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
 	if len(parts) != 3 {
 		return sql.ErrNoRows
 	}
-	size, e := strconv.Atoi(strings.TrimSuffix(parts[2], ".jpg"))
-	if e != nil {
+	size, err := strconv.Atoi(strings.TrimSuffix(parts[2], ".jpg"))
+	if err != nil {
 		return bad("Invalid artwork size")
 	}
 	switch size {
@@ -404,235 +404,235 @@ func (a *App) artwork(w http.ResponseWriter, r *http.Request, parts []string) er
 	default:
 		return bad("Invalid artwork size")
 	}
-	m, e := a.S.Track(parts[1])
-	if e != nil {
-		return e
+	track, err := app.Store.Track(parts[1])
+	if err != nil {
+		return err
 	}
-	cache := filepath.Join(a.S.C["COVERS_DIR"], fmt.Sprintf("thumb-%s-%d-square.jpg", m.S("id"), size))
-	if f, e := os.Open(cache); e == nil {
-		defer f.Close()
-		info, e := f.Stat()
-		if e != nil {
-			return e
+	cache := filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("thumb-%s-%d-square.jpg", track.S("id"), size))
+	if cachedFile, err := os.Open(cache); err == nil {
+		defer cachedFile.Close()
+		info, err := cachedFile.Stat()
+		if err != nil {
+			return err
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
-		http.ServeContent(w, r, "artwork.jpg", info.ModTime(), f)
+		responseWriter.Header().Set("Content-Type", "image/jpeg")
+		http.ServeContent(responseWriter, request, "artwork.jpg", info.ModTime(), cachedFile)
 		return nil
 	}
 	var im image.Image
 	// A track-specific sidecar records an explicit edit and must beat stale embedded artwork.
-	if picture := nearbyPicture(m); strings.HasPrefix(picture, m.S("full_path")) && picture != "" {
-		if f, e := os.Open(picture); e == nil {
-			im, _, _ = decodedImage(f)
-			f.Close()
+	if picture := nearbyPicture(track); strings.HasPrefix(picture, track.S("full_path")) && picture != "" {
+		if pictureFile, err := os.Open(picture); err == nil {
+			im, _, _ = decodedImage(pictureFile)
+			pictureFile.Close()
 		}
 	}
 	if im == nil {
-		if f, e := os.Open(m.S("full_path")); e == nil {
-			if metadata, e := tag.ReadFrom(f); e == nil && metadata.Picture() != nil {
+		if audioFile, err := os.Open(track.S("full_path")); err == nil {
+			if metadata, err := tag.ReadFrom(audioFile); err == nil && metadata.Picture() != nil {
 				im, _, _ = decodedImage(bytes.NewReader(metadata.Picture().Data))
 			}
-			f.Close()
+			audioFile.Close()
 		}
 	}
 	if im == nil {
-		if path := nearbyPicture(m); path != "" {
-			if f, e := os.Open(path); e == nil {
-				im, _, _ = decodedImage(f)
-				f.Close()
+		if path := nearbyPicture(track); path != "" {
+			if discoveredFile, err := os.Open(path); err == nil {
+				im, _, _ = decodedImage(discoveredFile)
+				discoveredFile.Close()
 			}
 		}
 	}
 	if im == nil {
-		im = a.discoverCover(r.Context(), m)
+		im = app.discoverCover(request.Context(), track)
 	}
 	found := im != nil
 	if found {
 		im = cropSquare(im, size)
 	} else {
-		im = fallbackArtwork(m, size)
+		im = fallbackArtwork(track, size)
 	}
-	var b bytes.Buffer
-	if e = jpeg.Encode(&b, im, &jpeg.Options{Quality: 85}); e != nil {
-		return e
+	var buffer bytes.Buffer
+	if err = jpeg.Encode(&buffer, im, &jpeg.Options{Quality: 85}); err != nil {
+		return err
 	}
 	// Persist actual covers only. Saving a generated placeholder here would hide
 	// artwork added or discovered later until someone explicitly removed the file.
 	if found {
-		if e = atomicFile(cache, bytes.NewReader(b.Bytes()), true); e != nil {
-			return e
+		if err = atomicFile(cache, bytes.NewReader(buffer.Bytes()), true); err != nil {
+			return err
 		}
 	}
-	w.Header().Set("Content-Type", "image/jpeg")
-	http.ServeContent(w, r, "artwork.jpg", time.Time{}, bytes.NewReader(b.Bytes()))
+	responseWriter.Header().Set("Content-Type", "image/jpeg")
+	http.ServeContent(responseWriter, request, "artwork.jpg", time.Time{}, bytes.NewReader(buffer.Bytes()))
 	return nil
 }
 
-func (a *App) archive(w http.ResponseWriter, r *http.Request, t Row) error {
-	tracks, e := a.S.TagTracks(t.N("id"))
-	if e != nil {
-		return e
+func (app *App) archive(responseWriter http.ResponseWriter, request *http.Request, tag Row) error {
+	tracks, err := app.Store.TagTracks(tag.N("id"))
+	if err != nil {
+		return err
 	}
-	f, e := os.CreateTemp("", "reinhardt-*.zip")
-	if e != nil {
-		return e
+	archiveFile, err := os.CreateTemp("", "reinhardt-*.zip")
+	if err != nil {
+		return err
 	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	z := zip.NewWriter(f)
-	for i, m := range tracks {
-		src, e := os.Open(m.S("full_path"))
-		if e != nil {
-			z.Close()
-			return e
+	defer os.Remove(archiveFile.Name())
+	defer archiveFile.Close()
+	archiveWriter := zip.NewWriter(archiveFile)
+	for index, track := range tracks {
+		src, err := os.Open(track.S("full_path"))
+		if err != nil {
+			archiveWriter.Close()
+			return err
 		}
-		info, e := src.Stat()
-		if e != nil {
+		info, err := src.Stat()
+		if err != nil {
 			src.Close()
-			z.Close()
-			return e
+			archiveWriter.Close()
+			return err
 		}
-		header, e := zip.FileInfoHeader(info)
-		if e != nil {
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
 			src.Close()
-			z.Close()
-			return e
+			archiveWriter.Close()
+			return err
 		}
-		header.Name = fmt.Sprintf("%03d-%s", i+1, m.S("clean_file_name"))
+		header.Name = fmt.Sprintf("%03d-%s", index+1, track.S("clean_file_name"))
 		// Audio is already compressed; deflating it adds CPU cost for little gain.
 		header.Method = zip.Store
-		dst, e := z.CreateHeader(header)
-		if e == nil {
-			_, e = io.Copy(dst, src)
+		dst, err := archiveWriter.CreateHeader(header)
+		if err == nil {
+			_, err = io.Copy(dst, src)
 		}
 		src.Close()
-		if e != nil {
-			z.Close()
-			return e
+		if err != nil {
+			archiveWriter.Close()
+			return err
 		}
 	}
-	if e = z.Close(); e != nil {
-		return e
+	if err = archiveWriter.Close(); err != nil {
+		return err
 	}
-	if _, e = f.Seek(0, io.SeekStart); e != nil {
-		return e
+	if _, err = archiveFile.Seek(0, io.SeekStart); err != nil {
+		return err
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": slug(t.S("label")) + ".zip"}))
-	http.ServeContent(w, r, "playlist.zip", time.Time{}, f)
+	responseWriter.Header().Set("Content-Type", "application/zip")
+	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": slug(tag.S("label")) + ".zip"}))
+	http.ServeContent(responseWriter, request, "playlist.zip", time.Time{}, archiveFile)
 	return nil
 }
-func (a *App) databaseBackup(w http.ResponseWriter, r *http.Request) error {
-	f, e := os.CreateTemp("", "reinhardt-*.sqlite3")
-	if e != nil {
-		return e
+func (app *App) databaseBackup(responseWriter http.ResponseWriter, request *http.Request) error {
+	temporaryFile, err := os.CreateTemp("", "reinhardt-*.sqlite3")
+	if err != nil {
+		return err
 	}
-	name := f.Name()
-	f.Close()
+	name := temporaryFile.Name()
+	temporaryFile.Close()
 	defer os.Remove(name)
-	if e = os.Remove(name); e != nil {
-		return e
+	if err = os.Remove(name); err != nil {
+		return err
 	}
 	// VACUUM INTO takes a consistent snapshot, including data in the WAL.
 	// Copying DATABASE_PATH alone can miss committed rows still in its WAL file.
-	if _, e = a.S.DB.Exec("VACUUM INTO ?", name); e != nil {
-		return e
+	if _, err = app.Store.DB.Exec("VACUUM INTO ?", name); err != nil {
+		return err
 	}
-	file, e := os.Open(name)
-	if e != nil {
-		return e
+	file, err := os.Open(name)
+	if err != nil {
+		return err
 	}
 	defer file.Close()
-	w.Header().Set("Content-Type", "application/vnd.sqlite3")
-	w.Header().Set("Content-Disposition", `attachment; filename="reinhardt.sqlite3"`)
-	http.ServeContent(w, r, "reinhardt.sqlite3", time.Time{}, file)
+	responseWriter.Header().Set("Content-Type", "application/vnd.sqlite3")
+	responseWriter.Header().Set("Content-Disposition", `attachment; filename="reinhardt.sqlite3"`)
+	http.ServeContent(responseWriter, request, "reinhardt.sqlite3", time.Time{}, file)
 	return nil
 }
 
 var genrePrefix = regexp.MustCompile(`^\([0-9]+\)(.+)`)
 
-func (c Config) sanitize(s, field string) string {
-	if !c.Bool("SANITIZE_TAGS") {
-		return s
+func (config Config) sanitize(text, field string) string {
+	if !config.Bool("SANITIZE_TAGS") {
+		return text
 	}
-	s = strings.ReplaceAll(s, "/", " / ")
-	s = strings.ReplaceAll(s, "&", " & ")
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > 1 && s[0] == '"' && s[len(s)-1] == '"' {
-		s = s[1 : len(s)-1]
+	text = strings.ReplaceAll(text, "/", " / ")
+	text = strings.ReplaceAll(text, "&", " & ")
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 1 && text[0] == '"' && text[len(text)-1] == '"' {
+		text = text[1 : len(text)-1]
 	}
 	if field == "artist" || field == "genre" {
-		s = strings.ReplaceAll(strings.ToLower(s), " & ", " and ")
+		text = strings.ReplaceAll(strings.ToLower(text), " & ", " and ")
 	}
 	if field == "artist" {
 		for _, pair := range [][2]string{{" feat. ", " featuring "}, {" feat ", " featuring "}, {" vs. ", " versus "}, {" vs ", " versus "}} {
-			s = strings.ReplaceAll(s, pair[0], pair[1])
+			text = strings.ReplaceAll(text, pair[0], pair[1])
 		}
-		words := strings.Fields(s)
-		for i, w := range words {
-			rs := []rune(w)
+		words := strings.Fields(text)
+		for wordIndex, word := range words {
+			rs := []rune(word)
 			if len(rs) > 0 {
-				words[i] = strings.ToUpper(string(rs[:1])) + string(rs[1:])
+				words[wordIndex] = strings.ToUpper(string(rs[:1])) + string(rs[1:])
 			}
 		}
-		s = strings.Join(words, " ")
-		if strings.HasPrefix(s, "The ") {
-			s = strings.TrimPrefix(s, "The ") + " (the)"
+		text = strings.Join(words, " ")
+		if strings.HasPrefix(text, "The ") {
+			text = strings.TrimPrefix(text, "The ") + " (the)"
 		}
-		if strings.HasPrefix(s, "Dj ") {
-			s = strings.TrimPrefix(s, "Dj ") + " (DJ)"
+		if strings.HasPrefix(text, "Dj ") {
+			text = strings.TrimPrefix(text, "Dj ") + " (DJ)"
 		}
-		switch strings.ToLower(s) {
+		switch strings.ToLower(text) {
 		case "various", "various artist", "various artists":
-			s = "various"
+			text = "various"
 		}
 	}
 	if field == "genre" {
-		switch s {
+		switch text {
 		case "bo", "bof", "b.o.f.", "soundtracks":
-			s = "soundtrack"
+			text = "soundtrack"
 		case "genre inconnu", "inconnu", "unknown", "(255)":
-			s = ""
+			text = ""
 		}
-		if m := genrePrefix.FindStringSubmatch(s); m != nil {
-			s = m[1]
+		if matches := genrePrefix.FindStringSubmatch(text); matches != nil {
+			text = matches[1]
 		}
-		s = strings.TrimSpace(strings.Split(s, "/")[0])
+		text = strings.TrimSpace(strings.Split(text, "/")[0])
 	}
-	return s
+	return text
 }
-func (s *Store) Metadata(path string) (Row, error) {
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, e
+func (store *Store) Metadata(path string) (Row, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	defer f.Close()
-	m, e := tag.ReadFrom(f)
-	if e != nil {
-		return nil, e
+	defer file.Close()
+	metadata, err := tag.ReadFrom(file)
+	if err != nil {
+		return nil, err
 	}
-	track, _ := m.Track()
-	genre := m.Genre()
+	track, _ := metadata.Track()
+	genre := metadata.Genre()
 	// Numeric ID3 genre prefixes are expanded by the reader, duplicating text
 	// in values like "(18)Techno". Sanitize the original frame instead.
 	for _, key := range []string{"TCON", "TCO"} {
-		if raw, ok := m.Raw()[key].(string); ok {
+		if raw, ok := metadata.Raw()[key].(string); ok {
 			genre = raw
 			break
 		}
 	}
 	year := ""
-	if y := m.Year(); y != 0 {
-		year = strconv.Itoa(y)
+	if metadataYear := metadata.Year(); metadataYear != 0 {
+		year = strconv.Itoa(metadataYear)
 	}
-	info, e := f.Stat()
-	if e != nil {
-		return nil, e
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
 	}
 	duration := 0
 	if strings.ToLower(filepath.Ext(path)) == ".mp3" {
-		f.Seek(0, io.SeekStart)
-		dec := mp3.NewDecoder(f)
+		file.Seek(0, io.SeekStart)
+		dec := mp3.NewDecoder(file)
 		var frame mp3.Frame
 		var skipped int
 		var total time.Duration
@@ -641,13 +641,13 @@ func (s *Store) Metadata(path string) (Row, error) {
 		}
 		duration = int(total.Seconds())
 	} else {
-		duration = mp4Duration(f)
+		duration = mp4Duration(file)
 	}
-	return Row{"artist": s.C.sanitize(m.Artist(), "artist"), "title": s.C.sanitize(m.Title(), ""), "album": s.C.sanitize(m.Album(), ""), "genre": s.C.sanitize(genre, "genre"), "year": year, "comment": strings.TrimSpace(m.Comment()), "duration": duration, "track_number": track, "created_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"), "modified_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")}, nil
+	return Row{"artist": store.Config.sanitize(metadata.Artist(), "artist"), "title": store.Config.sanitize(metadata.Title(), ""), "album": store.Config.sanitize(metadata.Album(), ""), "genre": store.Config.sanitize(genre, "genre"), "year": year, "comment": strings.TrimSpace(metadata.Comment()), "duration": duration, "track_number": track, "created_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"), "modified_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")}, nil
 }
-func mp4Duration(f *os.File) int {
-	info, e := f.Stat()
-	if e != nil {
+func mp4Duration(file *os.File) int {
+	info, err := file.Stat()
+	if err != nil {
 		return 0
 	}
 	var walk func(int64, int64, int) int
@@ -656,18 +656,18 @@ func mp4Duration(f *os.File) int {
 			return 0
 		}
 		for off := start; off+8 <= end; {
-			var h [16]byte
-			if _, e := f.ReadAt(h[:8], off); e != nil {
+			var boxHeader [16]byte
+			if _, err := file.ReadAt(boxHeader[:8], off); err != nil {
 				return 0
 			}
-			size := int64(binary.BigEndian.Uint32(h[:4]))
+			size := int64(binary.BigEndian.Uint32(boxHeader[:4]))
 			head := int64(8)
-			kind := string(h[4:8])
+			kind := string(boxHeader[4:8])
 			if size == 1 {
-				if _, e := f.ReadAt(h[8:], off+8); e != nil {
+				if _, err := file.ReadAt(boxHeader[8:], off+8); err != nil {
 					return 0
 				}
-				size = int64(binary.BigEndian.Uint64(h[8:]))
+				size = int64(binary.BigEndian.Uint64(boxHeader[8:]))
 				head = 16
 			}
 			if size == 0 {
@@ -677,24 +677,24 @@ func mp4Duration(f *os.File) int {
 				return 0
 			}
 			if kind == "mdhd" && size >= head+24 {
-				var b [32]byte
-				n, _ := f.ReadAt(b[:], off+head)
-				if b[0] == 0 && n >= 20 {
-					scale := binary.BigEndian.Uint32(b[12:16])
+				var mediaHeader [32]byte
+				bytesRead, _ := file.ReadAt(mediaHeader[:], off+head)
+				if mediaHeader[0] == 0 && bytesRead >= 20 {
+					scale := binary.BigEndian.Uint32(mediaHeader[12:16])
 					if scale > 0 {
-						return int(binary.BigEndian.Uint32(b[16:20]) / scale)
+						return int(binary.BigEndian.Uint32(mediaHeader[16:20]) / scale)
 					}
 				}
-				if b[0] == 1 && n >= 32 {
-					scale := binary.BigEndian.Uint32(b[20:24])
+				if mediaHeader[0] == 1 && bytesRead >= 32 {
+					scale := binary.BigEndian.Uint32(mediaHeader[20:24])
 					if scale > 0 {
-						return int(binary.BigEndian.Uint64(b[24:32]) / uint64(scale))
+						return int(binary.BigEndian.Uint64(mediaHeader[24:32]) / uint64(scale))
 					}
 				}
 			}
 			if kind == "moov" || kind == "trak" || kind == "mdia" {
-				if n := walk(off+head, off+size, depth+1); n > 0 {
-					return n
+				if duration := walk(off+head, off+size, depth+1); duration > 0 {
+					return duration
 				}
 			}
 			off += size
@@ -703,40 +703,40 @@ func mp4Duration(f *os.File) int {
 	}
 	return walk(0, info.Size(), 0)
 }
-func (s *Store) indexFile(path string, dir Row) error {
-	m, e := s.Metadata(path)
-	if e != nil {
-		return e
+func (store *Store) indexFile(path string, dir Row) error {
+	trackMetadata, err := store.Metadata(path)
+	if err != nil {
+		return err
 	}
-	if m.S("artist") == "" || m.S("title") == "" {
+	if trackMetadata.S("artist") == "" || trackMetadata.S("title") == "" {
 		return fmt.Errorf("artist and title are required")
 	}
-	relative, e := filepath.Rel(dir.S("local_path"), path)
-	if e != nil {
-		return e
+	relative, err := filepath.Rel(dir.S("local_path"), path)
+	if err != nil {
+		return err
 	}
 	// The legacy schema makes relative_path globally unique, even across music
 	// directories. Update in place so rescans preserve IDs and playlist membership;
 	// INSERT OR REPLACE would delete the old row and cascade its associations.
-	_, e = s.DB.Exec(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0`, dir.N("id"), relative, m["artist"], m["title"], m["album"], m["genre"], m["year"], m["comment"], m["duration"], m["track_number"], m["created_at"], m["modified_at"])
-	if e != nil {
-		return e
+	_, err = store.DB.Exec(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0`, dir.N("id"), relative, trackMetadata["artist"], trackMetadata["title"], trackMetadata["album"], trackMetadata["genre"], trackMetadata["year"], trackMetadata["comment"], trackMetadata["duration"], trackMetadata["track_number"], trackMetadata["created_at"], trackMetadata["modified_at"])
+	if err != nil {
+		return err
 	}
-	r, e := s.One("SELECT id FROM reinhardt_musicfile WHERE relative_path=?", relative)
-	if e != nil {
-		return fmt.Errorf("find indexed music file %q in database %q: %w", relative, s.C["DATABASE_PATH"], e)
+	existingTrack, err := store.One("SELECT id FROM reinhardt_musicfile WHERE relative_path=?", relative)
+	if err != nil {
+		return fmt.Errorf("find indexed music file %q in database %q: %w", relative, store.Config["DATABASE_PATH"], err)
 	}
-	return s.enqueueSync(r.N("id"))
+	return store.enqueueSync(existingTrack.N("id"))
 }
 func walkMusic(root string, visit func(string) error) error {
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, e error) error {
-		if e != nil {
-			return e
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		if d.Type()&os.ModeSymlink != 0 {
+		if entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
-		if !d.IsDir() {
+		if !entry.IsDir() {
 			switch strings.ToLower(filepath.Ext(path)) {
 			case ".mp3", ".m4a":
 				return visit(path)
@@ -745,68 +745,68 @@ func walkMusic(root string, visit func(string) error) error {
 		return nil
 	})
 }
-func (s *Store) Index(out io.Writer) error {
-	tracks, e := s.Tracks("")
-	if e != nil {
-		return e
+func (store *Store) Index(out io.Writer) error {
+	tracks, indexErr := store.Tracks("")
+	if indexErr != nil {
+		return indexErr
 	}
-	for _, m := range tracks {
-		if _, err := os.Stat(m.S("full_path")); os.IsNotExist(err) {
-			if _, e = s.DB.Exec("UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", m.N("id")); e != nil {
-				return e
+	for _, track := range tracks {
+		if _, err := os.Stat(track.S("full_path")); os.IsNotExist(err) {
+			if _, indexErr = store.DB.Exec("UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", track.N("id")); indexErr != nil {
+				return indexErr
 			}
 		} else if err != nil {
 			return err
 		}
 	}
-	dirs, e := s.Query("SELECT * FROM reinhardt_musicdirectory ORDER BY id")
-	if e != nil {
-		return e
+	dirs, indexErr := store.Query("SELECT * FROM reinhardt_musicdirectory ORDER BY id")
+	if indexErr != nil {
+		return indexErr
 	}
-	for _, d := range dirs {
-		if e = walkMusic(d.S("local_path"), func(path string) error {
-			if e := s.indexFile(path, d); e != nil {
-				fmt.Fprintf(out, "Skipped %s: %v\n", path, e)
+	for _, musicDirectory := range dirs {
+		if indexErr = walkMusic(musicDirectory.S("local_path"), func(path string) error {
+			if err := store.indexFile(path, musicDirectory); err != nil {
+				fmt.Fprintf(out, "Skipped %s: %v\n", path, err)
 			} else {
 				fmt.Fprintln(out, "Indexed", path)
 			}
 			return nil
-		}); e != nil {
-			return e
+		}); indexErr != nil {
+			return indexErr
 		}
 	}
-	return s.ReindexFTS()
+	return store.ReindexFTS()
 }
-func embedArtwork(ctx context.Context, m Row, picture string) error {
-	ext := strings.ToLower(fileExtension(m))
+func embedArtwork(ctx context.Context, track Row, picture string) error {
+	ext := strings.ToLower(fileExtension(track))
 	if ext != ".flac" && ext != ".m4a" && ext != ".mp4" && ext != ".ogg" && ext != ".oga" && ext != ".opus" {
 		return nil
 	}
 	// ffmpeg is only needed for artwork writing in formats without a Go writer.
-	return atomicModify(m.S("full_path"), func(temp string) error {
+	return atomicModify(track.S("full_path"), func(temp string) error {
 		out := temp + filepath.Ext(temp)
 		defer os.Remove(out)
 		args := []string{"-v", "error", "-y", "-i", temp, "-i", picture, "-map", "0:a", "-map", "1:v", "-map_metadata", "0", "-c:a", "copy", "-c:v", "mjpeg", "-disposition:v", "attached_pic", out}
 		if ext == ".ogg" || ext == ".oga" || ext == ".opus" {
-			f, e := os.Open(picture)
-			if e != nil {
-				return e
+			file, err := os.Open(picture)
+			if err != nil {
+				return err
 			}
-			im, kind, e := decodedImage(f)
-			f.Close()
-			if e != nil {
-				return e
+			im, kind, err := decodedImage(file)
+			file.Close()
+			if err != nil {
+				return err
 			}
-			data, e := os.ReadFile(picture)
-			if e != nil {
-				return e
+			data, err := os.ReadFile(picture)
+			if err != nil {
+				return err
 			}
 			mimeType := "image/" + kind
 			if kind == "jpeg" {
 				mimeType = "image/jpeg"
 			}
 			var block bytes.Buffer
-			put := func(n int) { binary.Write(&block, binary.BigEndian, uint32(n)) }
+			put := func(value int) { binary.Write(&block, binary.BigEndian, uint32(value)) }
 			put(3)
 			put(len(mimeType))
 			block.WriteString(mimeType)
@@ -821,8 +821,8 @@ func embedArtwork(ctx context.Context, m Row, picture string) error {
 			args = []string{"-v", "error", "-y", "-i", temp, "-map", "0:a", "-map_metadata", "0", "-c:a", "copy", "-metadata", "METADATA_BLOCK_PICTURE=" + base64.StdEncoding.EncodeToString(block.Bytes()), out}
 		}
 		cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-		if output, e := cmd.CombinedOutput(); e != nil {
-			return fmt.Errorf("ffmpeg: %w: %s", e, output)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ffmpeg: %w: %s", err, output)
 		}
 		return os.Rename(out, temp)
 	})

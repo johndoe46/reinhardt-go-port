@@ -6,36 +6,36 @@ import (
 	"time"
 )
 
-func (a *App) displayDate(raw string) string {
-	t, e := time.Parse(time.RFC3339Nano, raw)
-	if e != nil {
+func (app *App) displayDate(raw string) string {
+	parsedTime, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
 		return raw
 	}
-	loc, e := time.LoadLocation(a.S.C["TIME_ZONE"])
-	if e == nil {
-		t = t.In(loc)
+	loc, err := time.LoadLocation(app.Store.Config["TIME_ZONE"])
+	if err == nil {
+		parsedTime = parsedTime.In(loc)
 	}
-	month := int(t.Month()) - 1
-	if strings.HasPrefix(a.S.C["LANGUAGE_CODE"], "fr") {
+	month := int(parsedTime.Month()) - 1
+	if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
 		months := []string{"janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"}
-		return fmt.Sprintf("%d %s %d %02d:%02d", t.Day(), months[month], t.Year(), t.Hour(), t.Minute())
+		return fmt.Sprintf("%d %s %d %02d:%02d", parsedTime.Day(), months[month], parsedTime.Year(), parsedTime.Hour(), parsedTime.Minute())
 	}
 	months := []string{"Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."}
-	hour := t.Hour() % 12
+	hour := parsedTime.Hour() % 12
 	if hour == 0 {
 		hour = 12
 	}
 	ampm := "a.m."
-	if t.Hour() >= 12 {
+	if parsedTime.Hour() >= 12 {
 		ampm = "p.m."
 	}
 	clock := fmt.Sprintf("%d %s", hour, ampm)
-	if t.Minute() != 0 {
-		clock = fmt.Sprintf("%d:%02d %s", hour, t.Minute(), ampm)
-	} else if t.Hour() == 0 {
+	if parsedTime.Minute() != 0 {
+		clock = fmt.Sprintf("%d:%02d %s", hour, parsedTime.Minute(), ampm)
+	} else if parsedTime.Hour() == 0 {
 		clock = "midnight"
-	} else if t.Hour() == 12 {
+	} else if parsedTime.Hour() == 12 {
 		clock = "noon"
 	}
-	return fmt.Sprintf("%s %d, %d, %s", months[month], t.Day(), t.Year(), clock)
+	return fmt.Sprintf("%s %d, %d, %s", months[month], parsedTime.Day(), parsedTime.Year(), clock)
 }

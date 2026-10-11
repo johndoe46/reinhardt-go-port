@@ -9,29 +9,29 @@ import (
 	"testing"
 )
 
-func TestNextSongLastFMPreference(t *testing.T) {
+func TestNextSongLastFMPreference(test *testing.T) {
 	for _, mode := range []struct {
 		name, path string
 		fragment   bool
 	}{{"plain", "/next_song/", false}, {"unpoly", "/next_song/", true}, {"api", "/api/dj/next_song/", false}} {
 		for _, scenario := range []string{"queued", "queued-disabled", "exhausted-disabled", "empty-disabled", "empty-enabled", "exhausted-enabled", "autofeed-disabled", "explicit-disabled"} {
-			t.Run(mode.name+"/"+scenario, func(t *testing.T) {
-				a := testApp(t)
+			test.Run(mode.name+"/"+scenario, func(test *testing.T) {
+				app := testApp(test)
 				var position int64
 				if !strings.HasPrefix(scenario, "empty-") {
-					mustTag(t, a, 1, "queue", []int64{1, 2})
+					mustTag(test, app, 1, "queue", []int64{1, 2})
 					trackID := 2
 					if scenario == "queued" || scenario == "queued-disabled" {
 						trackID = 1
 					}
-					item, err := a.S.queueItem(1, "a.music_file_id=?", trackID)
+					item, err := app.Store.queueItem(1, "a.music_file_id=?", trackID)
 					if err != nil {
-						t.Fatal(err)
+						test.Fatal(err)
 					}
 					position = item.N("id")
 				}
-				if _, err := a.S.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", position); err != nil {
-					t.Fatal(err)
+				if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", position); err != nil {
+					test.Fatal(err)
 				}
 				similar := !strings.HasSuffix(scenario, "-disabled") || scenario == "autofeed-disabled"
 				autofeed := scenario != "autofeed-disabled"
@@ -44,17 +44,17 @@ func TestNextSongLastFMPreference(t *testing.T) {
 				if autofeed {
 					form.Set("autofeed_queue", "on")
 				}
-				w := call(a, "POST", "/preferences/", 1, form, true)
-				requireCode(t, w, 200)
-				prefs, err := a.S.Preferences(1)
+				response := call(app, "POST", "/preferences/", 1, form, true)
+				requireCode(test, response, 200)
+				prefs, err := app.Store.Preferences(1)
 				if err != nil || prefs.B("autofeed_similar") != similar || prefs.B("autofeed_queue") != autofeed {
-					t.Fatal("checkbox preferences were not saved correctly", prefs, err)
+					test.Fatal("checkbox preferences were not saved correctly", prefs, err)
 				}
 				calls := 0
-				a.Client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+				app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) {
 					calls++
-					if r.URL.Hostname() != "ws.audioscrobbler.com" || r.URL.Query().Get("method") != "artist.getsimilar" {
-						t.Errorf("unexpected external request: %s", r.URL)
+					if request.URL.Hostname() != "ws.audioscrobbler.com" || request.URL.Query().Get("method") != "artist.getsimilar" {
+						test.Errorf("unexpected external request: %s", request.URL)
 						return nil, fmt.Errorf("unexpected external request")
 					}
 					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"similarartists":{"artist":[{"name":"Another"}]}}`)), Header: make(http.Header)}, nil
@@ -63,30 +63,30 @@ func TestNextSongLastFMPreference(t *testing.T) {
 				if scenario == "explicit-disabled" {
 					selection.Set("next_track", "3")
 				}
-				w = call(a, "POST", mode.path, 1, selection, mode.fragment)
-				requireCode(t, w, 200)
+				response = call(app, "POST", mode.path, 1, selection, mode.fragment)
+				requireCode(test, response, 200)
 				wantCalls := 0
 				if scenario == "exhausted-enabled" {
 					wantCalls = 1
 				}
 				if calls != wantCalls {
-					t.Fatalf("Last.fm calls=%d, want %d (similar=%v, autofeed=%v)", calls, wantCalls, similar, autofeed)
+					test.Fatalf("Last.fm calls=%d, want %d (similar=%v, autofeed=%v)", calls, wantCalls, similar, autofeed)
 				}
-				prefs, err = a.S.Preferences(1)
+				prefs, err = app.Store.Preferences(1)
 				if err != nil {
-					t.Fatal(err)
+					test.Fatal(err)
 				}
 				if !autofeed {
 					if prefs.N("current_position") != 0 {
-						t.Fatal("disabled autofeed selected a song")
+						test.Fatal("disabled autofeed selected a song")
 					}
 				} else {
-					item, err := a.S.queueItem(1, "a.id=?", prefs["current_position"])
+					item, err := app.Store.queueItem(1, "a.id=?", prefs["current_position"])
 					if err != nil {
-						t.Fatal("no selected queue item", err)
+						test.Fatal("no selected queue item", err)
 					}
 					if (scenario == "exhausted-enabled" || scenario == "explicit-disabled") && item.N("music_file_id") != 3 {
-						t.Fatal("wrong selected track", item)
+						test.Fatal("wrong selected track", item)
 					}
 				}
 			})
@@ -94,15 +94,15 @@ func TestNextSongLastFMPreference(t *testing.T) {
 	}
 }
 
-func TestNextSongSelectionAndOwnership(t *testing.T) {
+func TestNextSongSelectionAndOwnership(test *testing.T) {
 	for _, scenario := range []string{"first", "advance", "foreign-current", "foreign-selection", "tied-ranks", "invalid-selection", "autofeed-blacklist", "empty-library"} {
-		t.Run(scenario, func(t *testing.T) {
-			a := testApp(t)
-			mustTag(t, a, 2, "queue", []int64{3})
-			queueID := mustTag(t, a, 1, "queue", []int64{1, 2})
-			items, err := a.S.Queue(1)
+		test.Run(scenario, func(test *testing.T) {
+			app := testApp(test)
+			mustTag(test, app, 2, "queue", []int64{3})
+			queueID := mustTag(test, app, 1, "queue", []int64{1, 2})
+			items, err := app.Store.Queue(1)
 			if err != nil {
-				t.Fatal(err)
+				test.Fatal(err)
 			}
 			position := int64(0)
 			form := url.Values{}
@@ -112,9 +112,9 @@ func TestNextSongSelectionAndOwnership(t *testing.T) {
 				position = items[0].N("id")
 				wantTrack, wantRank, wantPosition = 2, 2, items[1].N("id")
 			case "foreign-current":
-				foreign, err := a.S.Queue(2)
+				foreign, err := app.Store.Queue(2)
 				if err != nil {
-					t.Fatal(err)
+					test.Fatal(err)
 				}
 				position = foreign[0].N("id")
 			case "foreign-selection":
@@ -122,8 +122,8 @@ func TestNextSongSelectionAndOwnership(t *testing.T) {
 			case "tied-ranks":
 				position = items[0].N("id")
 				wantTrack, wantRank, wantPosition = 0, 0, 0
-				if _, err = a.S.DB.Exec("UPDATE reinhardt_musicfiletag SET rank=1 WHERE tag_id=?", queueID); err != nil {
-					t.Fatal(err)
+				if _, err = app.Store.DB.Exec("UPDATE reinhardt_musicfiletag SET rank=1 WHERE tag_id=?", queueID); err != nil {
+					test.Fatal(err)
 				}
 			case "invalid-selection":
 				position = items[0].N("id")
@@ -132,47 +132,47 @@ func TestNextSongSelectionAndOwnership(t *testing.T) {
 			case "autofeed-blacklist":
 				position = items[1].N("id")
 				wantRank = 3
-				mustTag(t, a, 1, "blacklist", []int64{2, 3})
+				mustTag(test, app, 1, "blacklist", []int64{2, 3})
 			case "empty-library":
 				position = items[1].N("id")
 				wantTrack, wantRank, wantPosition = 0, 0, 0
-				if _, err = a.S.DB.Exec("DELETE FROM reinhardt_musicfile"); err != nil {
-					t.Fatal(err)
+				if _, err = app.Store.DB.Exec("DELETE FROM reinhardt_musicfile"); err != nil {
+					test.Fatal(err)
 				}
 			}
 			autofeed := scenario == "autofeed-blacklist" || scenario == "empty-library"
-			if _, err = a.S.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=?,autofeed_similar=0 WHERE owner_id=1", position, autofeed); err != nil {
-				t.Fatal(err)
+			if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=?,autofeed_similar=0 WHERE owner_id=1", position, autofeed); err != nil {
+				test.Fatal(err)
 			}
-			w := call(a, "POST", "/next_song/", 1, form, true)
-			requireCode(t, w, 200)
-			prefs, err := a.S.Preferences(1)
+			response := call(app, "POST", "/next_song/", 1, form, true)
+			requireCode(test, response, 200)
+			prefs, err := app.Store.Preferences(1)
 			if err != nil || prefs.N("current_position") != wantPosition {
-				t.Fatal("wrong saved playback position", prefs, err)
+				test.Fatal("wrong saved playback position", prefs, err)
 			}
 			if wantTrack == 0 {
-				if strings.Contains(w.Body.String(), `data-url=`) || !strings.Contains(w.Body.String(), `data-position=""`) || !strings.Contains(w.Body.String(), `onclick="playNext()"`) {
-					t.Fatal("empty playback state incorrect")
+				if strings.Contains(response.Body.String(), `data-url=`) || !strings.Contains(response.Body.String(), `data-position=""`) || !strings.Contains(response.Body.String(), `onclick="playNext()"`) {
+					test.Fatal("empty playback state incorrect")
 				}
 			} else {
-				track, err := a.S.Track(wantTrack)
+				track, err := app.Store.Track(wantTrack)
 				if err != nil {
-					t.Fatal(err)
+					test.Fatal(err)
 				}
-				if !strings.Contains(w.Body.String(), `data-url="`+track.S("playback_url")+`"`) {
-					t.Fatal("wrong track selected")
+				if !strings.Contains(response.Body.String(), `data-url="`+track.S("playback_url")+`"`) {
+					test.Fatal("wrong track selected")
 				}
-				selected, err := a.S.queueItem(1, "a.id=?", wantPosition)
+				selected, err := app.Store.queueItem(1, "a.id=?", wantPosition)
 				if err != nil || selected.N("rank") != wantRank {
-					t.Fatal("wrong queue rank", selected, err)
+					test.Fatal("wrong queue rank", selected, err)
 				}
 			}
-			foreign, err := a.S.Queue(2)
+			foreign, err := app.Store.Queue(2)
 			if err != nil {
-				t.Fatal(err)
+				test.Fatal(err)
 			}
 			if scenario != "empty-library" && (len(foreign) != 1 || foreign[0].N("music_file_id") != 3 || foreign[0].N("rank") != 1) {
-				t.Fatal("another user's queue changed")
+				test.Fatal("another user's queue changed")
 			}
 		})
 	}

@@ -12,12 +12,12 @@ type suggestionCache struct {
 // suggestedData returns an immutable list, shared by full-page renders. SQLite
 // triggers advance the revision for relevant library changes, including writes
 // from other processes. Unrelated writes do not invalidate this cache.
-func (a *App) suggestedData() ([]string, error) {
-	cache := &a.suggestions
+func (app *App) suggestedData() ([]string, error) {
+	cache := &app.suggestions
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	version, err := a.S.One("SELECT revision FROM go_suggestions_revision WHERE id=1")
+	version, err := app.Store.One("SELECT revision FROM go_suggestions_revision WHERE id=1")
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func (a *App) suggestedData() ([]string, error) {
 	}
 	// Django emits sorted artists followed by sorted albums. A name used in both
 	// roles appears twice; deduplicating the final list would change its contents.
-	rows, err := a.S.Query(`SELECT word FROM (SELECT DISTINCT artist word,0 category FROM reinhardt_musicfile UNION ALL SELECT DISTINCT album word,1 category FROM reinhardt_musicfile) ORDER BY category,word`)
+	rows, err := app.Store.Query(`SELECT word FROM (SELECT DISTINCT artist word,0 category FROM reinhardt_musicfile UNION ALL SELECT DISTINCT album word,1 category FROM reinhardt_musicfile) ORDER BY category,word`)
 	if err != nil {
 		return nil, err
 	}

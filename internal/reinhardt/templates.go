@@ -34,8 +34,8 @@ func newTemplates() (Templates, error) {
 	base := template.New(baseName).Funcs(template.FuncMap{
 		"scope": templateScope, "length": templateLength, "first": templateFirst,
 		"regroup": regroup, "loopInfo": templateLoopInfo, "contains": templateContains,
-		"eq": templateEqual, "ne": func(a, b any) bool { return !templateEqual(a, b) },
-		"gt":           func(a, b any) bool { return number(a) > number(b) },
+		"eq": templateEqual, "ne": func(left, right any) bool { return !templateEqual(left, right) },
+		"gt":           func(left, right any) bool { return number(left) > number(right) },
 		"defaultValue": templateDefault, "yesno": templateYesNo, "djangoBool": templateBool,
 		"truncate": templateTruncate, "humanDuration": templateDuration,
 		"hasManyArtists": templateHasManyArtists, "title": templateTitle, "urlencode": templateURLQuery,
@@ -65,20 +65,20 @@ func newTemplates() (Templates, error) {
 		name := strings.TrimPrefix(file, "templates/")
 		// Pages override shared names such as "main". A private clone prevents
 		// whichever page was parsed last from replacing every other page's body.
-		t, err := base.Clone()
+		pageTemplate, err := base.Clone()
 		if err != nil {
 			return nil, err
 		}
-		if t.Lookup(name) == nil {
+		if pageTemplate.Lookup(name) == nil {
 			data, err = assets.ReadFile(file)
 			if err != nil {
 				return nil, err
 			}
-			if _, err = t.New(name).Parse(string(data)); err != nil {
+			if _, err = pageTemplate.New(name).Parse(string(data)); err != nil {
 				return nil, fmt.Errorf("parse %s: %w", name, err)
 			}
 		}
-		result[name] = PageTemplate{Template: t, UsesLayout: name == baseName || templateUsesLayout(t.Lookup(name).Tree.Root, baseName)}
+		result[name] = PageTemplate{Template: pageTemplate, UsesLayout: name == baseName || templateUsesLayout(pageTemplate.Lookup(name).Tree.Root, baseName)}
 	}
 	return result, nil
 }
@@ -119,20 +119,20 @@ func templateScope(ctx TemplateContext, pairs ...any) TemplateContext {
 	for key, value := range ctx {
 		result[key] = value
 	}
-	for i := 0; i+1 < len(pairs); i += 2 {
-		result[fmt.Sprint(pairs[i])] = pairs[i+1]
+	for index := 0; index+1 < len(pairs); index += 2 {
+		result[fmt.Sprint(pairs[index])] = pairs[index+1]
 	}
 	return result
 }
 
 func templateLength(value any) int {
-	v := reflect.ValueOf(value)
-	if !v.IsValid() {
+	reflectedValue := reflect.ValueOf(value)
+	if !reflectedValue.IsValid() {
 		return 0
 	}
-	switch v.Kind() {
+	switch reflectedValue.Kind() {
 	case reflect.Array, reflect.Slice, reflect.Map, reflect.String:
-		return v.Len()
+		return reflectedValue.Len()
 	}
 	return 0
 }
@@ -149,28 +149,28 @@ func templateLoopInfo(index int) Row {
 }
 
 func templateContains(value, list any) bool {
-	v := reflect.ValueOf(list)
-	if !v.IsValid() || (v.Kind() != reflect.Slice && v.Kind() != reflect.Array) {
+	reflectedList := reflect.ValueOf(list)
+	if !reflectedList.IsValid() || (reflectedList.Kind() != reflect.Slice && reflectedList.Kind() != reflect.Array) {
 		return false
 	}
-	for i := 0; i < v.Len(); i++ {
-		if templateEqual(value, v.Index(i).Interface()) {
+	for index := 0; index < reflectedList.Len(); index++ {
+		if templateEqual(value, reflectedList.Index(index).Interface()) {
 			return true
 		}
 	}
 	return false
 }
 
-func templateEqual(a, b any) bool {
+func templateEqual(left, right any) bool {
 	// SQL IDs are int64 while Go template integer literals are int.
-	isInteger := func(v any) bool {
-		r := reflect.ValueOf(v)
-		return r.IsValid() && r.Kind() >= reflect.Int && r.Kind() <= reflect.Uint64
+	isInteger := func(value any) bool {
+		reflectedValue := reflect.ValueOf(value)
+		return reflectedValue.IsValid() && reflectedValue.Kind() >= reflect.Int && reflectedValue.Kind() <= reflect.Uint64
 	}
-	if isInteger(a) && isInteger(b) {
-		return number(a) == number(b)
+	if isInteger(left) && isInteger(right) {
+		return number(left) == number(right)
 	}
-	return reflect.DeepEqual(a, b)
+	return reflect.DeepEqual(left, right)
 }
 
 func templateDefault(value, fallback any) any {
@@ -192,8 +192,8 @@ func templateBool(value any) string {
 	if value == nil {
 		return ""
 	}
-	if v, ok := value.(bool); ok {
-		if v {
+	if booleanValue, ok := value.(bool); ok {
+		if booleanValue {
 			return "True"
 		}
 		return "False"
@@ -213,8 +213,8 @@ func templateTruncate(value any, count int) string {
 }
 
 func templateDuration(value any) string {
-	n := number(value)
-	return fmt.Sprintf("%02d:%02d:%02d", n/3600, n/60%60, n%60)
+	seconds := number(value)
+	return fmt.Sprintf("%02d:%02d:%02d", seconds/3600, seconds/60%60, seconds%60)
 }
 
 func templateHasManyArtists(rows []Row) bool {
@@ -228,13 +228,13 @@ func templateHasManyArtists(rows []Row) bool {
 func templateTitle(value any) string {
 	var result strings.Builder
 	previousCased := false
-	for _, r := range fmt.Sprint(value) {
+	for _, character := range fmt.Sprint(value) {
 		if previousCased {
-			result.WriteRune(unicode.ToLower(r))
+			result.WriteRune(unicode.ToLower(character))
 		} else {
-			result.WriteRune(unicode.ToTitle(r))
+			result.WriteRune(unicode.ToTitle(character))
 		}
-		previousCased = unicode.IsLower(r) || unicode.IsUpper(r) || unicode.IsTitle(r)
+		previousCased = unicode.IsLower(character) || unicode.IsUpper(character) || unicode.IsTitle(character)
 	}
 	return result.String()
 }
@@ -249,67 +249,67 @@ func templateURLQuery(value any) template.URL {
 	return template.URL(strings.ReplaceAll(encoded, "%2F", "/"))
 }
 
-func regroup(v []Row, key string) []Row {
+func regroup(rows []Row, key string) []Row {
 	// Django regroup combines consecutive values; it neither sorts nor merges
 	// distant matches. Query ordering therefore determines the displayed groups.
 	groups := []Row{}
-	for _, r := range v {
-		if len(groups) == 0 || groups[len(groups)-1].S("grouper") != r.S(key) {
-			groups = append(groups, Row{"grouper": r[key], "list": []Row{}})
+	for _, row := range rows {
+		if len(groups) == 0 || groups[len(groups)-1].S("grouper") != row.S(key) {
+			groups = append(groups, Row{"grouper": row[key], "list": []Row{}})
 		}
-		g := groups[len(groups)-1]
-		g["list"] = append(g["list"].([]Row), r)
+		group := groups[len(groups)-1]
+		group["list"] = append(group["list"].([]Row), row)
 	}
 	return groups
 }
-func (s *Store) URL(name string, args ...any) string {
-	arg := func(n int) string {
-		if n >= len(args) {
+func (store *Store) URL(name string, args ...any) string {
+	arg := func(argumentIndex int) string {
+		if argumentIndex >= len(args) {
 			return ""
 		}
-		return fmt.Sprint(args[n])
+		return fmt.Sprint(args[argumentIndex])
 	}
-	p := name + "/"
+	path := name + "/"
 	switch name {
 	case "index":
-		p = ""
+		path = ""
 	case "login":
-		p = "accounts/login/"
+		path = "accounts/login/"
 	case "music_file_search_page":
-		p = "dj/"
+		path = "dj/"
 	case "music_file_search_api":
-		p = "api/music_files/search/"
+		path = "api/music_files/search/"
 	case "dj_next_song_api":
-		p = "api/dj/next_song/"
+		path = "api/dj/next_song/"
 	case "download_database":
-		p = "preferences/database/"
+		path = "preferences/database/"
 	case "artist_add_to_tag", "artist_add_to_queue", "artist_add_to_favorites", "search_add_to_tag", "search_add_to_queue", "search_add_to_favorites", "queue_add_to_tag", "queue_add_to_favorites":
-		p = strings.Replace(name, "_add_", "/add_", 1) + "/"
+		path = strings.Replace(name, "_add_", "/add_", 1) + "/"
 	case "ytrip_metadata":
-		p = "ytrip/metadata/"
+		path = "ytrip/metadata/"
 	case "ytrip_failures":
-		p = "ytrip/failures/"
+		path = "ytrip/failures/"
 	case "retry_ytrip_failure":
-		p = "ytrip/failures/" + arg(0) + "/retry/"
+		path = "ytrip/failures/" + arg(0) + "/retry/"
 	case "rename_tag", "track_details_modal":
-		p = name + "/" + arg(0)
+		path = name + "/" + arg(0)
 	case "artwork", "artwork_modal":
-		p = name + "/" + arg(0) + "/" + arg(1) + ".jpg"
+		path = name + "/" + arg(0) + "/" + arg(1) + ".jpg"
 	case "shared_tag", "download_shared_tag", "serve_shared_music_file":
-		p = "shared/" + arg(0) + "/" + arg(1) + "/"
+		path = "shared/" + arg(0) + "/" + arg(1) + "/"
 		if name == "download_shared_tag" {
-			p += "download/"
+			path += "download/"
 		}
 		if name == "serve_shared_music_file" {
-			p += "track/" + arg(2) + "/"
+			path += "track/" + arg(2) + "/"
 		}
 	}
-	return s.C.Path(p)
+	return store.Config.Path(path)
 }
 
 // Use the committed gettext catalogue, including multiline messages.
 func translations() map[string]string {
-	b, _ := assets.ReadFile("locale/fr/LC_MESSAGES/django.po")
+	catalogueData, _ := assets.ReadFile("locale/fr/LC_MESSAGES/django.po")
 	result := map[string]string{}
 	key, value, mode := "", "", ""
 	flush := func() {
@@ -317,7 +317,7 @@ func translations() map[string]string {
 			result[key] = value
 		}
 	}
-	for _, line := range strings.Split(string(b), "\n") {
+	for _, line := range strings.Split(string(catalogueData), "\n") {
 		if strings.HasPrefix(line, "msgid ") {
 			flush()
 			key = ""

@@ -27,198 +27,200 @@ import (
 
 type transportFunc func(*http.Request) (*http.Response, error)
 
-func (fn transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return fn(r) }
+func (fn transportFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
 
-func testApp(t testing.TB) *App {
-	t.Helper()
-	root := t.TempDir()
-	c := Config{"DATABASE_PATH": filepath.Join(root, "db.sqlite3"), "BASE_DIR": root, "COVERS_DIR": filepath.Join(root, "covers"), "ALLOWED_HOSTS": "*", "LANGUAGE_CODE": "en-us", "SANITIZE_TAGS": "1", "MAX_UPLOAD_BYTES": "1048576", "SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": "10800", "SECRET_KEY": "test-secret"}
-	s, e := openStore(c)
-	if e != nil {
-		t.Fatal(e)
+func testApp(testingContext testing.TB) *App {
+	testingContext.Helper()
+	root := testingContext.TempDir()
+	config := Config{"DATABASE_PATH": filepath.Join(root, "db.sqlite3"), "BASE_DIR": root, "COVERS_DIR": filepath.Join(root, "covers"), "ALLOWED_HOSTS": "*", "LANGUAGE_CODE": "en-us", "SANITIZE_TAGS": "1", "MAX_UPLOAD_BYTES": "1048576", "SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": "10800", "SECRET_KEY": "test-secret"}
+	store, err := openStore(config)
+	if err != nil {
+		testingContext.Fatal(err)
 	}
-	t.Cleanup(func() { s.DB.Close() })
-	for i, name := range []string{"alice", "bob"} {
-		_, e = s.DB.Exec(`INSERT INTO auth_user(id,username,is_superuser,email,date_joined) VALUES(?,?,?,?,?)`, i+1, name, i == 0, name+"@example.com", now())
-		if e != nil {
-			t.Fatal(e)
+	testingContext.Cleanup(func() { store.DB.Close() })
+	for index, name := range []string{"alice", "bob"} {
+		_, err = store.DB.Exec(`INSERT INTO auth_user(id,username,is_superuser,email,date_joined) VALUES(?,?,?,?,?)`, index+1, name, index == 0, name+"@example.com", now())
+		if err != nil {
+			testingContext.Fatal(err)
 		}
-		if _, e = s.Preferences(int64(i + 1)); e != nil {
-			t.Fatal(e)
+		if _, err = store.Preferences(int64(index + 1)); err != nil {
+			testingContext.Fatal(err)
 		}
-		_, e = s.DB.Exec("INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", fmt.Sprintf("session-%d", i+1), i+1, time.Now().Unix()+3600)
-		if e != nil {
-			t.Fatal(e)
+		_, err = store.DB.Exec("INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", fmt.Sprintf("session-%d", index+1), index+1, time.Now().Unix()+3600)
+		if err != nil {
+			testingContext.Fatal(err)
 		}
 	}
 	music := filepath.Join(root, "music")
-	if e = os.MkdirAll(music, 0755); e != nil {
-		t.Fatal(e)
+	if err = os.MkdirAll(music, 0755); err != nil {
+		testingContext.Fatal(err)
 	}
-	_, e = s.DB.Exec("INSERT INTO reinhardt_musicdirectory(id,local_path,created_at,modified_at) VALUES(1,?,?,?)", music, now(), now())
-	if e != nil {
-		t.Fatal(e)
+	_, err = store.DB.Exec("INSERT INTO reinhardt_musicdirectory(id,local_path,created_at,modified_at) VALUES(1,?,?,?)", music, now(), now())
+	if err != nil {
+		testingContext.Fatal(err)
 	}
-	for i, title := range []string{"First tune", "Second tune", "Third tune"} {
-		path := fmt.Sprintf("%d.mp3", i+1)
-		if e = os.WriteFile(filepath.Join(music, path), []byte("abcdefghijklmnopqrstuvwxyz"), 0644); e != nil {
-			t.Fatal(e)
+	for index, title := range []string{"First tune", "Second tune", "Third tune"} {
+		path := fmt.Sprintf("%d.mp3", index+1)
+		if err = os.WriteFile(filepath.Join(music, path), []byte("abcdefghijklmnopqrstuvwxyz"), 0644); err != nil {
+			testingContext.Fatal(err)
 		}
 		artist := "Artist"
 		album := "Album"
-		if i == 2 {
+		if index == 2 {
 			artist = "Another"
 			album = "Other"
 		}
-		_, e = s.DB.Exec(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,comment,year,duration,track_number,created_at,modified_at,missing) VALUES(1,?,?,?,?,?,'Comment','2001',10,?,?,?,0)`, path, artist, title, album, "jazz", i+1, now(), now())
-		if e != nil {
-			t.Fatal(e)
+		_, err = store.DB.Exec(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,comment,year,duration,track_number,created_at,modified_at,missing) VALUES(1,?,?,?,?,?,'Comment','2001',10,?,?,?,0)`, path, artist, title, album, "jazz", index+1, now(), now())
+		if err != nil {
+			testingContext.Fatal(err)
 		}
 	}
-	a, e := newApp(s)
-	if e != nil {
-		t.Fatal(e)
+	app, err := newApp(store)
+	if err != nil {
+		testingContext.Fatal(err)
 	}
-	a.Client = &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) { return nil, fmt.Errorf("unexpected external request") })}
-	a.AudioClient = &http.Client{Transport: a.Client.Transport}
-	return a
+	app.Client = &http.Client{Transport: transportFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected external request")
+	})}
+	app.AudioClient = &http.Client{Transport: app.Client.Transport}
+	return app
 }
-func call(a *App, method, path string, owner int, form url.Values, up bool) *httptest.ResponseRecorder {
+func call(app *App, method, path string, owner int, form url.Values, up bool) *httptest.ResponseRecorder {
 	var body io.Reader
 	if form != nil {
 		form.Set("csrfmiddlewaretoken", strings.Repeat("a", 64))
 		body = strings.NewReader(form.Encode())
 	}
-	r := httptest.NewRequest(method, path, body)
+	request := httptest.NewRequest(method, path, body)
 	if form != nil {
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	if owner > 0 {
-		r.AddCookie(&http.Cookie{Name: "sessionid", Value: fmt.Sprintf("session-%d", owner)})
+		request.AddCookie(&http.Cookie{Name: "sessionid", Value: fmt.Sprintf("session-%d", owner)})
 	}
-	r.AddCookie(&http.Cookie{Name: "csrftoken", Value: strings.Repeat("a", 64)})
+	request.AddCookie(&http.Cookie{Name: "csrftoken", Value: strings.Repeat("a", 64)})
 	if up {
-		r.Header.Set("X-Up-Target", "main")
+		request.Header.Set("X-Up-Target", "main")
 	}
-	w := httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	return w
+	response := httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	return response
 }
-func requireCode(t *testing.T, w *httptest.ResponseRecorder, code int) {
-	t.Helper()
-	if w.Code != code {
-		t.Fatalf("HTTP %d, want %d: %s", w.Code, code, w.Body.String())
+func requireCode(test *testing.T, response *httptest.ResponseRecorder, code int) {
+	test.Helper()
+	if response.Code != code {
+		test.Fatalf("HTTP %d, want %d: %s", response.Code, code, response.Body.String())
 	}
 }
-func mustTag(t *testing.T, a *App, owner int64, name string, tracks []int64) int64 {
-	t.Helper()
-	if _, e := a.S.AddTracks(owner, name, tracks); e != nil {
-		t.Fatal(e)
+func mustTag(test *testing.T, app *App, owner int64, name string, tracks []int64) int64 {
+	test.Helper()
+	if _, err := app.Store.AddTracks(owner, name, tracks); err != nil {
+		test.Fatal(err)
 	}
-	id, e := a.S.AddTag(owner, name)
-	if e != nil {
-		t.Fatal(e)
+	id, err := app.Store.AddTag(owner, name)
+	if err != nil {
+		test.Fatal(err)
 	}
 	return id
 }
 
-func TestAllPagesAndFragments(t *testing.T) {
-	a := testApp(t)
-	tag := mustTag(t, a, 1, "my list", []int64{1, 2})
-	mustTag(t, a, 1, "queue", []int64{1, 2})
-	mustTag(t, a, 2, "friend list", []int64{3})
+func TestAllPagesAndFragments(test *testing.T) {
+	app := testApp(test)
+	tag := mustTag(test, app, 1, "my list", []int64{1, 2})
+	mustTag(test, app, 1, "queue", []int64{1, 2})
+	mustTag(test, app, 2, "friend list", []int64{3})
 	paths := []string{"/", "/artists/", "/artists/?q=A", "/genres/", "/artist/?q=Artist", "/album/?q=Album", "/genre/?q=jazz", "/search/?sq=tune", "/search/", "/dj/", "/tags/", fmt.Sprintf("/tag/?q=%d", tag), "/favorites/", "/queue/", "/preferences/", "/friends/", "/friend_tag/?tag=3", "/music_file_tagger/?q=1", "/music_file_dropdown/?q=1", fmt.Sprintf("/rename_tag/%d", tag), "/artist/add_to_tag/?artist=Artist", "/search/add_to_tag/?sq=tune", "/queue/add_to_tag/", "/track_details_modal/1", "/artwork_modal/1/512.jpg", "/ytrip/", "/ytrip/failures/", "/upload/", "/accounts/login/"}
 	for _, path := range paths {
 		for _, up := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/up=%v", path, up), func(t *testing.T) {
-				w := call(a, "GET", path, 1, nil, up)
-				requireCode(t, w, 200)
-				if w.Body.Len() == 0 {
-					t.Fatal("empty page")
+			test.Run(fmt.Sprintf("%s/up=%v", path, up), func(test *testing.T) {
+				response := call(app, "GET", path, 1, nil, up)
+				requireCode(test, response, 200)
+				if response.Body.Len() == 0 {
+					test.Fatal("empty page")
 				}
-				if strings.Contains(w.Body.String(), "{%") || strings.Contains(w.Body.String(), "{{") {
-					t.Fatal("unrendered template")
+				if strings.Contains(response.Body.String(), "{%") || strings.Contains(response.Body.String(), "{{") {
+					test.Fatal("unrendered template")
 				}
 			})
 		}
 	}
 }
-func TestUnpolyPreservesPlayerAndPreference(t *testing.T) {
-	a := testApp(t)
-	mustTag(t, a, 1, "queue", []int64{1})
-	w := call(a, "POST", "/next_song/", 1, url.Values{"list_item": {"1"}}, true)
-	requireCode(t, w, 200)
-	if !strings.Contains(w.Body.String(), `data-url="/stream/1/"`) {
-		t.Fatal(w.Body.String())
+func TestUnpolyPreservesPlayerAndPreference(test *testing.T) {
+	app := testApp(test)
+	mustTag(test, app, 1, "queue", []int64{1})
+	response := call(app, "POST", "/next_song/", 1, url.Values{"list_item": {"1"}}, true)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `data-url="/stream/1/"`) {
+		test.Fatal(response.Body.String())
 	}
-	w = call(a, "GET", "/", 1, nil, false)
-	requireCode(t, w, 200)
-	for _, s := range []string{`up-keep id="player"`, `data-url="/stream/1/"`, `data-oscilloscope="true"`} {
-		if !strings.Contains(w.Body.String(), s) {
-			t.Fatalf("missing %s", s)
+	response = call(app, "GET", "/", 1, nil, false)
+	requireCode(test, response, 200)
+	for _, expectedMarkup := range []string{`up-keep id="player"`, `data-url="/stream/1/"`, `data-oscilloscope="true"`} {
+		if !strings.Contains(response.Body.String(), expectedMarkup) {
+			test.Fatalf("missing %s", expectedMarkup)
 		}
 	}
-	w = call(a, "GET", "/", 1, nil, true)
-	requireCode(t, w, 200)
-	if strings.Contains(w.Body.String(), `id="player"`) {
-		t.Fatal("fragment replaced persistent player")
+	response = call(app, "GET", "/", 1, nil, true)
+	requireCode(test, response, 200)
+	if strings.Contains(response.Body.String(), `id="player"`) {
+		test.Fatal("fragment replaced persistent player")
 	}
-	if !strings.Contains(w.Header().Get("Vary"), "X-Up-Target") {
-		t.Fatal("missing Vary")
+	if !strings.Contains(response.Header().Get("Vary"), "X-Up-Target") {
+		test.Fatal("missing Vary")
 	}
-	w = call(a, "POST", "/preferences/", 1, url.Values{}, true)
-	requireCode(t, w, 200)
-	if !strings.Contains(w.Body.String(), `data-player-oscilloscope="false"`) {
-		t.Fatal(w.Body.String())
+	response = call(app, "POST", "/preferences/", 1, url.Values{}, true)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `data-player-oscilloscope="false"`) {
+		test.Fatal(response.Body.String())
 	}
-	p, e := a.S.Preferences(2)
-	if e != nil || !p.B("show_oscilloscope") {
-		t.Fatal("changed another user's preferences")
+	preferences, err := app.Store.Preferences(2)
+	if err != nil || !preferences.B("show_oscilloscope") {
+		test.Fatal("changed another user's preferences")
 	}
 }
 
-func TestStreamingAndDelegate(t *testing.T) {
-	a := testApp(t)
-	r := httptest.NewRequest("GET", "/stream/1/", nil)
-	r.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
-	r.Header.Set("Range", "bytes=3-6")
-	r.Header.Set("Accept-Encoding", "gzip")
-	w := httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	requireCode(t, w, 206)
-	if w.Body.String() != "defg" || w.Header().Get("Content-Encoding") != "" || w.Header().Get("Content-Range") != "bytes 3-6/26" {
-		t.Fatal(w.Result().Header, w.Body.String())
+func TestStreamingAndDelegate(test *testing.T) {
+	app := testApp(test)
+	request := httptest.NewRequest("GET", "/stream/1/", nil)
+	request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+	request.Header.Set("Range", "bytes=3-6")
+	request.Header.Set("Accept-Encoding", "gzip")
+	response := httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	requireCode(test, response, 206)
+	if response.Body.String() != "defg" || response.Header().Get("Content-Encoding") != "" || response.Header().Get("Content-Range") != "bytes 3-6/26" {
+		test.Fatal(response.Result().Header, response.Body.String())
 	}
-	r = httptest.NewRequest("HEAD", "/stream/1/", nil)
-	r.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
-	w = httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	requireCode(t, w, 200)
-	if w.Body.Len() != 0 || w.Header().Get("Content-Length") != "26" {
-		t.Fatal(w.Result().Header)
+	request = httptest.NewRequest("HEAD", "/stream/1/", nil)
+	request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+	response = httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	requireCode(test, response, 200)
+	if response.Body.Len() != 0 || response.Header().Get("Content-Length") != "26" {
+		test.Fatal(response.Result().Header)
 	}
-	r = httptest.NewRequest("GET", "/stream/1/", nil)
-	r.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
-	r.Header.Set("Range", "bytes=99-")
-	w = httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	requireCode(t, w, 416)
-	a.S.C["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/library"
+	request = httptest.NewRequest("GET", "/stream/1/", nil)
+	request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+	request.Header.Set("Range", "bytes=99-")
+	response = httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	requireCode(test, response, 416)
+	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/library"
 	closed := false
-	a.AudioClient.Transport = transportFunc(func(req *http.Request) (*http.Response, error) {
+	app.AudioClient.Transport = transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.String() != "https://audio.example/library/1.mp3" || req.Header.Get("Range") != "bytes=3-6" || req.Header.Get("Accept-Encoding") != "identity" {
-			t.Fatal(req.URL, req.Header)
+			test.Fatal(req.URL, req.Header)
 		}
 		return &http.Response{StatusCode: 206, Header: http.Header{"Content-Range": {"bytes 3-6/26"}, "Content-Length": {"4"}, "Content-Type": {"audio/mpeg"}}, Body: &closeBody{Reader: strings.NewReader("defg"), closed: &closed}}, nil
 	})
-	r = httptest.NewRequest("GET", "/stream/1/", nil)
-	r.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
-	r.Header.Set("Range", "bytes=3-6")
-	w = httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	requireCode(t, w, 206)
-	if !closed || w.Body.String() != "defg" {
-		t.Fatal("upstream not relayed or closed")
+	request = httptest.NewRequest("GET", "/stream/1/", nil)
+	request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+	request.Header.Set("Range", "bytes=3-6")
+	response = httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	requireCode(test, response, 206)
+	if !closed || response.Body.String() != "defg" {
+		test.Fatal("upstream not relayed or closed")
 	}
 }
 
@@ -227,189 +229,189 @@ type closeBody struct {
 	closed *bool
 }
 
-func (c *closeBody) Close() error { *c.closed = true; return nil }
+func (body *closeBody) Close() error { *body.closed = true; return nil }
 
-func TestSharedPlaylistBoundariesAndZIP(t *testing.T) {
-	a := testApp(t)
-	id := mustTag(t, a, 1, "My list", []int64{2, 1})
-	w := call(a, "POST", "/tags/", 1, url.Values{"action": {"share_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
-	requireCode(t, w, 200)
-	tag, e := a.S.Tag(id, 1)
-	if e != nil {
-		t.Fatal(e)
+func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
+	app := testApp(test)
+	id := mustTag(test, app, 1, "My list", []int64{2, 1})
+	response := call(app, "POST", "/tags/", 1, url.Values{"action": {"share_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
+	requireCode(test, response, 200)
+	tag, err := app.Store.Tag(id, 1)
+	if err != nil {
+		test.Fatal(err)
 	}
 	path := tag.S("share_url")
-	a.S.C["LANGUAGE_CODE"] = "fr-fr"
-	w = call(a, "GET", path, 0, nil, false)
-	requireCode(t, w, 200)
-	if !strings.Contains(w.Body.String(), "Mélanger") {
-		t.Fatal("missing French shuffle translation")
+	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	response = call(app, "GET", path, 0, nil, false)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), "Mélanger") {
+		test.Fatal("missing French shuffle translation")
 	}
-	if !strings.Contains(w.Body.String(), "Télécharger Second tune") {
-		t.Fatal("missing block translation")
+	if !strings.Contains(response.Body.String(), "Télécharger Second tune") {
+		test.Fatal("missing block translation")
 	}
-	w = call(a, "GET", path+"track/3/", 0, nil, false)
-	requireCode(t, w, 404)
-	w = call(a, "GET", path+"track/1/", 0, nil, false)
-	requireCode(t, w, 200)
-	w = call(a, "GET", strings.Replace(path, tag.S("share_hash"), "invalid", 1), 0, nil, false)
-	requireCode(t, w, 404)
-	w = call(a, "GET", path+"download/", 0, nil, false)
-	requireCode(t, w, 200)
-	z, e := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
-	if e != nil {
-		t.Fatal(e)
+	response = call(app, "GET", path+"track/3/", 0, nil, false)
+	requireCode(test, response, 404)
+	response = call(app, "GET", path+"track/1/", 0, nil, false)
+	requireCode(test, response, 200)
+	response = call(app, "GET", strings.Replace(path, tag.S("share_hash"), "invalid", 1), 0, nil, false)
+	requireCode(test, response, 404)
+	response = call(app, "GET", path+"download/", 0, nil, false)
+	requireCode(test, response, 200)
+	archiveReader, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+	if err != nil {
+		test.Fatal(err)
 	}
-	if len(z.File) != 2 || !strings.Contains(z.File[0].Name, "second-tune") {
-		t.Fatal(z.File)
+	if len(archiveReader.File) != 2 || !strings.Contains(archiveReader.File[0].Name, "second-tune") {
+		test.Fatal(archiveReader.File)
 	}
-	a.S.C["SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS"] = "20"
-	w = call(a, "GET", path+"download/", 0, nil, false)
-	requireCode(t, w, 404)
-	w = call(a, "POST", "/tags/", 2, url.Values{"action": {"unshare_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
-	requireCode(t, w, 404)
-	w = call(a, "POST", "/tags/", 1, url.Values{"action": {"unshare_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
-	requireCode(t, w, 200)
-	w = call(a, "GET", path, 0, nil, false)
-	requireCode(t, w, 404)
+	app.Store.Config["SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS"] = "20"
+	response = call(app, "GET", path+"download/", 0, nil, false)
+	requireCode(test, response, 404)
+	response = call(app, "POST", "/tags/", 2, url.Values{"action": {"unshare_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
+	requireCode(test, response, 404)
+	response = call(app, "POST", "/tags/", 1, url.Values{"action": {"unshare_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
+	requireCode(test, response, 200)
+	response = call(app, "GET", path, 0, nil, false)
+	requireCode(test, response, 404)
 }
 
-func TestBulkActionsAndOwnership(t *testing.T) {
-	a := testApp(t)
-	mustTag(t, a, 1, "queue", []int64{2, 1})
-	foreign := mustTag(t, a, 2, "foreign", []int64{})
+func TestBulkActionsAndOwnership(test *testing.T) {
+	app := testApp(test)
+	mustTag(test, app, 1, "queue", []int64{2, 1})
+	foreign := mustTag(test, app, 2, "foreign", []int64{})
 	for _, source := range []string{"artist", "search", "queue"} {
 		values := url.Values{"artist": {"Artist"}, "sq": {"tune"}, "tag_choice": {"new"}, "new_tag": {source + " playlist"}}
-		w := call(a, "POST", "/"+source+"/add_to_tag/", 1, values, true)
-		requireCode(t, w, 200)
-		tag, e := a.S.One("SELECT id FROM reinhardt_tag WHERE label=? AND owner_id=1", source+" playlist")
-		if e != nil {
-			t.Fatal(e)
+		response := call(app, "POST", "/"+source+"/add_to_tag/", 1, values, true)
+		requireCode(test, response, 200)
+		tag, err := app.Store.One("SELECT id FROM reinhardt_tag WHERE label=? AND owner_id=1", source+" playlist")
+		if err != nil {
+			test.Fatal(err)
 		}
-		tracks, e := a.S.TagTracks(tag.N("id"))
-		if e != nil {
-			t.Fatal(e)
+		tracks, err := app.Store.TagTracks(tag.N("id"))
+		if err != nil {
+			test.Fatal(err)
 		}
 		expected := 2
 		if source == "search" {
 			expected = 3
 		}
 		if len(tracks) != expected {
-			t.Fatal(source, tracks)
+			test.Fatal(source, tracks)
 		}
 		if source == "queue" && tracks[0].N("id") != 2 {
-			t.Fatal("queue ordering lost")
+			test.Fatal("queue ordering lost")
 		}
 		values.Set("tag_choice", "existing")
 		values.Set("tag_pk", fmt.Sprint(foreign))
-		w = call(a, "POST", "/"+source+"/add_to_tag/", 1, values, true)
-		requireCode(t, w, 404)
+		response = call(app, "POST", "/"+source+"/add_to_tag/", 1, values, true)
+		requireCode(test, response, 404)
 	}
-	if _, e := a.S.AddTracks(1, "queue", []int64{1, 1, 2}); e != nil {
-		t.Fatal(e)
+	if _, err := app.Store.AddTracks(1, "queue", []int64{1, 1, 2}); err != nil {
+		test.Fatal(err)
 	}
-	queue, e := a.S.Queue(1)
-	if e != nil || len(queue) != 2 || queue[0].N("music_file_id") != 2 {
-		t.Fatal("duplicates or ordering changed", queue, e)
+	queue, err := app.Store.Queue(1)
+	if err != nil || len(queue) != 2 || queue[0].N("music_file_id") != 2 {
+		test.Fatal("duplicates or ordering changed", queue, err)
 	}
-	queueTag, e := a.S.One("SELECT id FROM reinhardt_tag WHERE label='queue' AND owner_id=1")
-	if e != nil {
-		t.Fatal(e)
+	queueTag, err := app.Store.One("SELECT id FROM reinhardt_tag WHERE label='queue' AND owner_id=1")
+	if err != nil {
+		test.Fatal(err)
 	}
-	w := call(a, "POST", "/reorder_queue/", 1, url.Values{"list_pk": {queueTag.S("id")}, "new_order": {`[{"item":1,"rank":1},{"item":2,"rank":2}]`}}, true)
-	requireCode(t, w, 200)
-	w = call(a, "POST", "/reorder_queue/", 1, url.Values{"list_pk": {fmt.Sprint(foreign)}, "new_order": {`[{"item":1,"rank":1}]`}}, true)
-	requireCode(t, w, 404)
+	response := call(app, "POST", "/reorder_queue/", 1, url.Values{"list_pk": {queueTag.S("id")}, "new_order": {`[{"item":1,"rank":1},{"item":2,"rank":2}]`}}, true)
+	requireCode(test, response, 200)
+	response = call(app, "POST", "/reorder_queue/", 1, url.Values{"list_pk": {fmt.Sprint(foreign)}, "new_order": {`[{"item":1,"rank":1}]`}}, true)
+	requireCode(test, response, 404)
 }
 
-func TestSearchAPIValidationAndFTS(t *testing.T) {
-	a := testApp(t)
-	w := call(a, "GET", "/api/music_files/search/?sq=tune&limit=1&offset=1&order_by=title", 1, nil, false)
-	requireCode(t, w, 200)
+func TestSearchAPIValidationAndFTS(test *testing.T) {
+	app := testApp(test)
+	response := call(app, "GET", "/api/music_files/search/?sq=tune&limit=1&offset=1&order_by=title", 1, nil, false)
+	requireCode(test, response, 200)
 	var data struct {
 		Count   int
 		Results []Row
 	}
-	if e := json.Unmarshal(w.Body.Bytes(), &data); e != nil {
-		t.Fatal(e)
+	if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil {
+		test.Fatal(err)
 	}
 	if data.Count != 3 || len(data.Results) != 1 || data.Results[0].S("title") != "Second tune" {
-		t.Fatal(w.Body.String())
+		test.Fatal(response.Body.String())
 	}
 	for _, query := range []string{"limit=-1", "offset=bad", "artist__contains=A", "missing=maybe", "id=x", "created_at=invalid", "order_by=id"} {
-		w = call(a, "GET", "/api/music_files/search/?"+query, 1, nil, false)
-		requireCode(t, w, 400)
+		response = call(app, "GET", "/api/music_files/search/?"+query, 1, nil, false)
+		requireCode(test, response, 400)
 	}
-	if _, e := a.S.DB.Exec("UPDATE reinhardt_musicfile SET title='Changed' WHERE id=1"); e != nil {
-		t.Fatal(e)
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET title='Changed' WHERE id=1"); err != nil {
+		test.Fatal(err)
 	}
-	w = call(a, "GET", "/api/music_files/search/?sq=Changed", 1, nil, false)
-	requireCode(t, w, 200)
-	if !strings.Contains(w.Body.String(), `"count":1`) {
-		t.Fatal("FTS update failed", w.Body.String())
+	response = call(app, "GET", "/api/music_files/search/?sq=Changed", 1, nil, false)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `"count":1`) {
+		test.Fatal("FTS update failed", response.Body.String())
 	}
 }
 
-func TestCSRFMethodsLoginAndPrefix(t *testing.T) {
-	a := testApp(t)
-	w := call(a, "GET", "/queue/", 0, nil, false)
-	requireCode(t, w, 302)
-	w = call(a, "GET", "/next_song/", 1, nil, false)
-	requireCode(t, w, 405)
-	r := httptest.NewRequest("POST", "/preferences/", strings.NewReader("autofeed_queue=on"))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
-	w = httptest.NewRecorder()
-	a.ServeHTTP(w, r)
-	requireCode(t, w, 403)
-	_, e := a.S.DB.Exec("UPDATE reinhardt_preferences SET access_token='invite-secret' WHERE owner_id=1")
-	if e != nil {
-		t.Fatal(e)
+func TestCSRFMethodsLoginAndPrefix(test *testing.T) {
+	app := testApp(test)
+	response := call(app, "GET", "/queue/", 0, nil, false)
+	requireCode(test, response, 302)
+	response = call(app, "GET", "/next_song/", 1, nil, false)
+	requireCode(test, response, 405)
+	request := httptest.NewRequest("POST", "/preferences/", strings.NewReader("autofeed_queue=on"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+	response = httptest.NewRecorder()
+	app.ServeHTTP(response, request)
+	requireCode(test, response, 403)
+	_, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET access_token='invite-secret' WHERE owner_id=1")
+	if err != nil {
+		test.Fatal(err)
 	}
-	w = call(a, "GET", "/invite/?q=invite-secret&next=https://evil.example/", 0, nil, false)
-	requireCode(t, w, 302)
-	if w.Header().Get("Location") != "/" {
-		t.Fatal("unsafe redirect", w.Header().Get("Location"))
+	response = call(app, "GET", "/invite/?q=invite-secret&next=https://evil.example/", 0, nil, false)
+	requireCode(test, response, 302)
+	if response.Header().Get("Location") != "/" {
+		test.Fatal("unsafe redirect", response.Header().Get("Location"))
 	}
-	if len(w.Result().Cookies()) < 2 {
-		t.Fatal("no session or rotated CSRF")
+	if len(response.Result().Cookies()) < 2 {
+		test.Fatal("no session or rotated CSRF")
 	}
-	a.S.C["URL_PREFIX"] = "music/"
-	w = call(a, "GET", "/music/", 1, nil, false)
-	requireCode(t, w, 200)
-	if !strings.Contains(w.Body.String(), `src="/music/static/player.js"`) {
-		t.Fatal("prefix not applied")
+	app.Store.Config["URL_PREFIX"] = "music/"
+	response = call(app, "GET", "/music/", 1, nil, false)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `src="/music/static/player.js"`) {
+		test.Fatal("prefix not applied")
 	}
-	w = call(a, "GET", "/music/static/unpoly.min.js", 0, nil, false)
-	requireCode(t, w, 200)
-	w = call(a, "GET", "/", 1, nil, false)
-	requireCode(t, w, 404)
+	response = call(app, "GET", "/music/static/unpoly.min.js", 0, nil, false)
+	requireCode(test, response, 200)
+	response = call(app, "GET", "/", 1, nil, false)
+	requireCode(test, response, 404)
 }
 
-func TestArtworkUploadPermissionsValidationAndCache(t *testing.T) {
-	a := testApp(t)
-	m, e := a.S.Track(1)
-	if e != nil {
-		t.Fatal(e)
+func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
+	app := testApp(test)
+	originalTrack, err := app.Store.Track(1)
+	if err != nil {
+		test.Fatal(err)
 	}
 	im := image.NewRGBA(image.Rect(0, 0, 200, 100))
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 200; x++ {
-			im.Set(x, y, color.RGBA{255, 0, 0, 255})
+	for pixelY := 0; pixelY < 100; pixelY++ {
+		for pixelX := 0; pixelX < 200; pixelX++ {
+			im.Set(pixelX, pixelY, color.RGBA{255, 0, 0, 255})
 		}
 	}
 	var imageBytes bytes.Buffer
 	png.Encode(&imageBytes, im)
-	w := call(a, "GET", "/artwork/1/96.jpg", 0, nil, false)
-	requireCode(t, w, 200)
-	first := append([]byte(nil), w.Body.Bytes()...)
-	w = call(a, "GET", "/artwork/1/96.jpg", 0, nil, false)
-	if !bytes.Equal(first, w.Body.Bytes()) {
-		t.Fatal("unstable fallback")
+	response := call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	requireCode(test, response, 200)
+	first := append([]byte(nil), response.Body.Bytes()...)
+	response = call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	if !bytes.Equal(first, response.Body.Bytes()) {
+		test.Fatal("unstable fallback")
 	}
-	files, _ := filepath.Glob(filepath.Join(a.S.C["COVERS_DIR"], "thumb-*"))
+	files, _ := filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], "thumb-*"))
 	if len(files) != 0 {
-		t.Fatal("fallback cached")
+		test.Fatal("fallback cached")
 	}
 	send := func(owner int, data []byte) *httptest.ResponseRecorder {
 		var body bytes.Buffer
@@ -420,210 +422,210 @@ func TestArtworkUploadPermissionsValidationAndCache(t *testing.T) {
 		part, _ := writer.CreateFormFile("track_image", "spoofed.jpg")
 		part.Write(data)
 		writer.Close()
-		r := httptest.NewRequest("POST", "/track_details_modal/1", &body)
-		r.Header.Set("Content-Type", writer.FormDataContentType())
-		r.AddCookie(&http.Cookie{Name: "sessionid", Value: fmt.Sprintf("session-%d", owner)})
-		r.AddCookie(&http.Cookie{Name: "csrftoken", Value: strings.Repeat("a", 64)})
-		w := httptest.NewRecorder()
-		a.ServeHTTP(w, r)
-		return w
+		request := httptest.NewRequest("POST", "/track_details_modal/1", &body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		request.AddCookie(&http.Cookie{Name: "sessionid", Value: fmt.Sprintf("session-%d", owner)})
+		request.AddCookie(&http.Cookie{Name: "csrftoken", Value: strings.Repeat("a", 64)})
+		response := httptest.NewRecorder()
+		app.ServeHTTP(response, request)
+		return response
 	}
-	w = send(2, imageBytes.Bytes())
-	requireCode(t, w, 403)
-	w = send(1, []byte("invalid"))
-	requireCode(t, w, 400)
-	track, e := a.S.Track(1)
-	if e != nil || track.S("artist") != "Artist" {
-		t.Fatal("invalid upload mutated database")
+	response = send(2, imageBytes.Bytes())
+	requireCode(test, response, 403)
+	response = send(1, []byte("invalid"))
+	requireCode(test, response, 400)
+	track, err := app.Store.Track(1)
+	if err != nil || track.S("artist") != "Artist" {
+		test.Fatal("invalid upload mutated database")
 	}
-	w = send(1, imageBytes.Bytes())
-	requireCode(t, w, 302)
-	if _, e = os.Stat(m.S("full_path") + ".png"); e != nil {
-		t.Fatal("format not derived from content", e)
+	response = send(1, imageBytes.Bytes())
+	requireCode(test, response, 302)
+	if _, err = os.Stat(originalTrack.S("full_path") + ".png"); err != nil {
+		test.Fatal("format not derived from content", err)
 	}
-	w = call(a, "GET", "/artwork/1/96.jpg", 0, nil, false)
-	requireCode(t, w, 200)
-	decoded, e := jpeg.Decode(bytes.NewReader(w.Body.Bytes()))
-	if e != nil {
-		t.Fatal(e)
+	response = call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	requireCode(test, response, 200)
+	decoded, err := jpeg.Decode(bytes.NewReader(response.Body.Bytes()))
+	if err != nil {
+		test.Fatal(err)
 	}
 	if decoded.Bounds().Dx() != 96 || decoded.Bounds().Dy() != 96 {
-		t.Fatal(decoded.Bounds())
+		test.Fatal(decoded.Bounds())
 	}
 	rr, gg, _, _ := decoded.At(48, 48).RGBA()
 	if rr < 60000 || gg > 1000 {
-		t.Fatal("wrong cover crop")
+		test.Fatal("wrong cover crop")
 	}
-	files, _ = filepath.Glob(filepath.Join(a.S.C["COVERS_DIR"], "thumb-*"))
+	files, _ = filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], "thumb-*"))
 	if len(files) != 1 {
-		t.Fatal("cover not cached")
+		test.Fatal("cover not cached")
 	}
 }
 
-func TestDatabaseSnapshotAndExistingSchema(t *testing.T) {
-	a := testApp(t)
-	w := call(a, "GET", "/preferences/database/", 2, nil, false)
-	requireCode(t, w, 403)
-	w = call(a, "GET", "/preferences/database/", 1, nil, false)
-	requireCode(t, w, 200)
-	if !bytes.HasPrefix(w.Body.Bytes(), []byte("SQLite format 3")) {
-		t.Fatal("invalid snapshot")
+func TestDatabaseSnapshotAndExistingSchema(test *testing.T) {
+	app := testApp(test)
+	response := call(app, "GET", "/preferences/database/", 2, nil, false)
+	requireCode(test, response, 403)
+	response = call(app, "GET", "/preferences/database/", 1, nil, false)
+	requireCode(test, response, 200)
+	if !bytes.HasPrefix(response.Body.Bytes(), []byte("SQLite format 3")) {
+		test.Fatal("invalid snapshot")
 	}
-	path := filepath.Join(t.TempDir(), "copy.sqlite3")
-	if e := os.WriteFile(path, w.Body.Bytes(), 0600); e != nil {
-		t.Fatal(e)
+	path := filepath.Join(test.TempDir(), "copy.sqlite3")
+	if err := os.WriteFile(path, response.Body.Bytes(), 0600); err != nil {
+		test.Fatal(err)
 	}
-	c := Config{}
-	for k, v := range a.S.C {
-		c[k] = v
+	config := Config{}
+	for configKey, configValue := range app.Store.Config {
+		config[configKey] = configValue
 	}
-	c["DATABASE_PATH"] = path
-	s, e := openStore(c)
-	if e != nil {
-		t.Fatal(e)
+	config["DATABASE_PATH"] = path
+	store, err := openStore(config)
+	if err != nil {
+		test.Fatal(err)
 	}
-	defer s.DB.Close()
-	tracks, e := s.Tracks("")
-	if e != nil || len(tracks) != 3 {
-		t.Fatal(tracks, e)
+	defer store.DB.Close()
+	tracks, err := store.Tracks("")
+	if err != nil || len(tracks) != 3 {
+		test.Fatal(tracks, err)
 	}
 }
 
-func TestNativeIndexAndID3(t *testing.T) {
-	a := testApp(t)
-	dir, e := a.S.One("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
-	if e != nil {
-		t.Fatal(e)
+func TestNativeIndexAndID3(test *testing.T) {
+	app := testApp(test)
+	dir, err := app.Store.One("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
+	if err != nil {
+		test.Fatal(err)
 	}
 	path := filepath.Join(dir.S("local_path"), "tagged.mp3")
-	if e = os.WriteFile(path, make([]byte, 32), 0644); e != nil {
-		t.Fatal(e)
+	if err = os.WriteFile(path, make([]byte, 32), 0644); err != nil {
+		test.Fatal(err)
 	}
-	m := Row{"full_path": path, "relative_path": "tagged.mp3", "artist": "the test & friends", "title": "Tagged title", "album": "Record", "genre": "(18)Techno", "year": "2020", "comment": "Hello"}
-	if e = writeID3(m, nil, ""); e != nil {
-		t.Fatal(e)
+	track := Row{"full_path": path, "relative_path": "tagged.mp3", "artist": "the test & friends", "title": "Tagged title", "album": "Record", "genre": "(18)Techno", "year": "2020", "comment": "Hello"}
+	if err = writeID3(track, nil, ""); err != nil {
+		test.Fatal(err)
 	}
-	tags, e := id3.Open(path, id3.Options{Parse: true})
-	if e != nil {
-		t.Fatal(e)
+	tags, err := id3.Open(path, id3.Options{Parse: true})
+	if err != nil {
+		test.Fatal(err)
 	}
-	if tags.Artist() != m.S("artist") {
-		t.Fatal(tags.Artist())
+	if tags.Artist() != track.S("artist") {
+		test.Fatal(tags.Artist())
 	}
 	tags.Close()
-	if e = a.S.indexFile(path, dir); e != nil {
-		t.Fatal(e)
+	if err = app.Store.indexFile(path, dir); err != nil {
+		test.Fatal(err)
 	}
-	tracks, e := a.S.Search("Tagged")
-	if e != nil || len(tracks) != 1 {
-		t.Fatal(tracks, e)
+	tracks, err := app.Store.Search("Tagged")
+	if err != nil || len(tracks) != 1 {
+		test.Fatal(tracks, err)
 	}
 	if tracks[0].S("artist") != "Test And Friends (the)" || tracks[0].S("year") != "2020" || tracks[0].S("genre") != "techno" {
-		t.Fatalf("metadata: %#v", tracks[0])
+		test.Fatalf("metadata: %#v", tracks[0])
 	}
-	if e = os.Remove(path); e != nil {
-		t.Fatal(e)
+	if err = os.Remove(path); err != nil {
+		test.Fatal(err)
 	}
-	if e = a.S.Index(io.Discard); e != nil {
-		t.Fatal(e)
+	if err = app.Store.Index(io.Discard); err != nil {
+		test.Fatal(err)
 	}
-	m, e = a.S.Track(tracks[0].N("id"))
-	if e != nil || !m.B("missing") {
-		t.Fatal(m, e)
+	track, err = app.Store.Track(tracks[0].N("id"))
+	if err != nil || !track.B("missing") {
+		test.Fatal(track, err)
 	}
 }
 
-func TestJobsFailureAndYouTubeValidation(t *testing.T) {
-	a := testApp(t)
+func TestJobsFailureAndYouTubeValidation(test *testing.T) {
+	app := testApp(test)
 	for _, raw := range []string{"https://evil.example/watch?v=abcdefghijk", "file:///tmp/a", "https://www.youtube.com:443/watch?v=abcdefghijk", "https://youtu.be/notvalid", "https://user@youtube.com/watch?v=abcdefghijk"} {
-		if _, e := youtubeURL(raw); e == nil {
-			t.Fatal("accepted", raw)
+		if _, err := youtubeURL(raw); err == nil {
+			test.Fatal("accepted", raw)
 		}
 	}
 	for _, raw := range []string{"https://youtu.be/abcdefghijk", "https://www.youtube.com/watch?v=abcdefghijk", "https://music.youtube.com/shorts/abcdefghijk"} {
-		if v, e := youtubeURL(raw); e != nil || v != "https://www.youtube.com/watch?v=abcdefghijk" {
-			t.Fatal(v, e)
+		if canonicalURL, err := youtubeURL(raw); err != nil || canonicalURL != "https://www.youtube.com/watch?v=abcdefghijk" {
+			test.Fatal(canonicalURL, err)
 		}
 	}
-	m := Row{"url": "invalid", "artist": "Artist", "title": "Title"}
-	if e := a.S.Enqueue("youtube", m); e != nil {
-		t.Fatal(e)
+	ripMetadata := Row{"url": "invalid", "artist": "Artist", "title": "Title"}
+	if err := app.Store.Enqueue("youtube", ripMetadata); err != nil {
+		test.Fatal(err)
 	}
-	if e := a.Work(context.Background(), true); e != nil {
-		t.Fatal(e)
+	if err := app.Work(context.Background(), true); err != nil {
+		test.Fatal(err)
 	}
-	failure, e := a.S.One("SELECT * FROM reinhardt_youtuberipfailure")
-	if e != nil {
-		t.Fatal(e)
+	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure")
+	if err != nil {
+		test.Fatal(err)
 	}
 	if failure.S("artist") != "Artist" {
-		t.Fatal(failure)
+		test.Fatal(failure)
 	}
-	job, e := a.S.One("SELECT * FROM go_job")
-	if e != nil || job.N("attempts") != 1 || job.N("run_at") <= time.Now().Unix() {
-		t.Fatal(job, e)
+	job, err := app.Store.One("SELECT * FROM go_job")
+	if err != nil || job.N("attempts") != 1 || job.N("run_at") <= time.Now().Unix() {
+		test.Fatal(job, err)
 	}
 }
 
-func TestRejectArchiveTraversal(t *testing.T) {
-	root := t.TempDir()
+func TestRejectArchiveTraversal(test *testing.T) {
+	root := test.TempDir()
 	path := filepath.Join(root, "upload.zip")
-	var b bytes.Buffer
-	z := zip.NewWriter(&b)
-	file, _ := z.Create("../escape.mp3")
+	var buffer bytes.Buffer
+	archiveWriter := zip.NewWriter(&buffer)
+	file, _ := archiveWriter.Create("../escape.mp3")
 	file.Write([]byte("test"))
-	z.Close()
-	os.WriteFile(path, b.Bytes(), 0600)
-	if e := extractArchive(path, root, 1000); e == nil {
-		t.Fatal("accepted traversal")
+	archiveWriter.Close()
+	os.WriteFile(path, buffer.Bytes(), 0600)
+	if err := extractArchive(path, root, 1000); err == nil {
+		test.Fatal("accepted traversal")
 	}
 }
 
-func TestAssetsAreByteIdenticalToDjango(t *testing.T) {
+func TestAssetsAreByteIdenticalToDjango(test *testing.T) {
 	// Go runs package tests from internal/reinhardt; Django is a sibling checkout.
 	djangoRoot := filepath.Join("..", "..", "..", "reinhardt", "reinhardt")
-	if _, e := os.Stat(filepath.Join(djangoRoot, "templates")); os.IsNotExist(e) {
-		t.Skip("Django source checkout not present")
+	if _, err := os.Stat(filepath.Join(djangoRoot, "templates")); os.IsNotExist(err) {
+		test.Skip("Django source checkout not present")
 	}
 	for _, root := range []string{"static", "locale"} {
-		e := fs.WalkDir(assets, root, func(path string, d fs.DirEntry, e error) error {
-			if e != nil {
-				return e
+		err := fs.WalkDir(assets, root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
-			if d.IsDir() {
+			if entry.IsDir() {
 				return nil
 			}
-			original, e := os.ReadFile(filepath.Join(djangoRoot, path))
-			if e != nil {
-				return e
+			original, err := os.ReadFile(filepath.Join(djangoRoot, path))
+			if err != nil {
+				return err
 			}
-			copy, e := assets.ReadFile(path)
-			if e != nil {
-				return e
+			copy, err := assets.ReadFile(path)
+			if err != nil {
+				return err
 			}
 			if !bytes.Equal(original, copy) {
 				return fmt.Errorf("asset differs: %s", path)
 			}
 			return nil
 		})
-		if e != nil {
-			t.Fatal(e)
+		if err != nil {
+			test.Fatal(err)
 		}
 	}
 }
 
-func TestConfigDotenvAndEnvironmentPrecedence(t *testing.T) {
-	root := t.TempDir()
+func TestConfigDotenvAndEnvironmentPrecedence(test *testing.T) {
+	root := test.TempDir()
 	file := filepath.Join(root, ".env")
-	if e := os.WriteFile(file, []byte("BASE_DIR="+root+"\nURL_PREFIX=music\nEMAIL_PORT=2525\nMUSIC_IMPORT_DIR='/tmp/import with spaces'\n"), 0600); e != nil {
-		t.Fatal(e)
+	if err := os.WriteFile(file, []byte("BASE_DIR="+root+"\nURL_PREFIX=music\nEMAIL_PORT=2525\nMUSIC_IMPORT_DIR='/tmp/import with spaces'\n"), 0600); err != nil {
+		test.Fatal(err)
 	}
-	t.Setenv("EMAIL_PORT", "1025")
-	c, e := loadConfigFromHome(root, file, filepath.Join(root, "explicit.sqlite3"))
-	if e != nil {
-		t.Fatal(e)
+	test.Setenv("EMAIL_PORT", "1025")
+	config, err := loadConfigFromHome(root, file, filepath.Join(root, "explicit.sqlite3"))
+	if err != nil {
+		test.Fatal(err)
 	}
-	if c["EMAIL_PORT"] != "1025" || c["URL_PREFIX"] != "music/" || c["MUSIC_IMPORT_DIR"] != "/tmp/import with spaces" || c["DATABASE_PATH"] != filepath.Join(root, "explicit.sqlite3") {
-		t.Fatal("configuration precedence failed")
+	if config["EMAIL_PORT"] != "1025" || config["URL_PREFIX"] != "music/" || config["MUSIC_IMPORT_DIR"] != "/tmp/import with spaces" || config["DATABASE_PATH"] != filepath.Join(root, "explicit.sqlite3") {
+		test.Fatal("configuration precedence failed")
 	}
 }

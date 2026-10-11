@@ -31,13 +31,13 @@ func drawFallbackArtworkText(dst draw.Image, ink color.Color, artist, title stri
 	}
 	defer face.Close()
 	drawer := font.Drawer{Dst: dst, Src: image.NewUniform(ink), Face: face}
-	for i, text := range []string{artist, title} {
+	for lineIndex, text := range []string{artist, title} {
 		// Compose base letters and combining marks before glyph lookup/truncation.
 		runes := []rune(norm.NFC.String(text))
 		if len(runes) > 62 {
 			runes = append(runes[:59], '.', '.', '.')
 		}
-		drawer.Dot = fixed.P(32, 445+i*28)
+		drawer.Dot = fixed.P(32, 445+lineIndex*28)
 		drawer.DrawString(string(runes))
 	}
 }

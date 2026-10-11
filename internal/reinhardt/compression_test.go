@@ -12,34 +12,34 @@ import (
 )
 
 func decodeGzip(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(bytes.NewReader(data))
+	gzipReader, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
-	return io.ReadAll(r)
+	defer gzipReader.Close()
+	return io.ReadAll(gzipReader)
 }
 
-func TestGzipResponsesPreserveHTML(t *testing.T) {
-	a := testApp(t)
+func TestGzipResponsesPreserveHTML(test *testing.T) {
+	app := testApp(test)
 	for _, fragment := range []bool{false, true} {
-		plain := dropdownRequest(a, fragment, false)
-		requireCode(t, plain, 200)
+		plain := dropdownRequest(app, fragment, false)
+		requireCode(test, plain, 200)
 		for range 3 {
-			compressed := dropdownRequest(a, fragment, true)
-			requireCode(t, compressed, 200)
+			compressed := dropdownRequest(app, fragment, true)
+			requireCode(test, compressed, 200)
 			if compressed.Header().Get("Content-Encoding") != "gzip" || compressed.Header().Get("Content-Type") != plain.Header().Get("Content-Type") {
-				t.Fatal("compressed response headers changed")
+				test.Fatal("compressed response headers changed")
 			}
 			decoded, err := decodeGzip(compressed.Body.Bytes())
 			if err != nil || !bytes.Equal(decoded, plain.Body.Bytes()) {
-				t.Fatal("compressed HTML differs from uncompressed HTML", err)
+				test.Fatal("compressed HTML differs from uncompressed HTML", err)
 			}
 		}
 	}
 }
 
-func TestGzipConcurrentIndependentStreams(t *testing.T) {
+func TestGzipConcurrentIndependentStreams(test *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 16)
 	for worker := range 16 {
@@ -64,7 +64,7 @@ func TestGzipConcurrentIndependentStreams(t *testing.T) {
 	wg.Wait()
 	close(errors)
 	for err := range errors {
-		t.Error(err)
+		test.Error(err)
 	}
 }
 
@@ -72,20 +72,20 @@ type failedGzipDestination struct {
 	err error
 }
 
-func (w failedGzipDestination) Write([]byte) (int, error) { return 0, w.err }
+func (destination failedGzipDestination) Write([]byte) (int, error) { return 0, destination.err }
 
-func TestGzipRecoveryAfterWriteFailure(t *testing.T) {
+func TestGzipRecoveryAfterWriteFailure(test *testing.T) {
 	wantErr := errors.New("destination failed")
 	if err := writeGzip(failedGzipDestination{wantErr}, []byte("broken response")); !errors.Is(err, wantErr) {
-		t.Fatal("compression did not propagate the write failure", err)
+		test.Fatal("compression did not propagate the write failure", err)
 	}
 	body := []byte(strings.Repeat("next response", 100))
 	var compressed bytes.Buffer
 	if err := writeGzip(&compressed, body); err != nil {
-		t.Fatal("compression failed after a previous error", err)
+		test.Fatal("compression failed after a previous error", err)
 	}
 	decoded, err := decodeGzip(compressed.Bytes())
 	if err != nil || !bytes.Equal(decoded, body) {
-		t.Fatal("response after write failure was corrupted", err)
+		test.Fatal("response after write failure was corrupted", err)
 	}
 }

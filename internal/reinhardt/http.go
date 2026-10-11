@@ -20,7 +20,7 @@ import (
 )
 
 type App struct {
-	S            *Store
+	Store        *Store
 	Templates    Templates
 	French       map[string]string
 	Client       *http.Client
@@ -39,213 +39,213 @@ type httpError struct {
 	Message string
 }
 
-func (e httpError) Error() string { return e.Message }
-func bad(message string) error    { return httpError{400, message} }
-func forbidden() error            { return httpError{403, "Permission denied"} }
-func newApp(s *Store) (*App, error) {
-	t, e := newTemplates()
-	if e != nil {
-		return nil, e
+func (httpErr httpError) Error() string { return httpErr.Message }
+func bad(message string) error          { return httpError{400, message} }
+func forbidden() error                  { return httpError{403, "Permission denied"} }
+func newApp(store *Store) (*App, error) {
+	templates, err := newTemplates()
+	if err != nil {
+		return nil, err
 	}
 	audioTransport := http.DefaultTransport.(*http.Transport).Clone()
 	// Client.Timeout covers body reads too. Use only a header deadline for audio
 	// so slow downloads and long tracks can outlive the short API timeout.
 	audioTransport.ResponseHeaderTimeout = 35 * time.Second
-	return &App{S: s, Templates: t, French: translations(), Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, coverCache: map[string]coverResult{}}, nil
+	return &App{Store: store, Templates: templates, French: translations(), Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, coverCache: map[string]coverResult{}}, nil
 }
-func (a *App) translate(v any) string {
-	s := fmt.Sprint(v)
-	if strings.HasPrefix(a.S.C["LANGUAGE_CODE"], "fr") {
-		if t, ok := a.French[s]; ok {
-			return t
+func (app *App) translate(value any) string {
+	text := fmt.Sprint(value)
+	if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
+		if translation, ok := app.French[text]; ok {
+			return translation
 		}
 	}
-	return s
+	return text
 }
-func (a *App) redirect(w http.ResponseWriter, r *http.Request, path string) {
+func (app *App) redirect(responseWriter http.ResponseWriter, request *http.Request, path string) {
 	// Unpoly uses this header to update its location during fragment navigation;
 	// the normal redirect also serves full-page browser requests.
-	w.Header().Set("X-Up-Location", path)
-	http.Redirect(w, r, path, http.StatusFound)
+	responseWriter.Header().Set("X-Up-Location", path)
+	http.Redirect(responseWriter, request, path, http.StatusFound)
 }
-func (a *App) absolute(r *http.Request, path string) string {
-	if p := a.S.C["ACCESS_URL_PREFIX"]; p != "" {
-		return strings.TrimRight(p, "/") + path
+func (app *App) absolute(request *http.Request, path string) string {
+	if accessURLPrefix := app.Store.Config["ACCESS_URL_PREFIX"]; accessURLPrefix != "" {
+		return strings.TrimRight(accessURLPrefix, "/") + path
 	}
 	scheme := "http"
-	if r.TLS != nil {
+	if request.TLS != nil {
 		scheme = "https"
 	}
-	return scheme + "://" + r.Host + path
+	return scheme + "://" + request.Host + path
 }
-func (a *App) sessionUser(r *http.Request) Row {
-	c, e := r.Cookie("sessionid")
-	if e != nil {
+func (app *App) sessionUser(request *http.Request) Row {
+	sessionCookie, err := request.Cookie("sessionid")
+	if err != nil {
 		return Row{"is_authenticated": false}
 	}
-	u, e := a.S.One(`SELECT u.* FROM auth_user u JOIN go_session s ON s.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, c.Value, time.Now().Unix())
-	if e != nil {
+	user, err := app.Store.One(`SELECT u.* FROM auth_user u JOIN go_session s ON s.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
+	if err != nil {
 		return Row{"is_authenticated": false}
 	}
-	u["is_authenticated"] = true
-	return u
+	user["is_authenticated"] = true
+	return user
 }
-func (a *App) cookie(w http.ResponseWriter, r *http.Request, name, value string, httpOnly bool, age int) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: a.S.C.Path(""), HttpOnly: httpOnly, Secure: r.TLS != nil || a.S.C.Bool("COOKIE_SECURE"), SameSite: http.SameSiteLaxMode, MaxAge: age})
+func (app *App) cookie(responseWriter http.ResponseWriter, request *http.Request, name, value string, httpOnly bool, age int) {
+	http.SetCookie(responseWriter, &http.Cookie{Name: name, Value: value, Path: app.Store.Config.Path(""), HttpOnly: httpOnly, Secure: request.TLS != nil || app.Store.Config.Bool("COOKIE_SECURE"), SameSite: http.SameSiteLaxMode, MaxAge: age})
 }
-func (a *App) csrf(w http.ResponseWriter, r *http.Request) string {
-	c, e := r.Cookie("csrftoken")
-	if e == nil && len(c.Value) == 64 {
-		return c.Value
+func (app *App) csrf(responseWriter http.ResponseWriter, request *http.Request) string {
+	csrfCookie, err := request.Cookie("csrftoken")
+	if err == nil && len(csrfCookie.Value) == 64 {
+		return csrfCookie.Value
 	}
-	v := token()
-	a.cookie(w, r, "csrftoken", v, false, 31556952)
-	return v
+	csrfToken := token()
+	app.cookie(responseWriter, request, "csrftoken", csrfToken, false, 31556952)
+	return csrfToken
 }
-func (a *App) checkCSRF(r *http.Request) error {
-	if origin := r.Header.Get("Origin"); origin != "" {
-		u, e := url.Parse(origin)
+func (app *App) checkCSRF(request *http.Request) error {
+	if origin := request.Header.Get("Origin"); origin != "" {
+		originURL, err := url.Parse(origin)
 		trusted := false
-		for _, t := range strings.Split(a.S.C["CSRF_TRUSTED_ORIGINS"], ",") {
-			if origin == strings.TrimSpace(t) {
+		for _, trustedOrigin := range strings.Split(app.Store.Config["CSRF_TRUSTED_ORIGINS"], ",") {
+			if origin == strings.TrimSpace(trustedOrigin) {
 				trusted = true
 			}
 		}
-		if e != nil || (!trusted && u.Host != r.Host) {
+		if err != nil || (!trusted && originURL.Host != request.Host) {
 			return forbidden()
 		}
 	}
-	c, e := r.Cookie("csrftoken")
-	if e != nil {
+	csrfCookie, err := request.Cookie("csrftoken")
+	if err != nil {
 		return forbidden()
 	}
-	v := r.Header.Get("X-CSRFToken")
-	if v == "" {
-		v = r.FormValue("csrfmiddlewaretoken")
+	submittedToken := request.Header.Get("X-CSRFToken")
+	if submittedToken == "" {
+		submittedToken = request.FormValue("csrfmiddlewaretoken")
 	}
-	if len(c.Value) != 64 || subtle.ConstantTimeCompare([]byte(v), []byte(c.Value)) != 1 {
+	if len(csrfCookie.Value) != 64 || subtle.ConstantTimeCompare([]byte(submittedToken), []byte(csrfCookie.Value)) != 1 {
 		return forbidden()
 	}
 	return nil
 }
-func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("X-Frame-Options", "DENY")
-	host := r.Host
-	if h, _, e := net.SplitHostPort(host); e == nil {
-		host = h
+func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
+	responseWriter.Header().Set("X-Content-Type-Options", "nosniff")
+	responseWriter.Header().Set("X-Frame-Options", "DENY")
+	host := request.Host
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		host = hostname
 	}
 	allowed := false
-	for _, h := range strings.Split(a.S.C["ALLOWED_HOSTS"], ",") {
-		h = strings.TrimSpace(h)
-		if h == "*" || h == host || (strings.HasPrefix(h, ".") && strings.HasSuffix(host, h)) {
+	for _, allowedHost := range strings.Split(app.Store.Config["ALLOWED_HOSTS"], ",") {
+		allowedHost = strings.TrimSpace(allowedHost)
+		if allowedHost == "*" || allowedHost == host || (strings.HasPrefix(allowedHost, ".") && strings.HasSuffix(host, allowedHost)) {
 			allowed = true
 		}
 	}
 	if !allowed {
-		http.Error(w, "Invalid host", 400)
+		http.Error(responseWriter, "Invalid host", 400)
 		return
 	}
-	prefix := a.S.C.Path("")
-	if !strings.HasPrefix(r.URL.Path, prefix) {
-		http.NotFound(w, r)
+	prefix := app.Store.Config.Path("")
+	if !strings.HasPrefix(request.URL.Path, prefix) {
+		http.NotFound(responseWriter, request)
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, prefix)
+	path := strings.TrimPrefix(request.URL.Path, prefix)
 	if strings.HasPrefix(path, "static/") {
 		sub, _ := fs.Sub(assets, "static")
-		http.StripPrefix(prefix+"static/", http.FileServer(http.FS(sub))).ServeHTTP(w, r)
+		http.StripPrefix(prefix+"static/", http.FileServer(http.FS(sub))).ServeHTTP(responseWriter, request)
 		return
 	}
 	// The same URL can return a full layout, an Unpoly fragment, or another
 	// user's state. Proxies must not reuse one of those representations for another.
-	w.Header().Set("Vary", "X-Up-Target, Cookie, Accept-Encoding")
-	w.Header().Set("Cache-Control", "private, no-cache")
-	u := a.sessionUser(r)
+	responseWriter.Header().Set("Vary", "X-Up-Target, Cookie, Accept-Encoding")
+	responseWriter.Header().Set("Cache-Control", "private, no-cache")
+	user := app.sessionUser(request)
 	public := path == "accounts/login/" || path == "invite/" || strings.HasPrefix(path, "shared/") || strings.HasPrefix(path, "artwork/") || strings.HasPrefix(path, "artwork_modal/") || path == "similar_artists/" || path == "user_playlists_contents/"
-	if !public && !u.B("is_authenticated") {
-		a.redirect(w, r, a.S.URL("login")+"?next="+url.QueryEscape(r.URL.RequestURI()))
+	if !public && !user.B("is_authenticated") {
+		app.redirect(responseWriter, request, app.Store.URL("login")+"?next="+url.QueryEscape(request.URL.RequestURI()))
 		return
 	}
-	if r.Method != "GET" && r.Method != "HEAD" && r.Method != "POST" {
-		w.Header().Set("Allow", "GET, HEAD, POST")
-		http.Error(w, "Method not allowed", 405)
+	if request.Method != "GET" && request.Method != "HEAD" && request.Method != "POST" {
+		responseWriter.Header().Set("Allow", "GET, HEAD, POST")
+		http.Error(responseWriter, "Method not allowed", 405)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, int64(a.S.C.Int("MAX_UPLOAD_BYTES")))
+	request.Body = http.MaxBytesReader(responseWriter, request.Body, int64(app.Store.Config.Int("MAX_UPLOAD_BYTES")))
 	defer func() {
-		if r.MultipartForm != nil {
-			r.MultipartForm.RemoveAll()
+		if request.MultipartForm != nil {
+			request.MultipartForm.RemoveAll()
 		}
 	}()
-	if r.Method == "POST" {
-		if e := a.checkCSRF(r); e != nil {
-			http.Error(w, e.Error(), 403)
+	if request.Method == "POST" {
+		if err := app.checkCSRF(request); err != nil {
+			http.Error(responseWriter, err.Error(), 403)
 			return
 		}
 	}
-	err := a.dispatch(w, r, u, path)
+	err := app.dispatch(responseWriter, request, user, path)
 	if err != nil {
 		code := 500
 		message := "Internal server error"
-		var h httpError
-		if errors.As(err, &h) {
-			code = h.Code
-			message = h.Message
+		var httpErr httpError
+		if errors.As(err, &httpErr) {
+			code = httpErr.Code
+			message = httpErr.Message
 		} else if errors.Is(err, sql.ErrNoRows) {
 			code = 404
 			message = "Not found"
 		} else {
-			log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+			log.Printf("%s %s: %v", request.Method, request.URL.Path, err)
 		}
-		http.Error(w, message, code)
+		http.Error(responseWriter, message, code)
 	}
 }
-func postOnly(r *http.Request) error {
-	if r.Method != "POST" {
+func postOnly(request *http.Request) error {
+	if request.Method != "POST" {
 		return httpError{405, "POST required"}
 	}
 	return nil
 }
-func safeOnly(r *http.Request) error {
-	if r.Method != "GET" && r.Method != "HEAD" {
+func safeOnly(request *http.Request) error {
+	if request.Method != "GET" && request.Method != "HEAD" {
 		return httpError{405, "GET or HEAD required"}
 	}
 	return nil
 }
-func (a *App) render(w http.ResponseWriter, r *http.Request, u Row, name string, ctx TemplateContext, status int) error {
-	t, ok := a.Templates[name]
+func (app *App) render(responseWriter http.ResponseWriter, request *http.Request, user Row, name string, ctx TemplateContext, status int) error {
+	pageTemplate, ok := app.Templates[name]
 	if !ok {
 		return fmt.Errorf("unknown template %q", name)
 	}
 	if ctx == nil {
 		ctx = TemplateContext{}
 	}
-	ctx["request"] = Row{"user": u, "get_full_path": r.URL.RequestURI()}
-	ctx["request_is_from_unpoly"] = r.Header.Get("X-Up-Target") != ""
+	ctx["request"] = Row{"user": user, "get_full_path": request.URL.RequestURI()}
+	ctx["request_is_from_unpoly"] = request.Header.Get("X-Up-Target") != ""
 	if name == "registration/login.html" {
 		// Login needs the full document even after an expired-session fragment
 		// request; otherwise the browser can retain an authenticated page shell.
 		ctx["request_is_from_unpoly"] = false
 	}
-	ctx["csrf_token"] = a.csrf(w, r)
-	ctx["url"] = a.S.URL
-	ctx["static"] = func(path string) string { return a.S.C.Path("static/" + path) }
-	ctx["translate"] = a.translate
+	ctx["csrf_token"] = app.csrf(responseWriter, request)
+	ctx["url"] = app.Store.URL
+	ctx["static"] = func(path string) string { return app.Store.Config.Path("static/" + path) }
+	ctx["translate"] = app.translate
 	// Literal catalogue strings are trusted, as they are in Django's translate
 	// tag. html/template still applies contextual escaping inside JS and URLs.
-	ctx["translate_literal"] = func(v any) template.HTML { return template.HTML(a.translate(v)) }
+	ctx["translate_literal"] = func(value any) template.HTML { return template.HTML(app.translate(value)) }
 	ctx["generated_at"] = generatedAt()
 	ctx["preferences"] = Row{}
-	ctx["translate_format"] = func(s string, title any) string {
-		return strings.ReplaceAll(a.translate(s), "%(title)s", fmt.Sprint(title))
+	ctx["translate_format"] = func(formatText string, title any) string {
+		return strings.ReplaceAll(app.translate(formatText), "%(title)s", fmt.Sprint(title))
 	}
 	// Raw fetch() partials have no X-Up-Target header. Only templates using the
 	// page layout need preferences, the player footer, or library suggestions.
-	if u.B("is_authenticated") && t.UsesLayout {
-		prefs, e := a.S.Preferences(u.N("id"))
-		if e != nil {
-			return e
+	if user.B("is_authenticated") && pageTemplate.UsesLayout {
+		prefs, err := app.Store.Preferences(user.N("id"))
+		if err != nil {
+			return err
 		}
 		ctx["preferences"] = prefs
 		if fromUnpoly, _ := ctx["request_is_from_unpoly"].(bool); !fromUnpoly {
@@ -268,14 +268,14 @@ func (a *App) render(w http.ResponseWriter, r *http.Request, u Row, name string,
 							}
 						}
 					} else {
-						current, e = a.S.queueItem(u.N("id"), "a.id=?", position)
-						if e != nil && e != sql.ErrNoRows {
-							return e
+						current, err = app.Store.queueItem(user.N("id"), "a.id=?", position)
+						if err != nil && err != sql.ErrNoRows {
+							return err
 						}
 						if current != nil {
-							current["music_file"], e = a.S.Track(current["music_file_id"])
-							if e != nil {
-								return e
+							current["music_file"], err = app.Store.Track(current["music_file_id"])
+							if err != nil {
+								return err
 							}
 						}
 					}
@@ -285,38 +285,38 @@ func (a *App) render(w http.ResponseWriter, r *http.Request, u Row, name string,
 					}
 				}
 			}
-			words, e := a.suggestedData()
-			if e != nil {
-				return e
+			words, err := app.suggestedData()
+			if err != nil {
+				return err
 			}
 			ctx["suggested_data"] = words
 		}
 	}
 	// Render before committing headers, so a template failure can still produce
 	// a clean HTTP error instead of an incomplete successful response.
-	var b bytes.Buffer
-	if e := t.ExecuteTemplate(&b, name, ctx); e != nil {
-		return e
+	var renderedHTML bytes.Buffer
+	if err := pageTemplate.ExecuteTemplate(&renderedHTML, name, ctx); err != nil {
+		return err
 	}
-	var e error
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") && b.Len() > 200 {
-		var z bytes.Buffer
-		if e = writeGzip(&z, b.Bytes()); e != nil {
-			return e
+	var err error
+	responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if strings.Contains(request.Header.Get("Accept-Encoding"), "gzip") && renderedHTML.Len() > 200 {
+		var compressedHTML bytes.Buffer
+		if err = writeGzip(&compressedHTML, renderedHTML.Bytes()); err != nil {
+			return err
 		}
-		w.Header().Set("Content-Encoding", "gzip")
-		b = z
+		responseWriter.Header().Set("Content-Encoding", "gzip")
+		renderedHTML = compressedHTML
 	}
-	w.WriteHeader(status)
-	if r.Method != "HEAD" {
-		_, e = w.Write(b.Bytes())
+	responseWriter.WriteHeader(status)
+	if request.Method != "HEAD" {
+		_, err = responseWriter.Write(renderedHTML.Bytes())
 	}
-	return e
+	return err
 }
-func jsonResponse(w http.ResponseWriter, data any) error {
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(data)
+func jsonResponse(responseWriter http.ResponseWriter, data any) error {
+	responseWriter.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(responseWriter).Encode(data)
 }
 func formHTML(next, emailLabel, language string) template.HTML {
 	value := ""

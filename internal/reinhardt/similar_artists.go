@@ -27,14 +27,14 @@ type similarLookupEntry struct {
 	expires time.Time
 }
 
-func (e similarLookupEntry) size() int {
+func (entry similarLookupEntry) size() int {
 	// Include string-array capacity as well as text; 16 bytes per string header
 	// matches the supported amd64/arm64 builds and conservatively bounds 32-bit builds.
-	n := len(e.artist) + cap(e.names)*16
-	for _, name := range e.names {
-		n += len(name)
+	sizeBytes := len(entry.artist) + cap(entry.names)*16
+	for _, name := range entry.names {
+		sizeBytes += len(name)
 	}
-	return n
+	return sizeBytes
 }
 
 type similarLookupFlight struct {
@@ -50,31 +50,31 @@ type similarLookupCache struct {
 	inflight map[string]*similarLookupFlight
 }
 
-func (c *similarLookupCache) put(entry similarLookupEntry) {
-	if c.entries == nil {
-		c.entries = make(map[string]*list.Element)
+func (cache *similarLookupCache) put(entry similarLookupEntry) {
+	if cache.entries == nil {
+		cache.entries = make(map[string]*list.Element)
 	}
-	if old := c.entries[entry.artist]; old != nil {
-		c.bytes -= old.Value.(similarLookupEntry).size()
-		c.recent.Remove(old)
+	if old := cache.entries[entry.artist]; old != nil {
+		cache.bytes -= old.Value.(similarLookupEntry).size()
+		cache.recent.Remove(old)
 	}
-	c.entries[entry.artist] = c.recent.PushFront(entry)
-	c.bytes += entry.size()
-	for c.recent.Len() > 1 && (c.recent.Len() > similarMaxEntries || c.bytes > similarMaxBytes) {
-		last := c.recent.Back()
+	cache.entries[entry.artist] = cache.recent.PushFront(entry)
+	cache.bytes += entry.size()
+	for cache.recent.Len() > 1 && (cache.recent.Len() > similarMaxEntries || cache.bytes > similarMaxBytes) {
+		last := cache.recent.Back()
 		old := last.Value.(similarLookupEntry)
-		delete(c.entries, old.artist)
-		c.bytes -= old.size()
-		c.recent.Remove(last)
+		delete(cache.entries, old.artist)
+		cache.bytes -= old.size()
+		cache.recent.Remove(last)
 	}
 }
 
-func (a *App) cachedSimilarNames(ctx context.Context, artist string) []string {
+func (app *App) cachedSimilarNames(ctx context.Context, artist string) []string {
 	if ctx.Err() != nil {
 		return nil
 	}
 	key := strings.ToLower(strings.TrimSpace(artist))
-	cache := &a.similar
+	cache := &app.similar
 	cache.mu.Lock()
 	if cached := cache.entries[key]; cached != nil {
 		entry := cached.Value.(similarLookupEntry)
@@ -98,7 +98,7 @@ func (a *App) cachedSimilarNames(ctx context.Context, artist string) []string {
 		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		go func() {
 			defer cancel()
-			names, err := a.fetchSimilarNames(lookupCtx, artist)
+			names, err := app.fetchSimilarNames(lookupCtx, artist)
 			ttl := similarSuccessTTL
 			if err != nil {
 				names, ttl = nil, similarFailureTTL
@@ -124,9 +124,9 @@ func (a *App) cachedSimilarNames(ctx context.Context, artist string) []string {
 	}
 }
 
-func (a *App) fetchSimilarNames(ctx context.Context, artist string) ([]string, error) {
+func (app *App) fetchSimilarNames(ctx context.Context, artist string) ([]string, error) {
 	query := url.Values{"method": {"artist.getsimilar"}, "artist": {artist}, "api_key": {"6dd57d914fac3c0f2107cad48833db39"}, "format": {"json"}}
-	b, _, err := a.request(ctx, "GET", "https://ws.audioscrobbler.com/2.0/?"+query.Encode(), nil, nil)
+	responseBody, _, err := app.request(ctx, "GET", "https://ws.audioscrobbler.com/2.0/?"+query.Encode(), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (a *App) fetchSimilarNames(ctx context.Context, artist string) ([]string, e
 			Artists []struct{ Name string } `json:"artist"`
 		} `json:"similarartists"`
 	}
-	if err = json.Unmarshal(b, &data); err != nil {
+	if err = json.Unmarshal(responseBody, &data); err != nil {
 		return nil, err
 	}
 	if data.Error != 0 {
@@ -157,18 +157,18 @@ type libraryArtistCache struct {
 	names    map[string]string
 }
 
-func (a *App) libraryArtistNames(ctx context.Context) (map[string]string, error) {
-	cache := &a.artistNames
+func (app *App) libraryArtistNames(ctx context.Context) (map[string]string, error) {
+	cache := &app.artistNames
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	var revision int64
-	if err := a.S.DB.QueryRowContext(ctx, "SELECT revision FROM go_autofeed_library_revision WHERE id=1").Scan(&revision); err != nil {
+	if err := app.Store.DB.QueryRowContext(ctx, "SELECT revision FROM go_autofeed_library_revision WHERE id=1").Scan(&revision); err != nil {
 		return nil, err
 	}
 	if cache.loaded && cache.revision == revision {
 		return cache.names, nil
 	}
-	rows, err := a.S.DB.QueryContext(ctx, "SELECT DISTINCT artist FROM reinhardt_musicfile")
+	rows, err := app.Store.DB.QueryContext(ctx, "SELECT DISTINCT artist FROM reinhardt_musicfile")
 	if err != nil {
 		return nil, err
 	}

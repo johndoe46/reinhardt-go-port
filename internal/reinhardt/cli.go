@@ -27,38 +27,38 @@ func Execute() error {
 
 func newCLI() *cobra.Command {
 	var envFile, database string
-	var s *Store
-	var c Config
+	var store *Store
+	var appConfig Config
 	root := &cobra.Command{Use: "reinhardt", Short: "Reinhardt music library and streaming server", SilenceErrors: true, SilenceUsage: true}
 	root.PersistentFlags().StringVar(&envFile, "env-file", ".env", "dotenv file (process environment takes precedence)")
 	root.PersistentFlags().StringVar(&database, "database", "", "SQLite database path (overrides DATABASE_PATH)")
 	load := func(cmd *cobra.Command, args []string) error {
 		var err error
-		c, err = loadConfig(envFile, database)
+		appConfig, err = loadConfig(envFile, database)
 		return err
 	}
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if err := load(cmd, args); err != nil {
 			return err
 		}
-		var e error
-		s, e = openStore(c)
-		return e
+		var err error
+		store, err = openStore(appConfig)
+		return err
 	}
 	root.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
-		if s != nil {
-			return s.DB.Close()
+		if store != nil {
+			return store.DB.Close()
 		}
 		return nil
 	}
 	add := func(use, short string, count int, run func(*cobra.Command, []string) error) *cobra.Command {
-		c := &cobra.Command{Use: use, Short: short, Args: cobra.ExactArgs(count), RunE: run}
-		root.AddCommand(c)
-		return c
+		command := &cobra.Command{Use: use, Short: short, Args: cobra.ExactArgs(count), RunE: run}
+		root.AddCommand(command)
+		return command
 	}
 	var showSecrets bool
 	config := add("config", "Print effective application configuration (credentials redacted)", 0, func(cmd *cobra.Command, args []string) error {
-		return printConfig(cmd.OutOrStdout(), c, showSecrets)
+		return printConfig(cmd.OutOrStdout(), appConfig, showSecrets)
 	})
 	// Inspect configuration without initializing or migrating the database.
 	config.PersistentPreRunE = load
@@ -70,11 +70,11 @@ func newCLI() *cobra.Command {
 			addr = args[0]
 		}
 		if addr == "" {
-			addr = s.C["LISTEN_ADDR"]
+			addr = store.Config["LISTEN_ADDR"]
 		}
-		app, e := newApp(s)
-		if e != nil {
-			return e
+		app, err := newApp(store)
+		if err != nil {
+			return err
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -85,8 +85,8 @@ func newCLI() *cobra.Command {
 		if !noWorker {
 			go func() {
 				defer close(workerDone)
-				if e := app.Work(ctx, false); e != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "Worker:", e)
+				if err := app.Work(ctx, false); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "Worker:", err)
 					stop()
 				}
 			}()
@@ -103,26 +103,26 @@ func newCLI() *cobra.Command {
 				server.Close()
 			}
 		}()
-		fmt.Fprintf(cmd.OutOrStdout(), "Reinhardt listening on %s%s\n", addr, s.C.Path(""))
-		e = server.ListenAndServe()
+		fmt.Fprintf(cmd.OutOrStdout(), "Reinhardt listening on %s%s\n", addr, store.Config.Path(""))
+		err = server.ListenAndServe()
 		stop()
 		// Successful CLI completion closes SQLite in the post-run hook. Wait for
 		// the worker and HTTP shutdown to stop using it before that cleanup can run.
 		<-workerDone
 		<-shutdownDone
-		if e == http.ErrServerClosed {
+		if err == http.ErrServerClosed {
 			return nil
 		}
-		return e
+		return err
 	}}
 	serve.Flags().StringVar(&addr, "listen", "", "listen address (default LISTEN_ADDR)")
 	serve.Flags().BoolVar(&noWorker, "no-worker", false, "run the HTTP server without background jobs")
 	root.AddCommand(serve)
 	var once bool
 	worker := add("worker", "Process durable jobs and periodic imports", 0, func(cmd *cobra.Command, args []string) error {
-		app, e := newApp(s)
-		if e != nil {
-			return e
+		app, err := newApp(store)
+		if err != nil {
+			return err
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -130,38 +130,38 @@ func newCLI() *cobra.Command {
 	})
 	worker.Aliases = []string{"run_huey"}
 	worker.Flags().BoolVar(&once, "once", false, "process ready jobs and exit")
-	add("migrate", "Initialize SQLite schema and rebuild the search index", 0, func(cmd *cobra.Command, args []string) error { return s.ReindexFTS() })
+	add("migrate", "Initialize SQLite schema and rebuild the search index", 0, func(cmd *cobra.Command, args []string) error { return store.ReindexFTS() })
 	add("check", "Check the database and compile all embedded templates", 0, func(cmd *cobra.Command, args []string) error {
-		if _, e := newTemplates(); e != nil {
-			return e
+		if _, err := newTemplates(); err != nil {
+			return err
 		}
-		r, e := s.One("PRAGMA integrity_check")
-		if e != nil {
-			return e
+		integrityResult, err := store.One("PRAGMA integrity_check")
+		if err != nil {
+			return err
 		}
-		if r.S("integrity_check") != "ok" {
-			return fmt.Errorf("database integrity: %v", r)
+		if integrityResult.S("integrity_check") != "ok" {
+			return fmt.Errorf("database integrity: %v", integrityResult)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Database and templates OK")
 		return nil
 	})
 	add("addmusicdir <music_dir>", "Register a music directory", 1, func(cmd *cobra.Command, args []string) error {
-		path, e := filepath.Abs(filepath.Clean(args[0]))
-		if e != nil {
-			return e
+		path, err := filepath.Abs(filepath.Clean(args[0]))
+		if err != nil {
+			return err
 		}
-		info, e := os.Stat(path)
-		if e != nil {
-			return e
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("music_dir must be a directory")
 		}
-		_, e = s.DB.Exec("INSERT OR IGNORE INTO reinhardt_musicdirectory(local_path,created_at,modified_at) VALUES(?,?,?)", path, now(), now())
-		return e
+		_, err = store.DB.Exec("INSERT OR IGNORE INTO reinhardt_musicdirectory(local_path,created_at,modified_at) VALUES(?,?,?)", path, now(), now())
+		return err
 	})
-	add("indexmusic", "Index MP3/M4A metadata and mark missing files", 0, func(cmd *cobra.Command, args []string) error { return s.Index(cmd.OutOrStdout()) })
-	add("gathermusic", "Import files and ZIP archives from MUSIC_IMPORT_DIR", 0, func(cmd *cobra.Command, args []string) error { return s.Gather(cmd.Context()) })
+	add("indexmusic", "Index MP3/M4A metadata and mark missing files", 0, func(cmd *cobra.Command, args []string) error { return store.Index(cmd.OutOrStdout()) })
+	add("gathermusic", "Import files and ZIP archives from MUSIC_IMPORT_DIR", 0, func(cmd *cobra.Command, args []string) error { return store.Gather(cmd.Context()) })
 	var email string
 	var superuser bool
 	access := add("giveaccess <username>", "Create an account and print its persistent login link", 1, func(cmd *cobra.Command, args []string) error {
@@ -172,122 +172,122 @@ func newCLI() *cobra.Command {
 		if len(username) > 150 {
 			return fmt.Errorf("username must be at most 150 characters")
 		}
-		_, e := s.DB.Exec(`INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
-		if e != nil {
-			return e
+		_, err := store.DB.Exec(`INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
+		if err != nil {
+			return err
 		}
-		u, e := s.One("SELECT * FROM auth_user WHERE username=?", username)
-		if e != nil {
-			return e
+		user, err := store.One("SELECT * FROM auth_user WHERE username=?", username)
+		if err != nil {
+			return err
 		}
 		if superuser {
-			if _, e = s.DB.Exec("UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", u.N("id")); e != nil {
-				return e
+			if _, err = store.DB.Exec("UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", user.N("id")); err != nil {
+				return err
 			}
 		}
 		if email != "" {
-			if _, e = s.DB.Exec("UPDATE auth_user SET email=? WHERE id=?", email, u.N("id")); e != nil {
-				return e
+			if _, err = store.DB.Exec("UPDATE auth_user SET email=? WHERE id=?", email, user.N("id")); err != nil {
+				return err
 			}
 		}
-		prefs, e := s.Preferences(u.N("id"))
-		if e != nil {
-			return e
+		prefs, err := store.Preferences(user.N("id"))
+		if err != nil {
+			return err
 		}
 		access := prefs.S("access_token")
 		if access == "" {
 			access = token()
-			if _, e = s.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.N("id")); e != nil {
-				return e
+			if _, err = store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.N("id")); err != nil {
+				return err
 			}
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), s.C["ACCESS_URL_PREFIX"]+s.URL("invite")+"?q="+access)
+		fmt.Fprintln(cmd.OutOrStdout(), store.Config["ACCESS_URL_PREFIX"]+store.URL("invite")+"?q="+access)
 		return nil
 	})
 	access.Flags().StringVar(&email, "email", "", "account email address")
 	access.Flags().BoolVar(&superuser, "superuser", false, "grant administrative permissions")
 	add("listaccess", "Print existing account login links", 0, func(cmd *cobra.Command, args []string) error {
-		rows, e := s.Query("SELECT u.username,p.access_token FROM reinhardt_preferences p JOIN auth_user u ON u.id=p.owner_id ORDER BY u.username")
-		if e != nil {
-			return e
+		rows, err := store.Query("SELECT u.username,p.access_token FROM reinhardt_preferences p JOIN auth_user u ON u.id=p.owner_id ORDER BY u.username")
+		if err != nil {
+			return err
 		}
-		for _, r := range rows {
-			fmt.Fprintln(cmd.OutOrStdout(), r.S("username"), s.C["ACCESS_URL_PREFIX"]+s.URL("invite")+"?q="+r.S("access_token"))
+		for _, user := range rows {
+			fmt.Fprintln(cmd.OutOrStdout(), user.S("username"), store.Config["ACCESS_URL_PREFIX"]+store.URL("invite")+"?q="+user.S("access_token"))
 		}
 		return nil
 	})
 	add("listtags", "List tags and their owners", 0, func(cmd *cobra.Command, args []string) error {
-		rows, e := s.Query("SELECT t.*,u.username FROM reinhardt_tag t JOIN auth_user u ON u.id=t.owner_id ORDER BY u.username,t.label")
-		if e != nil {
-			return e
+		rows, err := store.Query("SELECT t.*,u.username FROM reinhardt_tag t JOIN auth_user u ON u.id=t.owner_id ORDER BY u.username,t.label")
+		if err != nil {
+			return err
 		}
-		for _, r := range rows {
-			fmt.Fprintf(cmd.OutOrStdout(), "%3d\t%s (%s)\n", r.N("id"), r.S("label"), r.S("username"))
+		for _, tag := range rows {
+			fmt.Fprintf(cmd.OutOrStdout(), "%3d\t%s (%s)\n", tag.N("id"), tag.S("label"), tag.S("username"))
 		}
 		return nil
 	})
 	add("fetchtagfiles <tag_id> <destination>", "Copy a playlist's files in ranked order", 2, func(cmd *cobra.Command, args []string) error {
-		info, e := os.Stat(args[1])
-		if e != nil {
-			return e
+		info, err := os.Stat(args[1])
+		if err != nil {
+			return err
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("destination must be a directory")
 		}
-		if _, e = s.One("SELECT id FROM reinhardt_tag WHERE id=?", args[0]); e != nil {
-			return e
+		if _, err = store.One("SELECT id FROM reinhardt_tag WHERE id=?", args[0]); err != nil {
+			return err
 		}
-		tracks, e := s.TagTracks(args[0])
-		if e != nil {
-			return e
+		tracks, err := store.TagTracks(args[0])
+		if err != nil {
+			return err
 		}
-		for i, m := range tracks {
-			dest := filepath.Join(args[1], fmt.Sprintf("%03d-%s", i+1, filepath.Base(m.S("full_path"))))
-			f, e := os.Open(m.S("full_path"))
-			if e != nil {
-				return e
+		for index, track := range tracks {
+			dest := filepath.Join(args[1], fmt.Sprintf("%03d-%s", index+1, filepath.Base(track.S("full_path"))))
+			file, err := os.Open(track.S("full_path"))
+			if err != nil {
+				return err
 			}
-			e = atomicFile(dest, f, true)
-			f.Close()
-			if e != nil {
-				return e
+			err = atomicFile(dest, file, true)
+			file.Close()
+			if err != nil {
+				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), dest)
 		}
 		return nil
 	})
 	add("tagsexport <csv_file_output>", "Export indexed metadata as CSV", 1, func(cmd *cobra.Command, args []string) error {
-		tracks, e := s.Tracks("ORDER BY m.artist,m.album,m.title,m.track_number")
-		if e != nil {
-			return e
+		tracks, err := store.Tracks("ORDER BY m.artist,m.album,m.title,m.track_number")
+		if err != nil {
+			return err
 		}
-		f, e := os.Create(args[0])
-		if e != nil {
-			return e
+		outputFile, err := os.Create(args[0])
+		if err != nil {
+			return err
 		}
-		defer f.Close()
-		writer := csv.NewWriter(f)
+		defer outputFile.Close()
+		writer := csv.NewWriter(outputFile)
 		writer.Write([]string{"path", "artist", "title", "album", "genre"})
-		for _, m := range tracks {
-			writer.Write([]string{m.S("full_path"), m.S("artist"), m.S("title"), m.S("album"), m.S("genre")})
+		for _, track := range tracks {
+			writer.Write([]string{track.S("full_path"), track.S("artist"), track.S("title"), track.S("album"), track.S("genre")})
 		}
 		writer.Flush()
 		return writer.Error()
 	})
 	add("populateyears", "Populate only the year column from audio metadata", 0, func(cmd *cobra.Command, args []string) error {
-		tracks, e := s.Tracks("")
-		if e != nil {
-			return e
+		tracks, err := store.Tracks("")
+		if err != nil {
+			return err
 		}
 		count := 0
-		for _, m := range tracks {
-			metadata, e := s.Metadata(m.S("full_path"))
-			if e != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %s: %v\n", m.S("full_path"), e)
+		for _, track := range tracks {
+			metadata, err := store.Metadata(track.S("full_path"))
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %s: %v\n", track.S("full_path"), err)
 				continue
 			}
-			if _, e = s.DB.Exec("UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.S("year"), m.N("id")); e != nil {
-				return e
+			if _, err = store.DB.Exec("UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.S("year"), track.N("id")); err != nil {
+				return err
 			}
 			count++
 		}
@@ -295,22 +295,22 @@ func newCLI() *cobra.Command {
 		return nil
 	})
 	add("dedup", "Print duplicate music paths by content without deleting files", 0, func(cmd *cobra.Command, args []string) error {
-		dirs, e := s.Query("SELECT local_path FROM reinhardt_musicdirectory ORDER BY id")
-		if e != nil {
-			return e
+		dirs, err := store.Query("SELECT local_path FROM reinhardt_musicdirectory ORDER BY id")
+		if err != nil {
+			return err
 		}
 		hashes := map[string]bool{}
-		for _, d := range dirs {
-			e = walkMusic(d.S("local_path"), func(path string) error {
-				f, e := os.Open(path)
-				if e != nil {
-					return e
+		for _, musicDirectory := range dirs {
+			err = walkMusic(musicDirectory.S("local_path"), func(path string) error {
+				file, err := os.Open(path)
+				if err != nil {
+					return err
 				}
 				hash := md5.New()
-				_, e = io.Copy(hash, f)
-				f.Close()
-				if e != nil {
-					return e
+				_, err = io.Copy(hash, file)
+				file.Close()
+				if err != nil {
+					return err
 				}
 				key := hex.EncodeToString(hash.Sum(nil))
 				if hashes[key] {
@@ -319,40 +319,40 @@ func newCLI() *cobra.Command {
 				hashes[key] = true
 				return nil
 			})
-			if e != nil {
-				return e
+			if err != nil {
+				return err
 			}
 		}
 		return nil
 	})
 	add("jamasync", "Upload every indexed track to the configured Jama project", 0, func(cmd *cobra.Command, args []string) error {
-		a, e := newApp(s)
-		if e != nil {
-			return e
+		app, err := newApp(store)
+		if err != nil {
+			return err
 		}
-		rows, e := s.Query("SELECT id FROM reinhardt_musicfile ORDER BY id DESC")
-		if e != nil {
-			return e
+		rows, err := store.Query("SELECT id FROM reinhardt_musicfile ORDER BY id DESC")
+		if err != nil {
+			return err
 		}
-		for _, m := range rows {
-			if e = a.syncJama(cmd.Context(), m.N("id")); e != nil {
-				return e
+		for _, track := range rows {
+			if err = app.syncJama(cmd.Context(), track.N("id")); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
 	add("dbxrefreshtoken", "Exchange a Dropbox authorization code for a refresh token", 0, func(cmd *cobra.Command, args []string) error {
-		a, e := newApp(s)
-		if e != nil {
-			return e
+		app, err := newApp(store)
+		if err != nil {
+			return err
 		}
-		if s.C["DBX_KEY"] == "" || s.C["DBX_SECRET"] == "" {
+		if store.Config["DBX_KEY"] == "" || store.Config["DBX_SECRET"] == "" {
 			return fmt.Errorf("DBX_KEY and DBX_SECRET are required")
 		}
-		values := map[string]string{"client_id": s.C["DBX_KEY"], "response_type": "code", "token_access_type": "offline"}
+		values := map[string]string{"client_id": store.Config["DBX_KEY"], "response_type": "code", "token_access_type": "offline"}
 		parts := []string{}
-		for k, v := range values {
-			parts = append(parts, k+"="+urlQueryEscape(v))
+		for key, value := range values {
+			parts = append(parts, key+"="+urlQueryEscape(value))
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Open https://www.dropbox.com/oauth2/authorize?"+strings.Join(parts, "&"))
 		fmt.Fprint(cmd.OutOrStdout(), "Authorization code: ")
@@ -360,9 +360,9 @@ func newCLI() *cobra.Command {
 		if !scanner.Scan() {
 			return fmt.Errorf("authorization code is required")
 		}
-		data, e := a.dropboxToken(cmd.Context(), "authorization_code", strings.TrimSpace(scanner.Text()))
-		if e != nil {
-			return e
+		data, err := app.dropboxToken(cmd.Context(), "authorization_code", strings.TrimSpace(scanner.Text()))
+		if err != nil {
+			return err
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Access token:", data["access_token"])
 		fmt.Fprintln(cmd.OutOrStdout(), "Refresh token:", data["refresh_token"])
@@ -371,29 +371,29 @@ func newCLI() *cobra.Command {
 	})
 	var album, genre, year, comment string
 	ytrip := add("ytrip <url> <artist> <title>", "Download and import a YouTube track", 3, func(cmd *cobra.Command, args []string) error {
-		a, e := newApp(s)
-		if e != nil {
-			return e
+		app, err := newApp(store)
+		if err != nil {
+			return err
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Minute)
 		defer cancel()
-		return a.youtubeRip(ctx, Row{"url": args[0], "artist": args[1], "title": args[2], "album": album, "genre": genre, "year": year, "comment": comment})
+		return app.youtubeRip(ctx, Row{"url": args[0], "artist": args[1], "title": args[2], "album": album, "genre": genre, "year": year, "comment": comment})
 	})
 	ytrip.Flags().StringVarP(&album, "album", "a", "", "album name")
 	ytrip.Flags().StringVarP(&genre, "genre", "g", "", "genre")
 	ytrip.Flags().StringVarP(&year, "year", "y", "", "release year")
 	ytrip.Flags().StringVar(&comment, "comment", "", "comment")
 	add("jobs", "List queued and failed background jobs", 0, func(cmd *cobra.Command, args []string) error {
-		rows, e := s.Query("SELECT * FROM go_job ORDER BY id")
-		if e != nil {
-			return e
+		rows, err := store.Query("SELECT * FROM go_job ORDER BY id")
+		if err != nil {
+			return err
 		}
-		for _, r := range rows {
-			fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\tattempts=%d\t%s\n", r.N("id"), r.S("kind"), r.N("attempts"), r.S("error"))
+		for _, job := range rows {
+			fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\tattempts=%d\t%s\n", job.N("id"), job.S("kind"), job.N("attempts"), job.S("error"))
 		}
 		return nil
 	})
 	return root
 }
 
-func urlQueryEscape(v string) string { return url.QueryEscape(v) }
+func urlQueryEscape(value string) string { return url.QueryEscape(value) }

@@ -39,22 +39,22 @@ type autofeedCache struct {
 // library usable even if it exceeds the ID budget; obsolete versions are replaced.
 const autofeedMaxEntries, autofeedMaxIDs = 128, 1_000_000
 
-func (c *autofeedCache) put(entry autofeedEntry) {
-	if c.entries == nil {
-		c.entries = make(map[autofeedKey]*list.Element)
+func (cache *autofeedCache) put(entry autofeedEntry) {
+	if cache.entries == nil {
+		cache.entries = make(map[autofeedKey]*list.Element)
 	}
-	if old := c.entries[entry.key]; old != nil {
-		c.ids -= cap(old.Value.(autofeedEntry).ids)
-		c.recent.Remove(old)
+	if old := cache.entries[entry.key]; old != nil {
+		cache.ids -= cap(old.Value.(autofeedEntry).ids)
+		cache.recent.Remove(old)
 	}
-	c.entries[entry.key] = c.recent.PushFront(entry)
-	c.ids += cap(entry.ids)
-	for c.recent.Len() > 1 && (c.recent.Len() > autofeedMaxEntries || c.ids > autofeedMaxIDs) {
-		last := c.recent.Back()
+	cache.entries[entry.key] = cache.recent.PushFront(entry)
+	cache.ids += cap(entry.ids)
+	for cache.recent.Len() > 1 && (cache.recent.Len() > autofeedMaxEntries || cache.ids > autofeedMaxIDs) {
+		last := cache.recent.Back()
 		old := last.Value.(autofeedEntry)
-		delete(c.entries, old.key)
-		c.ids -= cap(old.ids)
-		c.recent.Remove(last)
+		delete(cache.entries, old.key)
+		cache.ids -= cap(old.ids)
+		cache.recent.Remove(last)
 	}
 }
 
@@ -80,14 +80,14 @@ WHERE t.owner_id=? AND t.label='queue')`
 	return clause, args
 }
 
-func (a *App) autofeedIDs(ctx context.Context, key autofeedKey, refresh bool) ([]int64, error) {
-	cache := &a.autofeed
+func (app *App) autofeedIDs(ctx context.Context, key autofeedKey, refresh bool) ([]int64, error) {
+	cache := &app.autofeed
 	// Hold the lock through revision checking and pool construction so concurrent
 	// requests share one scan. Published ID slices must never be modified in place.
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	var version autofeedVersion
-	err := a.S.DB.QueryRowContext(ctx, `SELECT l.revision,COALESCE(b.id,0),COALESCE(bv.revision,0),COALESCE(q.id,0),COALESCE(qv.revision,0)
+	err := app.Store.DB.QueryRowContext(ctx, `SELECT l.revision,COALESCE(b.id,0),COALESCE(bv.revision,0),COALESCE(q.id,0),COALESCE(qv.revision,0)
 FROM go_autofeed_library_revision l
 LEFT JOIN reinhardt_tag b ON b.owner_id=? AND b.label='blacklist'
 LEFT JOIN go_autofeed_tag_revision bv ON bv.tag_id=b.id
@@ -105,7 +105,7 @@ WHERE l.id=1`, key.owner, key.owner, key.similar || key.excludeQueuedArtists).Sc
 		}
 	}
 	clause, args := autofeedFilter(key)
-	rows, err := a.S.DB.QueryContext(ctx, "SELECT m.id FROM reinhardt_musicfile m WHERE "+clause+" ORDER BY m.id", args...)
+	rows, err := app.Store.DB.QueryContext(ctx, "SELECT m.id FROM reinhardt_musicfile m WHERE "+clause+" ORDER BY m.id", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,25 +127,25 @@ WHERE l.id=1`, key.owner, key.owner, key.similar || key.excludeQueuedArtists).Sc
 	return ids, nil
 }
 
-func (a *App) randomAutofeedTrack(ctx context.Context, owner int64, artist *string) (Row, error) {
+func (app *App) randomAutofeedTrack(ctx context.Context, owner int64, artist *string) (Row, error) {
 	key := autofeedKey{owner: owner}
 	if artist != nil {
 		key.artist, key.similar = *artist, true
 	}
-	return a.sampleAutofeedTrack(ctx, key)
+	return app.sampleAutofeedTrack(ctx, key)
 }
 
-func (a *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (Row, error) {
+func (app *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (Row, error) {
 	clause, args := autofeedFilter(key)
 	for attempt := range 3 {
-		ids, err := a.autofeedIDs(ctx, key, attempt > 0)
+		ids, err := app.autofeedIDs(ctx, key, attempt > 0)
 		if err != nil || len(ids) == 0 {
 			return nil, err
 		}
 		// Sample array positions uniformly; gaps in primary keys introduce no bias.
 		id := ids[rand.IntN(len(ids))]
 		selectedArgs := append([]any{id}, args...)
-		rows, err := a.S.DB.QueryContext(ctx, tracksSQL+"WHERE m.id=? AND "+clause, selectedArgs...)
+		rows, err := app.Store.DB.QueryContext(ctx, tracksSQL+"WHERE m.id=? AND "+clause, selectedArgs...)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +154,7 @@ func (a *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (Row, er
 			return nil, err
 		}
 		if len(tracks) > 0 {
-			a.S.decorateTrack(tracks[0])
+			app.Store.decorateTrack(tracks[0])
 			return tracks[0], nil
 		}
 		// A concurrent delete, blacklist edit, or missing/artist change can make

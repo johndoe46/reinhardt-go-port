@@ -22,26 +22,26 @@ import (
 	"time"
 )
 
-func (s *Store) Enqueue(kind string, payload any) error {
-	b, e := json.Marshal(payload)
-	if e != nil {
-		return e
+func (store *Store) Enqueue(kind string, payload any) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
 	}
-	_, e = s.DB.Exec("INSERT INTO go_job(kind,payload,run_at) VALUES(?,?,?)", kind, string(b), time.Now().Unix())
-	return e
+	_, err = store.DB.Exec("INSERT INTO go_job(kind,payload,run_at) VALUES(?,?,?)", kind, string(payloadJSON), time.Now().Unix())
+	return err
 }
-func (s *Store) enqueueSync(id int64) error {
-	if s.C["JAMA_ENDPOINT"] != "" && s.C["JAMA_KEY"] != "" && s.C["JAMA_PROJECT"] != "" {
-		if e := s.Enqueue("jama", id); e != nil {
-			return e
+func (store *Store) enqueueSync(id int64) error {
+	if store.Config["JAMA_ENDPOINT"] != "" && store.Config["JAMA_KEY"] != "" && store.Config["JAMA_PROJECT"] != "" {
+		if err := store.Enqueue("jama", id); err != nil {
+			return err
 		}
 	}
-	if s.C["DBX_TOKEN"] != "" {
-		return s.Enqueue("dropbox", id)
+	if store.Config["DBX_TOKEN"] != "" {
+		return store.Enqueue("dropbox", id)
 	}
 	return nil
 }
-func (a *App) Work(ctx context.Context, once bool) error {
+func (app *App) Work(ctx context.Context, once bool) error {
 	nextGather := time.Now()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -49,9 +49,9 @@ func (a *App) Work(ctx context.Context, once bool) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if a.S.C["MUSIC_IMPORT_DIR"] != "" && time.Now().After(nextGather) {
-			if e := a.S.Gather(ctx); e != nil {
-				log.Printf("music import: %v", e)
+		if app.Store.Config["MUSIC_IMPORT_DIR"] != "" && time.Now().After(nextGather) {
+			if err := app.Store.Gather(ctx); err != nil {
+				log.Printf("music import: %v", err)
 			}
 			nextGather = time.Now().Add(5 * time.Minute)
 		}
@@ -59,11 +59,11 @@ func (a *App) Work(ctx context.Context, once bool) error {
 		// ready job. Locks become reclaimable after an hour, longer than the
 		// 30-minute job deadline. Handlers must tolerate reruns if a worker dies
 		// after external side effects but before deleting the job.
-		job, e := a.S.One(`UPDATE go_job SET locked_at=? WHERE id=(SELECT id FROM go_job WHERE run_at<=? AND attempts<3 AND (locked_at IS NULL OR locked_at<?) ORDER BY id LIMIT 1) RETURNING *`, time.Now().Unix(), time.Now().Unix(), time.Now().Unix()-3600)
-		if e != nil && e != sql.ErrNoRows {
-			return e
+		job, storeErr := app.Store.One(`UPDATE go_job SET locked_at=? WHERE id=(SELECT id FROM go_job WHERE run_at<=? AND attempts<3 AND (locked_at IS NULL OR locked_at<?) ORDER BY id LIMIT 1) RETURNING *`, time.Now().Unix(), time.Now().Unix(), time.Now().Unix()-3600)
+		if storeErr != nil && storeErr != sql.ErrNoRows {
+			return storeErr
 		}
-		if e == nil {
+		if storeErr == nil {
 			jobCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 			var err error
 			switch job.S("kind") {
@@ -71,16 +71,16 @@ func (a *App) Work(ctx context.Context, once bool) error {
 				var data Row
 				err = json.Unmarshal([]byte(job.S("payload")), &data)
 				if err == nil {
-					err = a.youtubeRip(jobCtx, data)
+					err = app.youtubeRip(jobCtx, data)
 				}
 			case "jama", "dropbox":
 				var id int64
 				err = json.Unmarshal([]byte(job.S("payload")), &id)
 				if err == nil {
 					if job.S("kind") == "jama" {
-						err = a.syncJama(jobCtx, id)
+						err = app.syncJama(jobCtx, id)
 					} else {
-						err = a.syncDropbox(jobCtx, id)
+						err = app.syncDropbox(jobCtx, id)
 					}
 				}
 			default:
@@ -88,13 +88,13 @@ func (a *App) Work(ctx context.Context, once bool) error {
 			}
 			cancel()
 			if err == nil {
-				_, e = a.S.DB.Exec("DELETE FROM go_job WHERE id=?", job.N("id"))
+				_, storeErr = app.Store.DB.Exec("DELETE FROM go_job WHERE id=?", job.N("id"))
 			} else {
 				log.Printf("job %d (%s): %v", job.N("id"), job.S("kind"), err)
-				_, e = a.S.DB.Exec("UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
+				_, storeErr = app.Store.DB.Exec("UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
 			}
-			if e != nil {
-				return e
+			if storeErr != nil {
+				return storeErr
 			}
 			continue
 		}
@@ -110,98 +110,98 @@ func (a *App) Work(ctx context.Context, once bool) error {
 	}
 }
 
-func libraryPath(m Row, ext string) (string, error) {
-	artist, title := slug(m.S("artist")), slug(m.S("title"))
+func libraryPath(track Row, ext string) (string, error) {
+	artist, title := slug(track.S("artist")), slug(track.S("title"))
 	if artist == "" || title == "" {
 		return "", fmt.Errorf("artist and title must contain letters or numbers")
 	}
-	album := slug(m.S("album"))
+	album := slug(track.S("album"))
 	if album == "" {
 		album = "unknown"
 	}
-	return filepath.Join(artist[:1], artist, album, fmt.Sprintf("%02d-%s%s", m.N("track_number"), title, strings.ToLower(ext))), nil
+	return filepath.Join(artist[:1], artist, album, fmt.Sprintf("%02d-%s%s", track.N("track_number"), title, strings.ToLower(ext))), nil
 }
-func (s *Store) importFile(path string, dir Row) (string, error) {
-	m, e := s.Metadata(path)
-	if e != nil {
-		return "", e
+func (store *Store) importFile(path string, dir Row) (string, error) {
+	trackMetadata, err := store.Metadata(path)
+	if err != nil {
+		return "", err
 	}
-	rel, e := libraryPath(m, filepath.Ext(path))
-	if e != nil {
-		return "", e
+	rel, err := libraryPath(trackMetadata, filepath.Ext(path))
+	if err != nil {
+		return "", err
 	}
 	dest := filepath.Join(dir.S("local_path"), rel)
-	f, e := os.Open(path)
-	if e != nil {
-		return "", e
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
 	}
-	e = atomicFile(dest, f, false)
-	f.Close()
-	if e != nil {
-		return "", e
+	err = atomicFile(dest, file, false)
+	file.Close()
+	if err != nil {
+		return "", err
 	}
-	if e = s.indexFile(dest, dir); e != nil {
-		return "", e
+	if err = store.indexFile(dest, dir); err != nil {
+		return "", err
 	}
 	// Keep the import source until both publication and indexing succeed. Those
 	// steps span the filesystem and SQLite, so they cannot share a transaction.
-	if e = os.Remove(path); e != nil {
-		return "", e
+	if err = os.Remove(path); err != nil {
+		return "", err
 	}
 	return dest, nil
 }
-func (s *Store) Gather(ctx context.Context) error {
-	root := s.C["MUSIC_IMPORT_DIR"]
+func (store *Store) Gather(ctx context.Context) error {
+	root := store.Config["MUSIC_IMPORT_DIR"]
 	if root == "" {
 		return fmt.Errorf("MUSIC_IMPORT_DIR is not configured")
 	}
-	dir, e := s.DefaultMusicDirectory()
-	if e != nil {
-		return e
+	dir, err := store.DefaultMusicDirectory()
+	if err != nil {
+		return err
 	}
 	var archives []string
-	if e = filepath.WalkDir(root, func(path string, d os.DirEntry, e error) error {
-		if e != nil {
-			return e
+	if err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		if !d.IsDir() && strings.ToLower(filepath.Ext(path)) == ".zip" {
+		if !entry.IsDir() && strings.ToLower(filepath.Ext(path)) == ".zip" {
 			archives = append(archives, path)
 		}
 		return nil
-	}); e != nil {
-		return e
+	}); err != nil {
+		return err
 	}
 	for _, path := range archives {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if e = extractArchive(path, root, int64(s.C.Int("MAX_UPLOAD_BYTES"))); e != nil {
-			log.Printf("archive %s: %v", path, e)
+		if err = extractArchive(path, root, int64(store.Config.Int("MAX_UPLOAD_BYTES"))); err != nil {
+			log.Printf("archive %s: %v", path, err)
 			continue
 		}
-		if e = os.Remove(path); e != nil {
-			return e
+		if err = os.Remove(path); err != nil {
+			return err
 		}
 	}
 	return walkMusic(root, func(path string) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if _, e := s.importFile(path, dir); e != nil {
-			log.Printf("import %s: %v", path, e)
+		if _, err := store.importFile(path, dir); err != nil {
+			log.Printf("import %s: %v", path, err)
 		}
 		return nil
 	})
 }
 func extractArchive(path, root string, max int64) error {
-	z, e := zip.OpenReader(path)
-	if e != nil {
-		return e
+	archiveReader, err := zip.OpenReader(path)
+	if err != nil {
+		return err
 	}
-	defer z.Close()
+	defer archiveReader.Close()
 	var total uint64
 	// Validate every entry before creating any destination files.
-	for _, entry := range z.File {
+	for _, entry := range archiveReader.File {
 		clean := filepath.Clean(filepath.FromSlash(entry.Name))
 		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || entry.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("unsafe archive path")
@@ -211,64 +211,64 @@ func extractArchive(path, root string, max int64) error {
 			return fmt.Errorf("archive too large")
 		}
 	}
-	for _, entry := range z.File {
+	for _, entry := range archiveReader.File {
 		if entry.FileInfo().IsDir() {
 			continue
 		}
 		dest := filepath.Join(root, filepath.FromSlash(entry.Name))
 		// Safe archive names alone are insufficient: an existing symlink in the
 		// destination tree could redirect a relative path outside the import root.
-		if e = rejectSymlinkParents(root, dest); e != nil {
-			return e
+		if err = rejectSymlinkParents(root, dest); err != nil {
+			return err
 		}
-		reader, e := entry.Open()
-		if e != nil {
-			return e
+		reader, err := entry.Open()
+		if err != nil {
+			return err
 		}
-		e = atomicFile(dest, io.LimitReader(reader, max+1), false)
+		err = atomicFile(dest, io.LimitReader(reader, max+1), false)
 		reader.Close()
-		if e != nil {
-			return e
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 func rejectSymlinkParents(root, dest string) error {
-	root, e := filepath.Abs(root)
-	if e != nil {
-		return e
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return err
 	}
-	dest, e = filepath.Abs(dest)
-	if e != nil {
-		return e
+	dest, err = filepath.Abs(dest)
+	if err != nil {
+		return err
 	}
-	rel, e := filepath.Rel(root, dest)
-	if e != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+	rel, err := filepath.Rel(root, dest)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 		return fmt.Errorf("path escapes import directory")
 	}
 	current := root
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
 		current = filepath.Join(current, part)
-		if info, e := os.Lstat(current); e == nil && info.Mode()&os.ModeSymlink != 0 {
+		if info, err := os.Lstat(current); err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink in import path")
 		}
 	}
 	return nil
 }
-func (a *App) upload(w http.ResponseWriter, r *http.Request, u Row) error {
-	if !u.B("is_superuser") {
+func (app *App) upload(responseWriter http.ResponseWriter, request *http.Request, user Row) error {
+	if !user.B("is_superuser") {
 		return forbidden()
 	}
-	if r.Method == "POST" {
-		root := a.S.C["MUSIC_IMPORT_DIR"]
+	if request.Method == "POST" {
+		root := app.Store.Config["MUSIC_IMPORT_DIR"]
 		if root == "" {
 			return bad("MUSIC_IMPORT_DIR is not configured")
 		}
-		f, header, e := r.FormFile("file")
-		if e != nil {
+		uploadedFile, header, err := request.FormFile("file")
+		if err != nil {
 			return bad("A file is required")
 		}
-		defer f.Close()
+		defer uploadedFile.Close()
 		name := filepath.Base(strings.ReplaceAll(header.Filename, "\\", "/"))
 		if name == "." || name == ".." || name == "" {
 			return bad("Invalid filename")
@@ -277,11 +277,11 @@ func (a *App) upload(w http.ResponseWriter, r *http.Request, u Row) error {
 		if ext != ".mp3" && ext != ".m4a" && ext != ".zip" {
 			return bad("Upload an MP3, M4A or ZIP file")
 		}
-		if e = atomicFile(filepath.Join(root, name), f, false); e != nil {
-			return bad(e.Error())
+		if err = atomicFile(filepath.Join(root, name), uploadedFile, false); err != nil {
+			return bad(err.Error())
 		}
 	}
-	return a.render(w, r, u, "reinhardt/upload.html", nil, 200)
+	return app.render(responseWriter, request, user, "reinhardt/upload.html", nil, 200)
 }
 
 var videoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
@@ -290,19 +290,19 @@ func youtubeURL(raw string) (string, error) {
 	if len(raw) > 2048 {
 		return "", bad("Invalid YouTube URL")
 	}
-	u, e := url.Parse(raw)
-	if e != nil || u.User != nil || u.Port() != "" || (u.Scheme != "http" && u.Scheme != "https") {
+	parsedURL, err := url.Parse(raw)
+	if err != nil || parsedURL.User != nil || parsedURL.Port() != "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return "", bad("Invalid YouTube URL")
 	}
 	id := ""
-	switch strings.ToLower(u.Hostname()) {
+	switch strings.ToLower(parsedURL.Hostname()) {
 	case "youtu.be":
-		id = strings.TrimPrefix(u.Path, "/")
+		id = strings.TrimPrefix(parsedURL.Path, "/")
 	case "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com":
-		if u.Path == "/watch" {
-			id = u.Query().Get("v")
-		} else if strings.HasPrefix(u.Path, "/shorts/") || strings.HasPrefix(u.Path, "/live/") {
-			id = strings.Split(u.Path, "/")[2]
+		if parsedURL.Path == "/watch" {
+			id = parsedURL.Query().Get("v")
+		} else if strings.HasPrefix(parsedURL.Path, "/shorts/") || strings.HasPrefix(parsedURL.Path, "/live/") {
+			id = strings.Split(parsedURL.Path, "/")[2]
 		}
 	}
 	if !videoID.MatchString(id) {
@@ -312,123 +312,123 @@ func youtubeURL(raw string) (string, error) {
 	// and other supplied query parameters before invoking the helper.
 	return "https://www.youtube.com/watch?v=" + id, nil
 }
-func youtubeForm(r *http.Request) Row {
-	m := Row{}
-	for _, f := range []string{"url", "artist", "title", "album", "genre", "year", "comment"} {
-		m[f] = strings.TrimSpace(r.FormValue(f))
+func youtubeForm(request *http.Request) Row {
+	ripMetadata := Row{}
+	for _, field := range []string{"url", "artist", "title", "album", "genre", "year", "comment"} {
+		ripMetadata[field] = strings.TrimSpace(request.FormValue(field))
 	}
-	return m
+	return ripMetadata
 }
-func fingerprint(m Row) string {
+func fingerprint(ripMetadata Row) string {
 	// Deliberately select only form fields. Retried rows also contain database
 	// IDs and failure details, which must not change the failure's identity.
 	data := map[string]string{}
-	for _, f := range []string{"url", "artist", "title", "album", "genre", "year", "comment"} {
-		data[f] = strings.TrimSpace(m.S(f))
+	for _, field := range []string{"url", "artist", "title", "album", "genre", "year", "comment"} {
+		data[field] = strings.TrimSpace(ripMetadata.S(field))
 	}
-	b, _ := json.Marshal(data)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	metadataJSON, _ := json.Marshal(data)
+	digest := sha256.Sum256(metadataJSON)
+	return hex.EncodeToString(digest[:])
 }
-func (a *App) youtubeRip(ctx context.Context, m Row) (err error) {
+func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	defer func() {
 		if err != nil {
-			_, e := a.S.DB.Exec(`INSERT INTO reinhardt_youtuberipfailure(url,artist,title,album,genre,year,comment,form_fingerprint,failure_message,retry_count,last_retried_at,created_at,modified_at) VALUES(?,?,?,?,?,?,?,?,?,0,NULL,?,?) ON CONFLICT(form_fingerprint) DO UPDATE SET failure_message=excluded.failure_message,modified_at=excluded.modified_at`, m.S("url"), m.S("artist"), m.S("title"), m.S("album"), m.S("genre"), m.S("year"), m.S("comment"), fingerprint(m), err.Error(), now(), now())
-			if e != nil {
-				log.Printf("record YouTube failure: %v", e)
+			_, err := app.Store.DB.Exec(`INSERT INTO reinhardt_youtuberipfailure(url,artist,title,album,genre,year,comment,form_fingerprint,failure_message,retry_count,last_retried_at,created_at,modified_at) VALUES(?,?,?,?,?,?,?,?,?,0,NULL,?,?) ON CONFLICT(form_fingerprint) DO UPDATE SET failure_message=excluded.failure_message,modified_at=excluded.modified_at`, ripMetadata.S("url"), ripMetadata.S("artist"), ripMetadata.S("title"), ripMetadata.S("album"), ripMetadata.S("genre"), ripMetadata.S("year"), ripMetadata.S("comment"), fingerprint(ripMetadata), err.Error(), now(), now())
+			if err != nil {
+				log.Printf("record YouTube failure: %v", err)
 			}
 		} else {
-			_, e := a.S.DB.Exec("DELETE FROM reinhardt_youtuberipfailure WHERE form_fingerprint=?", fingerprint(m))
-			if e != nil {
-				log.Printf("clear YouTube failure: %v", e)
+			_, err := app.Store.DB.Exec("DELETE FROM reinhardt_youtuberipfailure WHERE form_fingerprint=?", fingerprint(ripMetadata))
+			if err != nil {
+				log.Printf("clear YouTube failure: %v", err)
 			}
 		}
 	}()
-	canonical, e := youtubeURL(m.S("url"))
-	if e != nil {
-		return e
+	canonical, operationErr := youtubeURL(ripMetadata.S("url"))
+	if operationErr != nil {
+		return operationErr
 	}
-	if m.S("artist") == "" || m.S("title") == "" {
+	if ripMetadata.S("artist") == "" || ripMetadata.S("title") == "" {
 		return fmt.Errorf("artist and title are required")
 	}
-	dir, e := a.S.DefaultMusicDirectory()
-	if e != nil {
-		return e
+	dir, operationErr := app.Store.DefaultMusicDirectory()
+	if operationErr != nil {
+		return operationErr
 	}
-	tmp, e := os.MkdirTemp("", "reinhardt-ytrip-*")
-	if e != nil {
-		return e
+	tmp, operationErr := os.MkdirTemp("", "reinhardt-ytrip-*")
+	if operationErr != nil {
+		return operationErr
 	}
 	defer os.RemoveAll(tmp)
 	out := filepath.Join(tmp, "track.%(ext)s")
 	// Ignore the service account's yt-dlp config: output names and MP3 extraction
 	// must follow this pipeline's contract. Helpers are invoked without a shell.
 	cmd := exec.CommandContext(ctx, "yt-dlp", "--ignore-config", "--no-playlist", "-x", "--audio-format", "mp3", "--audio-quality", "320k", "--output", out, "--", canonical)
-	output, e := cmd.CombinedOutput()
-	if e != nil {
-		return fmt.Errorf("yt-dlp: %w: %s", e, output)
+	output, operationErr := cmd.CombinedOutput()
+	if operationErr != nil {
+		return fmt.Errorf("yt-dlp: %w: %s", operationErr, output)
 	}
 	path := filepath.Join(tmp, "track.mp3")
-	m["relative_path"] = "track.mp3"
-	m["full_path"] = path
+	ripMetadata["relative_path"] = "track.mp3"
+	ripMetadata["full_path"] = path
 	// Artwork is optional. Give thumbnail extraction its own short deadline and
 	// continue with another cover source or no image if it fails.
 	thumbnailCtx, thumbnailCancel := context.WithTimeout(ctx, 30*time.Second)
 	thumbnail := exec.CommandContext(thumbnailCtx, "yt-dlp", "--ignore-config", "--no-playlist", "--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg", "--output", out, "--", canonical)
-	if output, e := thumbnail.CombinedOutput(); e != nil {
-		log.Printf("YouTube thumbnail: %v: %.1000s", e, output)
+	if output, err := thumbnail.CombinedOutput(); err != nil {
+		log.Printf("YouTube thumbnail: %v: %.1000s", err, output)
 	}
 	thumbnailCancel()
 	var pic []byte
 	pictureType := "image/jpeg"
-	if data, e := os.ReadFile(filepath.Join(tmp, "track.jpg")); e == nil {
+	if data, err := os.ReadFile(filepath.Join(tmp, "track.jpg")); err == nil {
 		var ext string
 		pic, ext, _ = normalizedImage(bytes.NewReader(data))
 		pictureType = contentType("cover" + ext)
 	}
 	if pic == nil {
-		if im := a.discoverCover(ctx, m); im != nil {
+		if im := app.discoverCover(ctx, ripMetadata); im != nil {
 			pic, _ = os.ReadFile(path + ".jpg")
 		}
 	}
-	if e = writeID3(m, pic, pictureType); e != nil {
-		return e
+	if operationErr = writeID3(ripMetadata, pic, pictureType); operationErr != nil {
+		return operationErr
 	}
-	dest, e := a.S.importFile(path, dir)
-	if e != nil {
-		return fmt.Errorf("import downloaded audio into %q: %w", dir.S("local_path"), e)
+	dest, operationErr := app.Store.importFile(path, dir)
+	if operationErr != nil {
+		return fmt.Errorf("import downloaded audio into %q: %w", dir.S("local_path"), operationErr)
 	}
 	if pic != nil {
-		if e = atomicFile(dest+".jpg", bytes.NewReader(pic), false); e != nil && !os.IsExist(e) {
-			log.Printf("YouTube sidecar: %v", e)
+		if operationErr = atomicFile(dest+".jpg", bytes.NewReader(pic), false); operationErr != nil && !os.IsExist(operationErr) {
+			log.Printf("YouTube sidecar: %v", operationErr)
 		}
 	}
 	return nil
 }
-func (a *App) youtubeView(w http.ResponseWriter, r *http.Request, u Row, path string) error {
+func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
 	if path == "ytrip/metadata/" {
-		if e := safeOnly(r); e != nil {
-			return e
+		if err := safeOnly(request); err != nil {
+			return err
 		}
-		canonical, e := youtubeURL(r.URL.Query().Get("url"))
-		if e != nil {
-			return e
+		canonical, err := youtubeURL(request.URL.Query().Get("url"))
+		if err != nil {
+			return err
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(request.Context(), 20*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "yt-dlp", "--ignore-config", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--", canonical)
-		output, e := cmd.Output()
-		if e != nil {
+		output, err := cmd.Output()
+		if err != nil {
 			return httpError{502, "Could not fetch video metadata"}
 		}
 		var info map[string]any
-		if e = json.Unmarshal(output, &info); e != nil || info == nil {
+		if err = json.Unmarshal(output, &info); err != nil || info == nil {
 			return httpError{502, "Could not fetch video metadata"}
 		}
 		str := func(keys ...string) string {
 			for _, key := range keys {
-				if v := info[key]; v != nil && fmt.Sprint(v) != "" {
-					return fmt.Sprint(v)
+				if value := info[key]; value != nil && fmt.Sprint(value) != "" {
+					return fmt.Sprint(value)
 				}
 			}
 			return ""
@@ -447,68 +447,68 @@ func (a *App) youtubeView(w http.ResponseWriter, r *http.Request, u Row, path st
 		if !regexp.MustCompile(`^\d{4}$`).MatchString(year) {
 			year = ""
 		}
-		return jsonResponse(w, Row{"artist": artist, "title": str("track", "title"), "album": str("album"), "year": year})
+		return jsonResponse(responseWriter, Row{"artist": artist, "title": str("track", "title"), "album": str("album"), "year": year})
 	}
 	if path == "ytrip/failures/" {
-		if !u.B("is_superuser") {
+		if !user.B("is_superuser") {
 			return forbidden()
 		}
-		failures, e := a.S.Query("SELECT * FROM reinhardt_youtuberipfailure ORDER BY modified_at DESC")
-		if e != nil {
-			return e
+		failures, err := app.Store.Query("SELECT * FROM reinhardt_youtuberipfailure ORDER BY modified_at DESC")
+		if err != nil {
+			return err
 		}
-		for _, f := range failures {
-			f["modified_at"] = a.displayDate(f.S("modified_at"))
+		for _, failure := range failures {
+			failure["modified_at"] = app.displayDate(failure.S("modified_at"))
 		}
-		return a.render(w, r, u, "reinhardt/ytrip_failures.html", TemplateContext{"failures": failures}, 200)
+		return app.render(responseWriter, request, user, "reinhardt/ytrip_failures.html", TemplateContext{"failures": failures}, 200)
 	}
 	ctx := TemplateContext{}
-	if r.Method == "POST" {
-		m := youtubeForm(r)
-		if _, e := youtubeURL(m.S("url")); e != nil {
-			return e
+	if request.Method == "POST" {
+		ripMetadata := youtubeForm(request)
+		if _, err := youtubeURL(ripMetadata.S("url")); err != nil {
+			return err
 		}
-		if m.S("artist") == "" || m.S("title") == "" {
+		if ripMetadata.S("artist") == "" || ripMetadata.S("title") == "" {
 			return bad("Artist and title are required")
 		}
-		if _, e := a.S.DefaultMusicDirectory(); e != nil {
-			if !errors.Is(e, errNoMusicDirectory) {
-				return e
+		if _, err := app.Store.DefaultMusicDirectory(); err != nil {
+			if !errors.Is(err, errNoMusicDirectory) {
+				return err
 			}
-			log.Printf("YouTube download destination: %v", e)
+			log.Printf("YouTube download destination: %v", err)
 			ctx["message"] = "No music directory is configured. Ask an administrator to register a music directory before downloading tracks."
-			return a.render(w, r, u, "reinhardt/ytrip.html", ctx, http.StatusBadRequest)
+			return app.render(responseWriter, request, user, "reinhardt/ytrip.html", ctx, http.StatusBadRequest)
 		}
-		if e := a.S.Enqueue("youtube", m); e != nil {
-			return e
+		if err := app.Store.Enqueue("youtube", ripMetadata); err != nil {
+			return err
 		}
 		ctx["message"] = "added"
 	}
-	return a.render(w, r, u, "reinhardt/ytrip.html", ctx, 200)
+	return app.render(responseWriter, request, user, "reinhardt/ytrip.html", ctx, 200)
 }
-func (a *App) retryYouTube(w http.ResponseWriter, r *http.Request, u Row, id string) error {
-	if e := postOnly(r); e != nil {
-		return e
+func (app *App) retryYouTube(responseWriter http.ResponseWriter, request *http.Request, ripMetadata Row, id string) error {
+	if err := postOnly(request); err != nil {
+		return err
 	}
-	if !u.B("is_superuser") {
+	if !ripMetadata.B("is_superuser") {
 		return forbidden()
 	}
-	m, e := a.S.One("SELECT * FROM reinhardt_youtuberipfailure WHERE id=?", id)
-	if e != nil {
-		return e
+	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure WHERE id=?", id)
+	if err != nil {
+		return err
 	}
-	if _, e := a.S.DefaultMusicDirectory(); e != nil {
-		if errors.Is(e, errNoMusicDirectory) {
-			return bad(e.Error())
+	if _, err := app.Store.DefaultMusicDirectory(); err != nil {
+		if errors.Is(err, errNoMusicDirectory) {
+			return bad(err.Error())
 		}
-		return e
+		return err
 	}
-	if _, e = a.S.DB.Exec("UPDATE reinhardt_youtuberipfailure SET retry_count=retry_count+1,last_retried_at=?,modified_at=? WHERE id=?", now(), now(), id); e != nil {
-		return e
+	if _, err = app.Store.DB.Exec("UPDATE reinhardt_youtuberipfailure SET retry_count=retry_count+1,last_retried_at=?,modified_at=? WHERE id=?", now(), now(), id); err != nil {
+		return err
 	}
-	if e = a.S.Enqueue("youtube", m); e != nil {
-		return e
+	if err = app.Store.Enqueue("youtube", failure); err != nil {
+		return err
 	}
-	a.redirect(w, r, a.S.URL("ytrip_failures"))
+	app.redirect(responseWriter, request, app.Store.URL("ytrip_failures"))
 	return nil
 }
