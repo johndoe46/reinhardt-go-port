@@ -235,6 +235,15 @@ runs any Cobra command. All app targets accept `ENV_FILE=/path/to/.env` and
 `DATABASE=/path/to/db.sqlite3`; `DATABASE` overrides the configured database.
 `ARGS` also passes additional arguments to the server and worker targets.
 
+For development, install [Air](https://github.com/air-verse/air) with
+`go install github.com/air-verse/air@latest` and ensure Go's bin directory is on
+`PATH`. Run `make dev` to start the server and background jobs, then automatically
+rebuild and restart when Go sources or embedded templates, static files, or
+translations change. It accepts the same `ENV_FILE`, `DATABASE`, `LISTEN`, and
+`ARGS` options as `make run`; for example,
+`make dev LISTEN=127.0.0.1:8000 ARGS=--no-worker`. Press Ctrl-C to stop.
+Development builds are stored under `bin/dev` (or `BUILD_DIR/dev`).
+
 `make build-debug` writes `bin/reinhardt-debug` with debugger symbols. Both
 release and debug builds disable CGO and embed all assets. Use
 `make build-linux-arm64` to cross-compile for Linux/aarch64, producing

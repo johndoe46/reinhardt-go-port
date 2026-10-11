@@ -5,6 +5,7 @@ SHELL := /bin/sh
 
 GO ?= go
 GOFMT ?= gofmt
+AIR ?= air
 BUILD_DIR ?= bin
 BIN ?= $(BUILD_DIR)/reinhardt
 DEBUG_BIN ?= $(BUILD_DIR)/reinhardt-debug
@@ -30,8 +31,9 @@ export GO DJANGO_PYTHON
 MODULE_FLAGS := -mod=vendor
 APP_FLAGS = --env-file "$(ENV_FILE)" $(if $(DATABASE),--database "$(DATABASE)")
 LISTEN_FLAGS = $(if $(LISTEN),--listen "$(LISTEN)")
+DEV_BUILD_CMD = $(MAKE) build BIN="$(abspath $(BUILD_DIR))/dev/reinhardt"
 
-.PHONY: help doctor deps env setup install build build-debug build-linux-arm64 run run-http \
+.PHONY: help doctor deps env setup install build build-debug build-linux-arm64 dev run run-http \
 	worker worker-once cli migrate check-app fmt fmt-check vet check test \
 	test-verbose test-coverage test-race test-parity ci verify vendor tidy clean
 
@@ -40,6 +42,7 @@ help: ## Show targets, variables, and examples (default)
 	@awk 'BEGIN { print "Usage: make <target> [VARIABLE=value]" } /^##@ / { printf "\n%s\n", substr($$0, 5) } /^[a-zA-Z0-9_-]+:.*## / { split($$0, parts, "## "); split(parts[1], target, ":"); printf "  %-20s %s\n", target[1], parts[2] }' $(MAKEFILE_LIST)
 	@printf '\nVariables:\n'
 	@printf '  GO, GOFMT             Go tools (requires Go 1.26+)\n'
+	@printf '  AIR                   Live reload tool for make dev (default air)\n'
 	@printf '  BUILD_DIR, BIN        Build directory and release executable\n'
 	@printf '  LINUX_ARM64_BIN       Linux/aarch64 executable (default bin/reinhardt-linux-arm64)\n'
 	@printf '  PREFIX, BINDIR        Install prefix (default ~/.local) and binary directory\n'
@@ -50,6 +53,7 @@ help: ## Show targets, variables, and examples (default)
 	@printf '  DJANGO_PYTHON         Python interpreter for optional Django parity tests\n'
 	@printf '\nExamples:\n'
 	@printf '  make setup\n  make install\n  make run LISTEN=127.0.0.1:8000\n'
+	@printf '  make dev LISTEN=127.0.0.1:8000\n'
 	@printf '  make cli ARGS="giveaccess example-user --superuser"\n'
 	@printf '  make cli ARGS="addmusicdir /path/to/music"\n'
 	@printf '  make test TEST=TestStreamingAndDelegate TEST_FLAGS=-count=1\n'
@@ -95,6 +99,13 @@ build-linux-arm64: ## Cross-compile for Linux/aarch64 with CGO disabled and embe
 	$(MAKE) build GOOS=linux GOARCH=arm64 CGO_ENABLED=0 BIN="$(LINUX_ARM64_BIN)"
 
 ##@ Run and administration
+dev: ## Run HTTP and background jobs, rebuilding on source/asset changes (requires Air)
+	@command -v "$(AIR)" >/dev/null || { printf 'Missing Air: install with go install github.com/air-verse/air@latest and add Go bin to PATH.\n' >&2; exit 1; }
+	@mkdir -p "$(BUILD_DIR)/dev"
+	$(AIR) -c .air.toml -tmp_dir "$(BUILD_DIR)/dev" \
+		-build.cmd '$(DEV_BUILD_CMD)' \
+		-build.full_bin '"$(abspath $(BUILD_DIR))/dev/reinhardt" $(APP_FLAGS) serve $(LISTEN_FLAGS) $(ARGS)'
+
 run: build ## Run HTTP and background jobs; accepts LISTEN and ARGS
 	"$(abspath $(BIN))" $(APP_FLAGS) serve $(LISTEN_FLAGS) $(ARGS)
 
