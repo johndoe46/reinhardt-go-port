@@ -1,0 +1,29 @@
+
+
+
+{{ define "head_title" }}{{ .music_file }} {{ call .translate_literal "tags" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="tagger">
+    <p>{{ call .translate_literal "Tags for" }} <strong>{{ .music_file }}</strong></p>
+    <hr>
+    {{ $context1 := . }}{{ range $index1, $row1 := .tags }}{{ with scope $context1 "tag" $row1 "forloop" (loopInfo $index1) }}
+        <form class="tag_switch" up-target="#alert_space" up-autosubmit method="post" action="{{ call .url "toggle_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <div class="form-check form-switch">
+                <input type="hidden" name="music_file_pk" value="{{ .music_file.pk }}">
+                <input type="hidden" name="tag_pk" value="{{ .tag.pk }}">
+                <input data-tagpk="{{ .tag.pk }}" {{ if contains .tag.pk .assigned_tags_pks }}checked{{ end }} name="has_tag" class="form-check-input" type="checkbox" role="switch" id="tag_{{ .tag.pk }}">
+                <label class="form-check-label" for="tag_{{ .tag.pk }}">{{ .tag.label }}</label>
+            </div>
+        </form>
+    {{ end }}{{ end }}
+    {{ if .next_url }}
+        <!--
+        <hr>
+        <p>
+            <a class="btn btn-outline-secondary" href="{{ .next_url }}">azpdazpd</a>
+        </p>
+        -->
+    {{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

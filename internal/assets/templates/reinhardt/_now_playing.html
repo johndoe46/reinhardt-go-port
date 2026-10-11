@@ -1,0 +1,50 @@
+
+<div id="now_playing" data-position="{{ .current_position }}" class="container-fluid"
+     {{ if .autoplay }}data-autoplay="true"{{ end }}
+     {{ if .music_file }}
+     data-url="{{ .music_file.playback_url }}"
+     data-artist="{{ .music_file.artist }}"
+     data-album="{{ .music_file.album }}"
+     data-title="{{ .music_file.title }}"
+     data-artwork96="{{ call .url "artwork" .music_file.id 96 }}"
+     data-artwork128="{{ call .url "artwork" .music_file.id 128 }}"
+     data-artwork192="{{ call .url "artwork" .music_file.id 192 }}"
+     data-artwork256="{{ call .url "artwork" .music_file.id 256 }}"
+     data-artwork384="{{ call .url "artwork" .music_file.id 384 }}"
+     data-artwork512="{{ call .url "artwork" .music_file.id 512 }}"
+     {{ end }}
+>
+    <div class="dropup">
+        {{ if .music_file }}
+            {{ with scope . "playing" true }}
+                {{ template "reinhardt/_music_file_dropdown.html" . }}
+            {{ end }}
+        {{ else }}
+            <button style="padding-left: 0;display: block;"
+                    class="text-truncate btn-sm btn btn-link btn-link-no-underline dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                <i class="bi bi-menu-button"></i>
+                <br>
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <button onclick="playNext({{ if and (ne .current_position nil) (ne .current_position "") }}{{ .current_position }}{{ end }})"
+                            class="btn btn-link btn-link-no-underline dropdown-item">
+                        <i class="bi bi-fast-forward"></i> {{ call .translate_literal "next" }}</button>
+                </li>
+                <li>
+                    <a href="{{ call .url "queue" }}" class="btn btn-link btn-link-no-underline dropdown-item">
+                        <i class="bi bi-list"></i> {{ call .translate_literal "see queue" }}</a>
+                </li>
+                <!--
+                <li>
+                    <button onclick="togglePlayer()" class="btn btn-link btn-link-no-underline dropdown-item">
+                        <i class="bi bi-eye"></i> {{ call .translate_literal "toggle player" }}</button>
+                </li>
+                -->
+            </ul>
+        {{ end }}
+    </div>
+</div>

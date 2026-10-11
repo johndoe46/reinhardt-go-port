@@ -1,0 +1,25 @@
+
+
+{{ define "head_title" }}{{ call .translate_literal "genres" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="genres">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active"><a href="{{ call .url "genres" }}">{{ call .translate_literal "genres" }}</a></li>
+        </ol>
+    </nav>
+    <hr>
+    <p>{{ length .music_genres }} {{ call .translate_literal "genres" }}</p>
+    {{ $letter_list := regroup .music_genres "first_letter" }}
+    {{ $context1 := . }}{{ range $index1, $row1 := $letter_list }}{{ with scope $context1 "letter" $row1.grouper "genres" $row1.list "forloop" (loopInfo $index1) }}
+            <p><strong>{{ .letter }}</strong></p>
+            <ul class="cols">
+                {{ $context2 := . }}{{ range $index2, $row2 := .genres }}{{ with scope $context2 "item" $row2 "forloop" (loopInfo $index2) }}
+                    <li><a href="{{ call .url "genre" }}?q={{ urlencode .item.genre }}">{{ .item.genre }}</a></li>
+                {{ end }}{{ end }}
+            </ul>
+        <hr>
+    {{ end }}{{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

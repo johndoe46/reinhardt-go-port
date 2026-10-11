@@ -1,0 +1,162 @@
+
+
+
+<!doctype html>
+<html lang="en" data-bs-theme="auto">
+<head>
+    <!-- generated: {{ .generated_at }} -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ block "head_title" . }}{{ call .translate_literal "home" }}{{ end }} - Reinhardt</title>
+    <script src="{{ call .static "bootstrap.bundle.min.js" }}"></script>
+    <link href="{{ call .static "bootstrap.min.css" }}" rel="stylesheet">
+    <script src="{{ call .static "unpoly.min.js" }}"></script>
+    <script src="{{ call .static "Sortable.js" }}"></script>
+    <script src="{{ call .static "player.js" }}" type="module"></script>
+    <script src="{{ call .static "dropzone-min.js" }}"></script>
+    <link rel="stylesheet" href="{{ call .static "unpoly.min.css" }}">
+    <link rel="stylesheet" href="{{ call .static "unpoly-bootstrap5.min.css" }}">
+    <link rel="stylesheet" href="{{ call .static "bootstrap-icons.min.css" }}">
+    <link rel="stylesheet" href="{{ call .static "app.css" }}">
+    <link rel="stylesheet" href="{{ call .static "dropzone.css" }}">
+</head>
+<body>
+<div id="alert_space"></div>
+{{ block "body" . }}
+    {{ if not .request_is_from_unpoly }}
+        <nav class="navbar sticky-top navbar-expand-lg bg-body-tertiary">
+            <div class="container-fluid">
+                <a up-preload class="navbar-brand" href="{{ call .url "index" }}">
+                    <i class="bi bi-vinyl"></i> Reinhardt
+                </a>
+
+                {{ if .request.user.is_authenticated }}
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                            aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <a up-preload class="nav-link" href="{{ call .url "preferences" }}">
+                                    <i class="bi bi-gear"></i>
+                                    {{ call .translate_literal "preferences" }}
+                                </a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                                   aria-expanded="false">
+                                    <i class="bi bi-database"></i>
+                                    {{ call .translate_literal "explorer" }}
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <a up-preload class="nav-link" href="{{ call .url "favorites" }}">
+                                            <i class="bi bi-heart"></i>
+                                            {{ call .translate_literal "favorites" }}
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a up-preload class="nav-link" href="{{ call .url "artists" }}">
+                                            <i class="bi bi-person"></i>
+                                            {{ call .translate_literal "artists" }}
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a up-preload class="nav-link" href="{{ call .url "genres" }}">
+                                            <i class="bi bi-music-note-beamed"></i>
+                                            {{ call .translate_literal "genres" }}
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a up-preload class="nav-link" href="{{ call .url "tags" }}">
+                                            <i class="bi bi-tag"></i>
+                                            {{ call .translate_literal "tags" }}
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a up-preload class="nav-link" href="{{ call .url "friends" }}">
+                                            <i class="bi bi-people"></i>
+                                            {{ call .translate_literal "friends" }}
+                                        </a>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a up-preload class="nav-link" href="{{ call .url "queue" }}">
+                                    <i class="bi bi-list"></i>
+                                    {{ call .translate_literal "queue" }}
+                                </a>
+                            </li>
+                        </ul>
+                        <form method="get" class="d-flex" role="search" action="{{ call .url "search" }}">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                            <input {{ if .sq }}value="{{ .sq }}"{{ end }} name="sq" class="form-control me-2"
+                                   id="searchbarinput"
+                                   type="search"
+                                   list="searchsuggest"
+                                   placeholder="{{ call .translate_literal "search" }}" aria-label="{{ call .translate_literal "search" }}">
+
+                            <datalist id="searchsuggest">
+                            {{ if not .request_is_from_unpoly }}
+                                {{ range .suggested_data }}
+                                    <option value="{{ . }}"></option>
+                                {{ end }}
+                            {{ end }}
+                            </datalist>
+                            <button class="btn btn-outline-success" type="submit">{{ call .translate_literal "search" }}</button>
+                        </form>
+                    </div>
+                {{ end }}
+            </div>
+        </nav>
+    {{ end }}
+    <div class="row g-0">
+        <div class="col">
+            <main class="content">
+                {{ block "main" . }}
+                    <h1>Main Block</h1>
+                {{ end }}
+            </main>
+        </div>
+        <div class="col-lg"></div>
+    </div>
+    <div class="d-none d-lg-block" id="artworkbig"></div>
+    {{ block "footer" . }}
+        {{ if not .request_is_from_unpoly }}
+            <footer class="g-0">
+                <canvas class="footer-oscilloscope" aria-hidden="true"></canvas>
+                {{ template "reinhardt/_now_playing.html" . }}
+                <div style="padding:0;margin:0;padding-left:1em;padding-right:1em;padding-bottom:0.5em;">
+                    <m-audio up-keep id="player" data-oscilloscope="{{ yesno .preferences.show_oscilloscope "true,false" }}"></m-audio>
+                </div>
+                <form up-history="false" id="now_playing_form" up-target="#now_playing" method="post"
+                      action="{{ call .url "next_song" }}">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <input type="hidden" name="list_item" id="queue_list_item" value="">
+                    <input type="hidden" name="next_track" id="queue_next_track" value="">
+                </form>
+                <form up-history="false" up-target=":none" id="queue_order_form" method="post"
+                      action="{{ call .url "reorder_queue" }}">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <input type="hidden" name="new_order" id="queue_new_order" value="">
+                    <input type="hidden" name="list_pk" id="queue_list_pk" value="">
+                </form>
+                <form up-history="false" up-target=":none" id="queue_remove_form" method="post"
+                      action="{{ call .url "remove_from_queue" }}">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <input type="hidden" name="remove_item" id="queue_remove_item" value="">
+                </form>
+            </footer>
+        {{ end }}
+    {{ end }}
+{{ end }}
+{{ if not .request_is_from_unpoly }}
+    <script>
+        let dropdown_url = "{{ call .url "music_file_dropdown" }}";
+    </script>
+    <script src="{{ call .static "app.js" }}"></script>
+    </body>
+    </html>
+{{ end }}

@@ -1,0 +1,70 @@
+
+
+{{ define "head_title" }}{{ call .translate_literal "failed downloads" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="ytrip_failures">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{ call .url "ytrip" }}">{{ call .translate_literal "Youtube Rip" }}</a></li>
+            <li class="breadcrumb-item">{{ call .translate_literal "failed downloads" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if .failures }}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ call .translate_literal "track" }}</th>
+                        <th scope="col">{{ call .translate_literal "Youtube URL" }}</th>
+                        <th scope="col">{{ call .translate_literal "failure" }}</th>
+                        <th scope="col">{{ call .translate_literal "retries" }}</th>
+                        <th scope="col">{{ call .translate_literal "updated" }}</th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ $context1 := . }}{{ range $index1, $row1 := .failures }}{{ with scope $context1 "failure" $row1 "forloop" (loopInfo $index1) }}
+                        <tr>
+                            <td>
+                                <div>{{ .failure.artist }} - {{ .failure.title }}</div>
+                                <div class="text-body-secondary small">
+                                    {{ .failure.album }}
+                                    {{ if .failure.genre }} · {{ .failure.genre }}{{ end }}
+                                    {{ if .failure.year }} · {{ .failure.year }}{{ end }}
+                                </div>
+                            </td>
+                            <td>
+                                <a href="{{ .failure.url }}" target="_blank" rel="noopener noreferrer">
+                                    {{ .failure.url }}
+                                </a>
+                                {{ if .failure.comment }}
+                                    <div class="text-body-secondary small">{{ .failure.comment }}</div>
+                                {{ end }}
+                            </td>
+                            <td>{{ .failure.failure_message }}</td>
+                            <td>{{ .failure.retry_count }}</td>
+                            <td>{{ .failure.modified_at }}</td>
+                            <td class="text-end">
+                                <form method="post" action="{{ call .url "retry_ytrip_failure" .failure.pk }}">
+                                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                    <button type="submit" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                        {{ call .translate_literal "retry" }}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {{ end }}{{ end }}
+                </tbody>
+            </table>
+        </div>
+    {{ else }}
+        <div class="alert alert-info">
+            {{ call .translate_literal "no failed downloads" }}
+        </div>
+    {{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

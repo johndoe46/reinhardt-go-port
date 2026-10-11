@@ -1,0 +1,70 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "queue" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="queue">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active">{{ call .translate_literal "queue" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    <p>
+    <div class="dropdown dropdown-center">
+        <button class="btn btn-link btn-link-no-underline dropdown-toggle" type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+            <i class="bi bi-list"></i> {{ call .translate_literal "queue" }} (<span id="track_count">{{ length .queue }}</span> {{ call .translate_literal "tracks" }} / <span id="tracks_duration">{{ humanDuration .music_tag.duration }}</span>)
+        </button>
+        <ul class="dropdown-menu">
+            <li>
+                <form method="post" action="{{ call .url "clear_queue" }}" up-target="main">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <button type="submit" class="dropdown-item">
+                        <i class="bi bi-trash"></i> {{ call .translate_literal "clear" }}
+                    </button>
+                </form>
+            </li>
+            <li>
+                <a id="link_refresh_queue" href="{{ call .url "queue" }}" class="dropdown-item">
+                    <i class="bi bi-recycle"></i> {{ call .translate_literal "refresh" }}
+                </a>
+            </li>
+            <li>
+                <a download id="link_queue_as_mix" href="{{ call .url "queue_as_mix" }}" class="dropdown-item">
+                    <i class="bi bi-download"></i> {{ call .translate_literal "download" }}
+                </a>
+            </li>
+            <li>
+                <a id="link_queue_add_to_tag" up-layer="new" up-history="false"
+                   href="{{ call .url "queue_add_to_tag" }}" class="dropdown-item">
+                    <i class="bi bi-tags"></i> {{ call .translate_literal "add to tag" }}
+                </a>
+            </li>
+            <li>
+                <form method="post" action="{{ call .url "queue_add_to_favorites" }}" up-target="#alert_space">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <button type="submit" class="dropdown-item">
+                        <i class="bi bi-heart"></i> {{ call .translate_literal "add to favorites" }}
+                    </button>
+                </form>
+            </li>
+        </ul>
+    </div>
+    <hr>
+    <div class="list-group list-group-flush makeMeSortable" data-list_pk="{{ .music_tag.pk }}">
+        {{ $context1 := . }}{{ range $index1, $row1 := .queue }}{{ with scope $context1 "item" $row1 "forloop" (loopInfo $index1) }}
+            {{ with scope . "music_file" .item.music_file }}
+                <div data-musicpk="{{ .item.music_file.pk }}" data-itempk="{{ .music_file.pk }}"
+                     class="{{ if eq .now_playing .item.pk }}now_playing {{ end }}list-group-item list-group-item-action dropdown queue_item"
+                     id="music_files_row_{{ .music_file.pk }}">
+                        {{ template "reinhardt/_music_file_dropdown.html" (scope . "handles" true) }}
+                </div>
+            {{ end }}
+        {{ end }}{{ end }}
+    </div>
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

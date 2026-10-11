@@ -1,0 +1,86 @@
+
+
+
+{{ define "head_title" }}{{ .artist }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="artist">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{ call .url "artists" }}">{{ call .translate_literal "artists" }}</a></li>
+            <li class="breadcrumb-item active">{{ truncate .artist 25 }}</li>
+        </ol>
+    </nav>
+    <hr>
+    <details>
+        <summary>{{ call .translate_literal "Similar artists" }}</summary>
+        <span id="similar_artists" up-source="{{ call .url "similar_artists" }}?q={{ urlencode .artist }}" up-poll up-interval="1"><em>chargement en cours...</em></span>
+    </details>
+    <hr>
+    <p>
+        {{ call .translate_literal "Albums from" }} <strong>{{ .artist }}</strong> - {{ length .music_files }} {{ call .translate_literal "tracks" }}
+    </p>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+            <i class="bi bi-person"></i> {{ call .translate_literal "artist" }}
+        </button>
+        <ul class="dropdown-menu">
+            <li>
+                <a id="link_artist_add_to_tag" up-layer="new" up-history="false"
+                   href="{{ call .url "artist_add_to_tag" }}?artist={{ urlencode .artist }}" class="dropdown-item">
+                    <i class="bi bi-tags"></i> {{ call .translate_literal "add to tag" }}
+                </a>
+            </li>
+            <li>
+                <form method="post" action="{{ call .url "artist_add_to_favorites" }}" up-target="#alert_space">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <input type="hidden" name="artist" value="{{ .artist }}">
+                    <button type="submit" class="dropdown-item">
+                        <i class="bi bi-heart"></i> {{ call .translate_literal "add to favorites" }}
+                    </button>
+                </form>
+            </li>
+            <li>
+                <form method="post" action="{{ call .url "artist_add_to_queue" }}" up-target="#alert_space">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <input type="hidden" name="artist" value="{{ .artist }}">
+                    <button type="submit" class="dropdown-item">
+                        <i class="bi bi-plus-circle"></i> {{ call .translate_literal "add to queue" }}
+                    </button>
+                </form>
+            </li>
+        </ul>
+    </div>
+    <hr>
+    {{ $album_list := regroup .music_files "album" }}
+    {{ $context1 := . }}{{ range $index1, $row1 := $album_list }}{{ with scope $context1 "album" $row1.grouper "music_files" $row1.list "forloop" (loopInfo $index1) }}
+        <div>
+            {{ if eq .album "" }}
+                <i class="bi bi-vinyl"></i> <em>{{ call .translate_literal "unknown album" }}</em>
+            {{ else }}
+                <a href="{{ call .url "album" }}?q={{ urlencode .album }}" class="btn-link-no-underline"><i
+                        class="bi bi-vinyl"></i> {{ .album }}</a>
+            {{ end }}
+        </div>
+        {{ with scope . "hide_artist" true }}
+            {{ template "reinhardt/_music_files_list.html" . }}
+        {{ end }}
+        {{ if and (ne .album "") false }}
+        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="album">
+            <input type="hidden" name="tag" value="queue">
+            <input type="hidden" name="q" value="{{ .album }}">
+            <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i>
+                {{ call .translate_literal "add all to queue" }}
+            </button>
+        </form>
+        {{ end }}
+        <hr>
+    {{ end }}{{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

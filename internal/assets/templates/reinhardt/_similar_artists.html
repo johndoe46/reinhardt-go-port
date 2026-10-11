@@ -1,0 +1,13 @@
+<span id="similar_artists">
+    {{ if .similar_artists }}
+    <ul class="similar_artists">
+    {{ $context1 := . }}{{ range $index1, $row1 := .similar_artists }}{{ with scope $context1 "artist" $row1 "forloop" (loopInfo $index1) }}
+        <li>
+            <a href="{{ call .url "artist" }}?q={{ urlencode .artist }}">{{ .artist }}</a>
+        </li>
+    {{ end }}{{ end }}
+    </ul>
+    {{ else }}
+        <p><em>pas d'artistes similaires disponibles</em> (¬_¬)</p>
+    {{ end }}
+</span>

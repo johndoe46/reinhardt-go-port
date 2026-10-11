@@ -1,0 +1,30 @@
+
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "Upload" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="upload">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item">{{ call .translate_literal "Upload" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if .message }}
+        <div class="alert alert-info">
+            {{ call .translate .message }}
+        </div>
+    {{ end }}
+        <p>L'ajout peut prendre quelques minutes.</p>
+        <form action="{{ call .url "upload" }}"
+            class="dropzone"
+            id="my-awesome-dropzone">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        </form>
+        <script>
+            Dropzone.discover();
+        </script>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

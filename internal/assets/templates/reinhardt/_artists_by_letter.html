@@ -1,0 +1,29 @@
+
+
+{{ define "head_title" }}{{ call .translate_literal "artists" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="artists">
+    <nav class="sticky" aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active"><a href="{{ call .url "artists" }}">{{ call .translate_literal "artists" }}</a></li>
+        </ol>
+    </nav>
+    <hr>
+    
+    <ul class="index_shortcut">
+    {{ $context1 := . }}{{ range $index1, $row1 := .letters }}{{ with scope $context1 "letter" $row1 "forloop" (loopInfo $index1) }}
+        <li><a href="{{ call .url "artists" }}?q={{ urlencode .letter }}">{{ .letter }}</a></li>
+    {{ end }}{{ end }}
+    </ul>
+    <hr>
+    <div id="artist_by_letter">
+        <h2>{{ .letter }}</h2>
+        <ul class="cols">
+            {{ $context2 := . }}{{ range $index2, $row2 := .artists }}{{ with scope $context2 "artist" $row2 "forloop" (loopInfo $index2) }}
+                <li><a href="{{ call .url "artist" }}?q={{ urlencode .artist.artist }}">{{ .artist.artist }}</a></li>
+            {{ end }}{{ end }}
+        </ul>
+    </div>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

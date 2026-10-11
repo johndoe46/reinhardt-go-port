@@ -1,0 +1,12 @@
+
+<form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+    <input type="hidden" name="add_type" value="album">
+    <input type="hidden" name="tag" value="queue">
+    <input type="hidden" name="q" value="{{ .album }}">
+    <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-plus-circle"></i>
+        {{ call .translate_literal "add all to queue" }}
+    </button>
+</form>
+<hr>

@@ -1,0 +1,38 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "favorites" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="favorites">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active">{{ call .translate_literal "favorites" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if not (length .music_files) }}
+        <p>{{ call .translate_literal "You don't have any favorite... yet." }}</p>
+    {{ else }}
+        <p><strong>{{ call .translate_literal "favorites" }}</strong> - <span
+                id="track_count">{{ length .music_files }}</span> {{ call .translate_literal "tracks" }}</p>
+        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="favorites">
+            <input type="hidden" name="tag" value="queue">
+            <input type="hidden" name="q" value="">
+            <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i>
+                {{ call .translate_literal "add all to queue" }}
+            </button>
+        </form>
+    {{ end }}
+    <hr>
+    {{ $genre_list := regroup .music_files "genre" }}
+    {{ $context1 := . }}{{ range $index1, $row1 := $genre_list }}{{ with scope $context1 "genre" $row1.grouper "music_files" $row1.list "forloop" (loopInfo $index1) }}
+        <p><strong>{{ if .genre }}{{ .genre }}{{ else }}{{ call .translate_literal "unknown genre" }}{{ end }}</strong></p>
+        {{ template "reinhardt/_music_files_list.html" . }}
+        <hr>
+    {{ end }}{{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

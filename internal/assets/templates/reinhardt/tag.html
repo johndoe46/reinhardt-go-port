@@ -1,0 +1,58 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "tag" }} {{ .tag.label }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="tag">
+    <input data-tagpk="{{ .tag.pk }}" type="hidden" id="page_context" name="page_context" value="tag">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            {{ if .shared_by }}
+                <li class="breadcrumb-item">{{ call .translate_literal "tags" }} {{ call .translate_literal "from" }} {{ .shared_by.username }}</li>
+                <li class="breadcrumb-item active">{{ .tag }}</li>
+            {{ else }}
+                <li class="breadcrumb-item"><a href="{{ call .url "tags" }}">{{ call .translate_literal "tags" }}</a></li>
+                <li class="breadcrumb-item active">
+                <a id="current_url" href="{{ call .url "tag" }}?q={{ .tag.pk }}">{{ .tag }}</a>
+            {{ end }}
+        </ol>
+    </nav>
+    <hr>
+    {{ if not (length .music_files) }}
+        <p>{{ call .translate_literal "You don't have any tracks here... yet." }}</p>
+    {{ else }}
+        <p>
+            {{ call .translate_literal "tag" }}: <strong>{{ .tag }}</strong> - <span
+                id="track_count">{{ length .music_files }}</span> {{ call .translate_literal "tracks" }}
+        </p>
+        {{ if .share_url }}
+            <p class="mb-3">
+                <a id="tag-share-link" href="{{ .share_url }}" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-share"></i> {{ call .translate_literal "open share link" }}
+                </a>
+            </p>
+        {{ end }}
+        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="tag">
+            <input type="hidden" name="tag" value="queue">
+            <input type="hidden" name="q" value="{{ .tag }}">
+            <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i>
+                {{ call .translate_literal "add all to queue" }}
+            </button>
+        </form>
+        <hr>
+        {{ if .shared_by }}
+            {{/* When tag is shared by a user, no remove from tag button */}}
+            {{ template "reinhardt/_music_files_list.html" . }}
+        {{ else }}
+            {{ with scope . "remove_from_tag" .tag.pk }}
+                {{ template "reinhardt/_music_files_list.html" (scope . "handles" true) }}
+            {{ end }}
+        {{ end }}
+    {{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

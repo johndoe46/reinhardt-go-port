@@ -1,0 +1,181 @@
+
+
+{{/* needs header when used on the player */}}
+{{ if eq .playing "True" }}
+    <li>
+        <h6 class="dropdown-header">{{ call .translate_literal "track" }}</h6>
+    </li>
+{{ end }}
+
+
+{{ if eq .context "queue" }}
+    <li>
+        <button onclick="playQueueItem(this)" title="{{ call .translate_literal "play now" }}"
+                class="dropdown-item">
+            <i class="bi bi-play"></i> {{ call .translate_literal "play now" }}
+        </button>
+    </li>
+    <li>
+        <button class="dropdown-item" onclick="removeFromQueue(this)">
+            <i class="bi bi-trash"></i> {{ call .translate_literal "remove from queue" }}
+        </button>
+    </li>
+{{ end }}
+
+{{/* No add to queue or play now if already playing */}}
+{{ if and (ne .playing "True") (ne .context "queue") }}
+    <li>
+        <button onclick="playNext({{ .music_file.pk }})" type="submit" title="{{ call .translate_literal "play now" }}"
+                class="dropdown-item">
+            <i class="bi bi-play"></i> {{ call .translate_literal "play now" }}
+        </button>
+    </li>
+    <li>
+        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="music_file">
+            <input type="hidden" name="tag" value="queue">
+            <input type="hidden" name="q" value="{{ .music_file.pk }}">
+            <button type="submit" title="{{ call .translate_literal "add to queue" }}"
+                    class="dropdown-item">
+                <i class="bi bi-plus-circle"></i> {{ call .translate_literal "add to queue" }}
+            </button>
+        </form>
+    </li>
+{{ end }}
+
+{{/* download is always available */}}
+<li>
+    <a class="dropdown-item" href="{{ .music_file.download_url }}" download target="_blank">
+        <i class="bi bi-download"></i>
+        {{ call .translate_literal "download" }}
+    </a>
+</li>
+
+
+{{/* do no show tagger UI if on a tag page */}}
+
+    <li>
+        <a up-layer="shatter" up-history="false" class="dropdown-item"
+           href="{{ call .url "music_file_tagger" }}?q={{ .music_file.pk }}&next={{ urlencode .request.get_full_path }} ">
+            <i class="bi bi-tags"></i>
+            {{ call .translate_literal "manage tags" }}
+        </a>
+    </li>
+
+
+{{ if or (ne .context "artist") (eq .playing true) }}
+<li>
+    <a class="dropdown-item" href="{{ call .url "artist" }}?q={{ urlencode .music_file.artist }}">
+        <i class="bi bi-person"></i>
+        {{ call .translate_literal "more from same artist" }}
+    </a>
+</li>
+{{ end }}
+
+{{/* album name is available */}}
+{{ if or (ne .context "album") (eq .playing true) }}
+    {{ if .music_file.album }}
+    <li>
+        <a class="dropdown-item" href="{{ call .url "album" }}?q={{ urlencode .music_file.album }}">
+            <i class="bi bi-vinyl"></i>
+            {{ call .translate_literal "more from same album" }}
+        </a>
+    </li>
+    {{ end }}
+{{ end }}
+
+{{/* genre name is available */}}
+{{ if .music_file.genre }}
+    <li>
+        <a class="dropdown-item" href="{{ call .url "genre" }}?q={{ urlencode .music_file.genre }}">
+            <i class="bi bi-music-note"></i>
+            {{ call .translate_literal "more from same genre" }}
+            <!--({{ truncate .music_file.genre 20 }})-->
+        </a>
+    </li>
+{{ end }}
+
+{{/* favorites button toggle */}}
+<li id="favorite_action_{{ .music_file.pk }}">
+    {{ if .is_favorite }}
+        <form class="form_remove_music_file_from_favorite" id="form_remove_music_file_{{ .music_file.pk }}_from_favorite"
+              up-target="#alert_space" method="post"
+              action="{{ call .url "remove_from_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="remove_type" value="music_file">
+            <input type="hidden" name="tag" value="favorites">
+            <input type="hidden" name="q" value="{{ .music_file.pk }}">
+            <button type="submit" title="{{ call .translate_literal "remove from favorites" }}"
+                    class="dropdown-item">
+                <i class="bi bi-heart-fill"></i>
+                {{ call .translate_literal "remove from favorites" }}
+            </button>
+        </form>
+    {{ else }}
+        <form data-trackid="{{ .music_file.pk }}" class="form_add_music_file_to_favorite"
+              id="form_add_music_file_{{ .music_file.pk }}_to_favorite" up-target="#alert_space" method="post"
+              action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="music_file">
+            <input type="hidden" name="tag" value="favorites">
+            <input type="hidden" name="q" value="{{ .music_file.pk }}">
+            <button type="submit" title="{{ call .translate_literal "add to favorites" }}"
+                    class="dropdown-item">
+                <i class="bi bi-heart"></i>
+                {{ call .translate_literal "add to favorites" }}
+            </button>
+        </form>
+    {{ end }}
+</li>
+
+{{/* if on a tag page, allow to remove from tag */}}
+{{ if .remove_from_tag }}
+    <li>
+        <form up-target="#alert_space" method="post" action="{{ call .url "remove_from_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="remove_type" value="music_file">
+            <input type="hidden" name="tag" value="{{ .remove_from_tag }}">
+            <input type="hidden" name="q" value="{{ .music_file.pk }}">
+            <button class="dropdown-item">
+                <i class="bi bi-tag-fill"></i> {{ call .translate_literal "remove from tag" }} {{ .remove_from_tag }}
+            </button>
+        </form>
+    </li>
+{{ end }}
+
+{{ if .request.user.is_superuser }}
+<li>
+    <a up-history="false"
+       up-layer="new"
+       up-accept-location="{{ call .url "index" }}"
+       up-on-dismissed="up.reload('main');up.reload('footer')"
+       up-on-accepted="up.reload('main');up.reload('footer')"
+       class="dropdown-item"
+       href="{{ call .url "track_details_modal" .music_file.id }}">
+        <i class="bi bi-binoculars"></i>
+        {{ call .translate_literal "details" }}
+    </a>
+</li>
+{{ end }}
+
+{{/* if used in player, add controls and queue navigation */}}
+{{ if eq .playing "True" }}
+    <li>
+        <h6 class="dropdown-header">{{ call .translate_literal "player" }}</h6>
+    </li>
+    <li>
+        <button onclick="playNext()" class="btn btn-link btn-link-no-underline dropdown-item">
+            <i class="bi bi-fast-forward"></i> {{ call .translate_literal "next" }}</button>
+    </li>
+    <li>
+        <a href="{{ call .url "queue" }}" class="btn btn-link btn-link-no-underline dropdown-item">
+            <i class="bi bi-list"></i> {{ call .translate_literal "see queue" }}</a>
+    </li>
+    <!--
+    <li>
+        <button onclick="togglePlayer()" class="btn btn-link btn-link-no-underline dropdown-item">
+            <i class="bi bi-eye"></i> {{ call .translate_literal "toggle player" }}</button>
+    </li>
+    -->
+{{ end }}

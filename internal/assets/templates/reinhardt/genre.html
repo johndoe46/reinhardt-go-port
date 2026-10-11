@@ -1,0 +1,45 @@
+
+
+
+{{ define "head_title" }}{{ .genre }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="genre">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{ call .url "genres" }}">{{ call .translate_literal "genres" }}</a></li>
+            <li class="breadcrumb-item active">{{ truncate .genre 25 }}</li>
+        </ol>
+    </nav>
+    <hr>
+    <p>
+        {{ call .translate_literal "genre" }}: <strong>{{ .genre }}</strong> - {{ length .music_files }} {{ call .translate_literal "tracks" }}
+    </p>
+    <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <input type="hidden" name="add_type" value="genre">
+        <input type="hidden" name="tag" value="queue">
+        <input type="hidden" name="q" value="{{ .genre }}">
+        <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-plus-circle"></i>
+            {{ call .translate_literal "add all to queue" }}
+        </button>
+    </form>
+    <hr>
+    {{ $artist_list := regroup .music_files "artist" }}
+    {{ $context1 := . }}{{ range $index1, $row1 := $artist_list }}{{ with scope $context1 "artist" $row1.grouper "music_files" $row1.list "forloop" (loopInfo $index1) }}
+        <div>
+            {{ if eq .artist "" }}
+                <i class="bi bi-person"></i> <em>{{ call .translate_literal "unknown artist" }}</em>
+            {{ else }}
+                <a href="{{ call .url "artist" }}?q={{ urlencode .artist }}" class="btn-link-no-underline"><i
+                        class="bi bi-person"></i> {{ .artist }}</a>
+            {{ end }}
+        </div>
+        {{ with scope . "hide_artist" true }}
+            {{ template "reinhardt/_music_files_list.html" . }}
+        {{ end }}
+        <hr>
+    {{ end }}{{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

@@ -1,0 +1,39 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "preferences" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="preferences" data-player-oscilloscope="{{ yesno .preferences.show_oscilloscope "true,false" }}">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active">{{ call .translate_literal "preferences" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    <p>Connecté: <i class="bi bi-person"></i> {{ .request.user.username }}</p>
+    <form method="post" action="{{ call .url "preferences" }}" up-autosubmit>
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <div class="form-check form-switch">
+            <input {{ if .preferences.autofeed_queue }}checked{{ end }} name="autofeed_queue" id="autofeed_queue" class="form-check-input" type="checkbox" role="switch">
+            <label class="form-check-label" for="autofeed_queue">{{ call .translate_literal "autofeed" }}</label>
+        </div>
+        <div class="form-check form-switch">
+            <input {{ if .preferences.autofeed_similar }}checked{{ end }} name="autofeed_similar" id="autofeed_similar" class="form-check-input" type="checkbox" role="switch">
+            <label class="form-check-label" for="autofeed_similar">{{ call .translate_literal "autofeed similar" }}</label>
+        </div>
+        <div class="form-check form-switch">
+            <input {{ if .preferences.show_oscilloscope }}checked{{ end }} name="show_oscilloscope" id="show_oscilloscope" class="form-check-input" type="checkbox" role="switch">
+            <label class="form-check-label" for="show_oscilloscope">{{ call .translate_literal "Show oscilloscope in player" }}</label>
+        </div>
+    </form>
+    {{ if .request.user.is_superuser }}
+        <hr>
+        <a download class="btn btn-outline-secondary" href="{{ call .url "download_database" }}">
+            <i class="bi bi-download"></i>
+            {{ call .translate_literal "download database" }}
+        </a>
+    {{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

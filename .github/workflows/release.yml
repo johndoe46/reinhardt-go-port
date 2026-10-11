@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: '0'
+      TAG: ${{ github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run checks and tests
+        run: make ci
+
+      - name: Build and package
+        shell: bash
+        run: |
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            binary=reinhardt
+            if [ "$os" = windows ]; then
+              binary=reinhardt.exe
+            fi
+
+            directory="bin/package-$os-$arch"
+            mkdir -p "$directory"
+            make build GOOS="$os" GOARCH="$arch" BIN="$directory/$binary"
+            cp README.md USER_MANUAL.md LICENSE "$directory/"
+            mkdir -p "$directory/docs/images"
+            cp -R docs/images/user-manual "$directory/docs/images/"
+
+            archive="reinhardt-$TAG-$os-$arch"
+            if [ "$os" = windows ]; then
+              (cd "$directory" && zip -r "../../dist/$archive.zip" "$binary" README.md USER_MANUAL.md LICENSE docs/images/user-manual)
+            else
+              tar -czf "dist/$archive.tar.gz" -C "$directory" "$binary" README.md USER_MANUAL.md LICENSE docs/images/user-manual
+            fi
+          done
+
+          (cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --verify-tag \
+            --generate-notes \
+            --title "$TAG"

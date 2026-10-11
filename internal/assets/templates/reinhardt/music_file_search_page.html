@@ -1,0 +1,373 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="auto">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Music File Search - Reinhardt</title>
+    <link href="{{ call .static "bootstrap.min.css" }}" rel="stylesheet">
+    <style>
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(13, 110, 253, 0.12), transparent 35%),
+                linear-gradient(180deg, var(--bs-tertiary-bg) 0%, var(--bs-body-bg) 100%);
+            min-height: 100vh;
+            color: var(--bs-body-color);
+        }
+
+        .music-search-shell {
+            width: 100%;
+            padding: 0.75rem 0.9rem 1.25rem;
+        }
+
+        .music-search-table td,
+        .music-search-table th {
+            vertical-align: middle;
+        }
+
+        .dj-decks-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .dj-center-meter {
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+        }
+
+        .dj-meter-rails {
+            width: 100%;
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+            gap: 4px;
+            padding: 0.35rem 0;
+        }
+
+        .dj-meter-rail {
+            position: relative;
+            flex: 1 1 0;
+            min-width: 8px;
+            border-radius: 999px;
+            background: var(--bs-tertiary-bg);
+            overflow: hidden;
+        }
+
+        .dj-meter-fill {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 0%;
+            border-radius: 999px;
+            transition: none;
+        }
+
+        .dj-meter-fill-a {
+            background: var(--bs-primary);
+        }
+
+        .dj-meter-fill-b {
+            background: var(--bs-danger);
+        }
+
+        .dj-mixer-block {
+            margin-bottom: 0.75rem;
+        }
+
+        .dj-deck,
+        .dj-mixer {
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 1rem;
+            background: var(--bs-body-bg);
+            box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.05);
+            padding: 0.8rem;
+        }
+
+        .dj-deck__label,
+        .dj-mixer__label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--bs-secondary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .dj-deck__title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .dj-deck__meta {
+            color: var(--bs-secondary-color);
+            min-height: 2.5rem;
+        }
+
+        .dj-progress {
+            height: 0.5rem;
+            cursor: pointer;
+        }
+
+        .dj-waveform {
+            width: 100%;
+            height: 88px;
+            display: block;
+            border-radius: 0.75rem;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.02)),
+                var(--bs-tertiary-bg);
+        }
+
+        .dj-readout {
+            font-variant-numeric: tabular-nums;
+            color: var(--bs-secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .dj-crossfader {
+            writing-mode: horizontal-tb;
+        }
+
+        .dj-crossfader-labels {
+            display: flex;
+            justify-content: space-between;
+            color: var(--bs-secondary-color);
+            font-size: 0.8rem;
+        }
+
+        .music-search-action-cell {
+            white-space: nowrap;
+            width: 1%;
+        }
+
+        .music-search-sort {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            font: inherit;
+            font-weight: 600;
+            color: inherit;
+        }
+
+        .music-search-sort:hover {
+            color: var(--bs-primary);
+        }
+
+        .music-search-sort-indicator {
+            display: inline-block;
+            min-width: 1ch;
+            margin-left: 0.35rem;
+            color: var(--bs-secondary-color);
+        }
+
+        @media (max-width: 991px) {
+            .dj-decks-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .dj-center-meter {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="music-search-shell">
+    <section
+        id="music-file-search-app"
+        class="music-search-app"
+        data-api-url="{{ call .url "music_file_search_api" }}"
+        data-next-song-url="{{ call .url "dj_next_song_api" }}"
+        data-add-to-tag-url="{{ call .url "add_to_tag" }}"
+        data-artist-url="{{ call .url "artist" }}"
+        data-album-url="{{ call .url "album" }}"
+        data-genre-url="{{ call .url "genre" }}"
+    >
+        <section class="dj-decks-layout" aria-label="DJ decks">
+            <article class="dj-deck" data-deck="A">
+                <!--
+                <div class="dj-deck__label">Deck A</div>
+                -->
+                <div class="dj-deck__title" data-role="title">No track loaded</div>
+                <div class="dj-deck__meta mt-1" data-role="meta">Load a search result into this deck.</div>
+                <canvas class="dj-waveform mt-3" data-role="waveform" width="640" height="88"></canvas>
+                <div class="progress dj-progress mt-3" role="progressbar" aria-label="Deck A progress" data-role="progress-track">
+                    <div class="progress-bar bg-primary" data-role="progress" style="width: 0%"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2 dj-readout">
+                    <span data-role="elapsed">00:00</span>
+                    <span data-role="duration">00:00</span>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                    <button class="btn btn-primary btn-sm" type="button" data-role="play">Play</button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-role="restart">Restart</button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-role="stop">Stop</button>
+                </div>
+                <audio preload="metadata" data-role="audio"></audio>
+            </article>
+
+            <div class="dj-center-meter">
+                <div class="dj-meter-rails">
+                    <div class="dj-meter-rail">
+                        <div id="dj-meter-a" class="dj-meter-fill dj-meter-fill-a"></div>
+                    </div>
+                    <div class="dj-meter-rail">
+                        <div id="dj-meter-b" class="dj-meter-fill dj-meter-fill-b"></div>
+                    </div>
+                </div>
+            </div>
+
+            <article class="dj-deck" data-deck="B">
+                <!--
+                <div class="dj-deck__label">Deck B</div>
+                -->
+                <div class="dj-deck__title" data-role="title">No track loaded</div>
+                <div class="dj-deck__meta mt-1" data-role="meta">Load a search result into this deck.</div>
+                <canvas class="dj-waveform mt-3" data-role="waveform" width="640" height="88"></canvas>
+                <div class="progress dj-progress mt-3" role="progressbar" aria-label="Deck B progress" data-role="progress-track">
+                    <div class="progress-bar bg-danger" data-role="progress" style="width: 0%"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2 dj-readout">
+                    <span data-role="elapsed">00:00</span>
+                    <span data-role="duration">00:00</span>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                    <button class="btn btn-danger btn-sm" type="button" data-role="play">Play</button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-role="restart">Restart</button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-role="stop">Stop</button>
+                </div>
+                <audio preload="metadata" data-role="audio"></audio>
+            </article>
+        </section>
+
+        <section class="dj-mixer dj-mixer-block">
+            <!--
+            <div class="dj-mixer__label">Mixer</div>
+            <h2 class="h5 mb-3">Crossfader</h2>
+            -->
+            <div class="d-flex align-items-center gap-2">
+                <button id="dj-auto-crossfade-a" class="btn btn-outline-primary btn-sm" type="button">
+                    Auto A
+                </button>
+                <input
+                    id="dj-crossfader"
+                    class="form-range dj-crossfader"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    value="0"
+                >
+                <button id="dj-auto-crossfade-b" class="btn btn-outline-danger btn-sm" type="button">
+                    Auto B
+                </button>
+            </div>
+            <div class="dj-crossfader-labels mt-2">
+                <span>Deck A</span>
+                <span id="dj-crossfader-readout">Center</span>
+                <span>Deck B</span>
+            </div>
+            <div class="d-flex justify-content-center mt-2">
+                <button id="dj-auto-mode-toggle" class="btn btn-outline-secondary btn-sm" type="button">
+                    Auto DJ Off
+                </button>
+            </div>
+        </section>
+
+        <section class="mt-4" aria-live="polite" aria-busy="false">
+            <div class="d-flex justify-content-end align-items-center mb-3">
+                <div id="music-file-search-spinner" class="spinner-border spinner-border-sm d-none" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div id="music-file-search-error" class="alert alert-danger d-none" role="alert"></div>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <form id="music-file-search-form" class="row g-2 mb-3 align-items-center" novalidate>
+                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                        <div class="col">
+                            <input
+                                id="search-field-sq"
+                                class="form-control"
+                                type="search"
+                                name="sq"
+                                placeholder="artist, title, album, genre, comment"
+                            >
+                        </div>
+
+                        <div class="col-auto">
+                            <button class="btn btn-primary" type="submit">Search</button>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover align-middle mb-0 music-search-table">
+                            <thead>
+                            <tr>
+                                <th scope="col">
+                                    <button class="music-search-sort" type="button" data-order-by="artist">
+                                        Artist
+                                        <span class="music-search-sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th scope="col">
+                                    <button class="music-search-sort" type="button" data-order-by="title">
+                                        Title
+                                        <span class="music-search-sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th scope="col">
+                                    <button class="music-search-sort" type="button" data-order-by="album">
+                                        Album
+                                        <span class="music-search-sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th scope="col" class="text-end">Load</th>
+                            </tr>
+                            </thead>
+                            <tbody id="music-file-search-results"></tbody>
+                            <tfoot>
+                            <tr>
+                                <td colspan="4">
+                                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                                        <div id="music-file-search-page-label" class="text-secondary small"></div>
+                                        <div class="btn-group" role="group">
+                                            <button id="music-file-search-prev" class="btn btn-outline-secondary btn-sm" type="button">
+                                                Previous
+                                            </button>
+                                            <button id="music-file-search-next" class="btn btn-outline-secondary btn-sm" type="button">
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </section>
+</main>
+<script>
+    (function () {
+        const root = document.documentElement;
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+        function applyTheme() {
+            if (root.getAttribute("data-bs-theme") === "auto") {
+                root.setAttribute("data-bs-theme", media.matches ? "dark" : "light");
+            }
+        }
+
+        media.addEventListener("change", applyTheme);
+        applyTheme();
+    })();
+</script>
+<script src="{{ call .static "music_file_search.js" }}"></script>
+</body>
+</html>

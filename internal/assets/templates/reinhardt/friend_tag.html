@@ -1,0 +1,36 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "friend tag" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="friend_tag">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active"><a href="{{ call .url "friends" }}">{{ call .translate_literal "friends lists" }}</a></li>
+            <li class="breadcrumb-item active">"{{ call .translate .friend_tag.label }}" {{ call .translate_literal "by" }} {{ .friend.username }}</li>
+        </ol>
+    </nav>
+    <hr>
+    <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <input type="hidden" name="add_type" value="friend_tag">
+        <input type="hidden" name="tag" value="queue">
+        <input type="hidden" name="q" value="{{ .friend_tag.pk }}">
+        <button type="submit" title="{{ call .translate_literal "add to queue" }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-plus-circle"></i>
+            {{ call .translate_literal "add all to queue" }}
+        </button>
+    </form>
+    <hr>
+    <div class="list-group list-group-flush">
+    {{ $context1 := . }}{{ range $index1, $row1 := .friend_tag.musicfiletag_set }}{{ with scope $context1 "assoc" $row1 "forloop" (loopInfo $index1) }}
+        {{ with scope . "music_file" .assoc.music_file }}
+            <div class="list-group-item list-group-item-action dropdown{{ if .handles }} queue_item{{ end }}" id="music_files_row_{{ .music_file.pk }}" data-itempk="{{ .music_file.pk }}">
+                {{ template "reinhardt/_music_file_dropdown.html" . }}
+        </div>
+        {{ end }}
+    {{ end }}{{ end }}
+    </div>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}
