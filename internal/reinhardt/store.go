@@ -296,6 +296,44 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY a.rank,a.id`, owner)
 	return items, nil
 }
 
+// ShuffleQueue changes ranks in place so the saved playback association stays valid.
+func (store *Store) ShuffleQueue(owner int64) error {
+	tx, err := store.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`SELECT a.id FROM reinhardt_musicfiletag a
+JOIN reinhardt_tag t ON t.id=a.tag_id
+WHERE t.owner_id=? AND t.label='queue' ORDER BY random()`, owner)
+	if err != nil {
+		return err
+	}
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		items = append(items, id)
+	}
+	err = rows.Err()
+	closeErr := rows.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	for index, id := range items {
+		if _, err = tx.Exec("UPDATE reinhardt_musicfiletag SET rank=? WHERE id=?", index+1, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // Playback needs at most the current item and one selected item. Keep these
 // lookups separate from Queue, which decorates every track for queue pages.
 func (store *Store) queueItem(owner int64, predicate string, args ...any) (Row, error) {

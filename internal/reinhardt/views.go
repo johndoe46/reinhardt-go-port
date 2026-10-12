@@ -281,7 +281,15 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			ctx["share_url"] = app.absolute(request, tag.S("share_url"))
 		}
 		template = strings.TrimSuffix(path, "/")
-	case "queue/", "clear_queue/":
+	case "queue/", "clear_queue/", "shuffle_queue/":
+		if path == "shuffle_queue/" {
+			if err := postOnly(request); err != nil {
+				return err
+			}
+			if err := store.ShuffleQueue(owner); err != nil {
+				return err
+			}
+		}
 		if path == "clear_queue/" {
 			if err := postOnly(request); err != nil {
 				return err

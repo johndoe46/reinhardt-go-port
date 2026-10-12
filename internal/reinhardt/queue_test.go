@@ -2,10 +2,110 @@ package reinhardt
 
 import (
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestShuffleQueue(test *testing.T) {
+	app := testApp(test)
+	populateQueue(test, app, 20)
+	mustTag(test, app, 2, "queue", []int64{3, 2, 1})
+	mustTag(test, app, 1, "favorites", []int64{2, 1})
+	before, err := app.Store.Queue(1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	otherTags, err := app.Store.Query("SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0]["tag_id"])
+	if err != nil {
+		test.Fatal(err)
+	}
+	position := before[0].N("id")
+	if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=1", position); err != nil {
+		test.Fatal(err)
+	}
+	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	response := call(app, "GET", "/queue/", 1, nil, true)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `action="/shuffle_queue/"`) || !strings.Contains(response.Body.String(), "Mélanger") {
+		test.Fatal("missing French shuffle menu action")
+	}
+	requireCode(test, call(app, "GET", "/shuffle_queue/", 1, nil, true), 405)
+	requireCode(test, call(app, "POST", "/shuffle_queue/", 1, nil, true), 403)
+	requireCode(test, call(app, "POST", "/shuffle_queue/", 0, url.Values{}, true), 302)
+	unchanged, err := app.Store.Queue(1)
+	if err != nil || !reflect.DeepEqual(before, unchanged) {
+		test.Fatal("rejected shuffle changed the queue", err)
+	}
+	response = call(app, "POST", "/shuffle_queue/", 1, url.Values{}, true)
+	requireCode(test, response, 200)
+	if !strings.Contains(response.Body.String(), `value="queue"`) || strings.Contains(response.Body.String(), `<m-audio`) {
+		test.Fatal("shuffle must refresh the queue without replacing the player")
+	}
+	after, err := app.Store.Queue(1)
+	if err != nil || len(after) != len(before) {
+		test.Fatal("shuffle changed the queue size", err)
+	}
+	originals := make(map[int64]Row, len(before))
+	for _, item := range before {
+		originals[item.N("id")] = item
+	}
+	changed := false
+	for index, item := range after {
+		if item.N("rank") != int64(index+1) {
+			test.Fatal("shuffled ranks are not consecutive", item)
+		}
+		original, ok := originals[item.N("id")]
+		if !ok {
+			test.Fatal("shuffle added or duplicated an item", item)
+		}
+		delete(originals, item.N("id"))
+		changed = changed || item.N("id") != before[index].N("id")
+		original["rank"] = item["rank"]
+		if !reflect.DeepEqual(original, item) {
+			test.Fatal("shuffle changed fields other than rank", item)
+		}
+	}
+	// With 20 tracks, an unchanged random permutation has probability 1/20!.
+	if !changed {
+		test.Fatal("queue order did not change")
+	}
+	unchangedTags, err := app.Store.Query("SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0]["tag_id"])
+	if err != nil || !reflect.DeepEqual(otherTags, unchangedTags) {
+		test.Fatal("shuffle changed another user's queue or favorites", err)
+	}
+	prefs, err := app.Store.Preferences(1)
+	if err != nil || prefs.N("current_position") != position {
+		test.Fatal("shuffle changed the playing track", err)
+	}
+	response = call(app, "GET", "/queue/", 1, nil, true)
+	requireCode(test, response, 200)
+	lastOffset := -1
+	for _, item := range after {
+		offset := strings.Index(response.Body.String(), fmt.Sprintf(`id="music_files_row_%d"`, item.N("music_file_id")))
+		if offset <= lastOffset {
+			test.Fatal("queue page did not retain shuffled order")
+		}
+		lastOffset = offset
+	}
+}
+
+func TestShuffleSmallQueue(test *testing.T) {
+	for _, count := range []int{0, 1} {
+		test.Run(fmt.Sprint(count), func(test *testing.T) {
+			app := testApp(test)
+			if count == 1 {
+				mustTag(test, app, 1, "queue", []int64{1})
+			}
+			requireCode(test, call(app, "POST", "/shuffle_queue/", 1, url.Values{}, true), 200)
+			queue, err := app.Store.Queue(1)
+			if err != nil || len(queue) != count {
+				test.Fatal("shuffle changed small queue contents", queue, err)
+			}
+		})
+	}
+}
 
 func populateQueue(testingContext testing.TB, app *App, count int) {
 	testingContext.Helper()

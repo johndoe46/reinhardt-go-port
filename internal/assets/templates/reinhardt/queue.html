@@ -3,7 +3,7 @@
 
 {{ define "head_title" }}{{ call .translate_literal "queue" }}{{ end }}
 {{ define "main" }}
-    <input type="hidden" id="page_context" name="page_context" value="queue">
+    <input type="hidden" id="page_context" name="page_context" value="queue" data-queue-url="{{ call .url "queue" }}">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
@@ -20,17 +20,20 @@
         </button>
         <ul class="dropdown-menu">
             <li>
+                <form method="post" action="{{ call .url "shuffle_queue" }}" up-target="main" up-history="false">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                    <button type="submit" class="dropdown-item">
+                        <i class="bi bi-shuffle"></i> {{ call .translate_literal "Shuffle" }}
+                    </button>
+                </form>
+            </li>
+            <li>
                 <form method="post" action="{{ call .url "clear_queue" }}" up-target="main">
                     <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
                     <button type="submit" class="dropdown-item">
                         <i class="bi bi-trash"></i> {{ call .translate_literal "clear" }}
                     </button>
                 </form>
-            </li>
-            <li>
-                <a id="link_refresh_queue" href="{{ call .url "queue" }}" class="dropdown-item">
-                    <i class="bi bi-recycle"></i> {{ call .translate_literal "refresh" }}
-                </a>
             </li>
             <li>
                 <a download id="link_queue_as_mix" href="{{ call .url "queue_as_mix" }}" class="dropdown-item">

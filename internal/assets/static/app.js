@@ -176,11 +176,14 @@ up.compiler("#now_playing", function (element) {
 
 
     }
-    if (document.getElementById("page_context") &&
-        document.getElementById("page_context").value === "queue") {
-        up.follow(document.querySelector('#link_refresh_queue'), {
+    const pageContext = document.getElementById("page_context");
+    if (pageContext?.value === "queue") {
+        up.render({
+            url: pageContext.dataset.queueUrl,
+            target: "main",
+            history: false,
             scroll: false
-        })
+        });
     }
 });
 

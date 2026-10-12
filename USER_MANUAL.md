@@ -223,7 +223,7 @@ You may need to press Play once if your browser prevents automatic playback.
 *Open a track's menu to play it, queue it, download it, or add it to favorites.*
 
 Open **Queue** to see upcoming tracks. Drag the handles to change their order,
-or use a track's menu to remove it. The queue menu can clear the queue, download
+or use a track's menu to remove it. The queue menu can shuffle or clear the queue, download
 its tracks, or add them to a tag or your favorites. Removing a track from a queue
 or tag does not delete the audio file.
 
