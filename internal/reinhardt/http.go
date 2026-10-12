@@ -91,18 +91,33 @@ func (app *App) sessionUser(request *http.Request) Row {
 	return user
 }
 func (app *App) cookie(responseWriter http.ResponseWriter, request *http.Request, name, value string, httpOnly bool, age int) {
+	// SameSite=Lax limits when browsers send cookies on cross-site requests.
+	// POST requests still need the explicit CSRF checks below. COOKIE_SECURE
+	// also supports HTTPS deployments where TLS terminates at a reverse proxy.
 	http.SetCookie(responseWriter, &http.Cookie{Name: name, Value: value, Path: app.Store.Config.Path(""), HttpOnly: httpOnly, Secure: request.TLS != nil || app.Store.Config.Bool("COOKIE_SECURE"), SameSite: http.SameSiteLaxMode, MaxAge: age})
 }
+
+// csrf supplies the token for a double-submit cookie check: the browser sends
+// the cookie automatically, and forms or JavaScript must submit the same value
+// separately. A foreign site cannot normally read that value through the
+// browser's same-origin policy. The token is independent of the login session.
 func (app *App) csrf(responseWriter http.ResponseWriter, request *http.Request) string {
 	csrfCookie, err := request.Cookie("csrftoken")
 	if err == nil && len(csrfCookie.Value) == 64 {
+		// Reuse the cookie so forms in other tabs keep a matching token.
 		return csrfCookie.Value
 	}
+	// token() encodes 32 cryptographically random bytes as 64 hex characters.
+	// HttpOnly is false so JavaScript can read the cookie for X-CSRFToken.
 	csrfToken := token()
 	app.cookie(responseWriter, request, "csrftoken", csrfToken, false, 31556952)
 	return csrfToken
 }
 func (app *App) checkCSRF(request *http.Request) error {
+	// When Origin is present, require its host (including any port) to match
+	// request.Host, or its full value to match a comma-separated trusted origin.
+	// This check compares hosts, not schemes; absent Origin skips only this
+	// check, and trusted origins still have to pass token validation below.
 	if origin := request.Header.Get("Origin"); origin != "" {
 		originURL, err := url.Parse(origin)
 		trusted := false
@@ -119,10 +134,15 @@ func (app *App) checkCSRF(request *http.Request) error {
 	if err != nil {
 		return forbidden()
 	}
+	// JavaScript can send the header; ordinary forms use the Django-compatible
+	// hidden field. A nonempty header takes precedence over the form value.
 	submittedToken := request.Header.Get("X-CSRFToken")
 	if submittedToken == "" {
 		submittedToken = request.FormValue("csrfmiddlewaretoken")
 	}
+	// Require both copies to match; the cookie alone is insufficient because
+	// browsers attach cookies automatically. Compare in constant time to avoid
+	// revealing matching token prefixes through comparison timing.
 	if len(csrfCookie.Value) != 64 || subtle.ConstantTimeCompare([]byte(submittedToken), []byte(csrfCookie.Value)) != 1 {
 		return forbidden()
 	}
@@ -178,6 +198,8 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 			request.MultipartForm.RemoveAll()
 		}
 	}()
+	// POST is the only allowed unsafe method. Validate before dispatch, including
+	// public POST endpoints such as the login-link form; GET and HEAD skip CSRF.
 	if request.Method == "POST" {
 		if err := app.checkCSRF(request); err != nil {
 			http.Error(responseWriter, err.Error(), 403)
@@ -228,6 +250,8 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 		// request; otherwise the browser can retain an authenticated page shell.
 		ctx["request_is_from_unpoly"] = false
 	}
+	// Every rendered form receives the same token as the browser's CSRF cookie,
+	// including pages visited before authentication.
 	ctx["csrf_token"] = app.csrf(responseWriter, request)
 	ctx["url"] = app.Store.URL
 	ctx["static"] = func(path string) string { return app.Store.Config.Path("static/" + path) }

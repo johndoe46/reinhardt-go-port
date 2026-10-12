@@ -94,6 +94,8 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		app.cookie(responseWriter, request, "sessionid", sess, true, 31556952)
+		// Rotate the CSRF token on successful invite-link login so tokens from
+		// before authentication no longer match. The redirect renders fresh forms.
 		app.cookie(responseWriter, request, "csrftoken", token(), false, 31556952)
 		next := request.URL.Query().Get("next")
 		if !strings.HasPrefix(next, store.Config.Path("")) || strings.HasPrefix(next, "//") {

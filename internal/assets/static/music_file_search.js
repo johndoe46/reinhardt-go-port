@@ -469,10 +469,14 @@
     }
 
     function getCsrfToken() {
+        // POST fetches send this value in X-CSRFToken and the form body, while
+        // the browser sends csrftoken automatically. The server requires a match.
         const tokenInput = form.querySelector('[name="csrfmiddlewaretoken"]');
         if (tokenInput && tokenInput.value) {
             return tokenInput.value;
         }
+        // The CSRF cookie is readable by JavaScript (HttpOnly=false), providing
+        // a fallback when the form has no token input.
         const cookiePrefix = "csrftoken=";
         for (const part of document.cookie.split(";")) {
             const cookie = part.trim();
