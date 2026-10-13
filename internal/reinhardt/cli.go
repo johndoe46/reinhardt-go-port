@@ -348,12 +348,12 @@ func newCLI() *cobra.Command {
 		if store.Config["DBX_KEY"] == "" || store.Config["DBX_SECRET"] == "" {
 			return fmt.Errorf("DBX_KEY and DBX_SECRET are required")
 		}
-		values := map[string]string{"client_id": store.Config["DBX_KEY"], "response_type": "code", "token_access_type": "offline"}
-		parts := []string{}
-		for key, value := range values {
-			parts = append(parts, key+"="+urlQueryEscape(value))
+		values := url.Values{
+			"client_id":         {store.Config["DBX_KEY"]},
+			"response_type":     {"code"},
+			"token_access_type": {"offline"},
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "Open https://www.dropbox.com/oauth2/authorize?"+strings.Join(parts, "&"))
+		fmt.Fprintln(cmd.OutOrStdout(), "Open https://www.dropbox.com/oauth2/authorize?"+values.Encode())
 		fmt.Fprint(cmd.OutOrStdout(), "Authorization code: ")
 		scanner := bufio.NewScanner(cmd.InOrStdin())
 		if !scanner.Scan() {
@@ -394,5 +394,3 @@ func newCLI() *cobra.Command {
 	})
 	return root
 }
-
-func urlQueryEscape(value string) string { return url.QueryEscape(value) }
