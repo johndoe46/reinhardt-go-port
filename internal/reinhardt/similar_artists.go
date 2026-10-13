@@ -125,7 +125,7 @@ func (app *App) cachedSimilarNames(ctx context.Context, artist string) []string 
 }
 
 func (app *App) fetchSimilarNames(ctx context.Context, artist string) ([]string, error) {
-	query := url.Values{"method": {"artist.getsimilar"}, "artist": {artist}, "api_key": {"6dd57d914fac3c0f2107cad48833db39"}, "format": {"json"}}
+	query := url.Values{"method": {"artist.getsimilar"}, "artist": {artist}, "api_key": {app.Store.Config["LASTFM_API_KEY"]}, "format": {"json"}}
 	responseBody, _, err := app.request(ctx, "GET", "https://ws.audioscrobbler.com/2.0/?"+query.Encode(), nil, nil)
 	if err != nil {
 		return nil, err

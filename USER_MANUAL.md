@@ -497,6 +497,11 @@ the process environment override the settings file. You can inspect the active
 settings with `./reinhardt config` or `.\reinhardt.exe config`; passwords and
 keys are hidden in the output.
 
+Similar-artist suggestions use Last.fm with the existing bundled API key by
+default. To use your own key, add `LASTFM_API_KEY=your-lastfm-api-key` to `.env`
+or set it in the process environment. Leave the setting unset to keep the
+bundled default. Restart Reinhardt after changing this setting.
+
 By default, saved data lives in `.reinhardt` inside the home folder of the
 account running the application:
 

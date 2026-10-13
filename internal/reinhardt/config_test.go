@@ -31,7 +31,8 @@ func TestConfigCLI(test *testing.T) {
 				"BASE_DIR": root, "DATABASE_PATH": fileDB, "TIME_ZONE": "UTC",
 				"URL_PREFIX": "/music/", "EMAIL_PORT": "2525",
 				"SECRET_KEY": "test-secret", "JAMA_KEY": "test-jama-key",
-				"DBX_KEY": "test-dbx-key", "DBX_SECRET": "test-dbx-secret",
+				"LASTFM_API_KEY": "test-lastfm-key",
+				"DBX_KEY":        "test-dbx-key", "DBX_SECRET": "test-dbx-secret",
 				"DBX_TOKEN":           "test-dbx-token",
 				"EMAIL_HOST_PASSWORD": "test-smtp-password",
 			}
@@ -64,7 +65,7 @@ func TestConfigCLI(test *testing.T) {
 					test.Errorf("missing effective value for %s", key)
 				}
 			}
-			for _, key := range []string{"SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD"} {
+			for _, key := range []string{"SECRET_KEY", "LASTFM_API_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD"} {
 				want := "[redacted]"
 				if reveal {
 					want = values[key]

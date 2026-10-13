@@ -16,6 +16,8 @@ import (
 
 type Config map[string]string
 
+const defaultLastFMAPIKey = "6dd57d914fac3c0f2107cad48833db39"
+
 // Config also contains the process environment; only application settings belong
 // in diagnostic output.
 var configKeys = []string{
@@ -23,6 +25,7 @@ var configKeys = []string{
 	"URL_PREFIX", "ACCESS_URL_PREFIX", "DELEGATE_DOWNLOAD_PREFIX", "SECRET_KEY",
 	"LANGUAGE_CODE", "TIME_ZONE", "SANITIZE_TAGS", "SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS",
 	"MUSIC_IMPORT_DIR", "MAX_UPLOAD_BYTES", "COOKIE_SECURE", "LOG_LEVEL", "CSRF_TRUSTED_ORIGINS",
+	"LASTFM_API_KEY",
 	"JAMA_ENDPOINT", "JAMA_KEY", "JAMA_PROJECT", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN",
 	"EMAIL_HOST", "EMAIL_PORT", "EMAIL_USE_TLS", "EMAIL_USE_SSL", "EMAIL_HOST_USER",
 	"EMAIL_HOST_PASSWORD", "DEFAULT_FROM_EMAIL",
@@ -34,7 +37,7 @@ func printConfig(writer io.Writer, config Config, showSecrets bool) error {
 	for _, key := range keys {
 		value := config[key]
 		switch key {
-		case "SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD":
+		case "SECRET_KEY", "LASTFM_API_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD":
 			if key == "SECRET_KEY" && value == "" {
 				value = "[database-managed; generated on first use if absent]"
 			} else if value != "" && !showSecrets {
@@ -64,6 +67,7 @@ func loadConfigFromHome(home, envFile, database string) (Config, error) {
 		"SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": "10800", "EMAIL_HOST": "localhost",
 		"EMAIL_PORT": "25", "DEFAULT_FROM_EMAIL": "webmaster@localhost",
 		"LOG_LEVEL": "30", "ALLOWED_HOSTS": "127.0.0.1,localhost", "MAX_UPLOAD_BYTES": "536870912",
+		"LASTFM_API_KEY": defaultLastFMAPIKey,
 	}
 	// Read configuration files without modifying them. Process values override
 	// .env, which overrides ~/.reinhardt/config.

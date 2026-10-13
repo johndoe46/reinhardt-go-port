@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -13,6 +15,55 @@ import (
 	"testing"
 	"time"
 )
+
+func TestSimilarArtistsAPIKeyConfiguration(test *testing.T) {
+	for _, source := range []string{"default", "config", "dotenv", "environment"} {
+		test.Run(source, func(test *testing.T) {
+			unsetConfigEnvironment(test, configKeys...)
+			home := test.TempDir()
+			envFile := ""
+			wantKey := defaultLastFMAPIKey
+			if source != "default" {
+				userDir := filepath.Join(home, ".reinhardt")
+				if err := os.Mkdir(userDir, 0700); err != nil {
+					test.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(userDir, "config"), []byte("LASTFM_API_KEY=config-key\n"), 0600); err != nil {
+					test.Fatal(err)
+				}
+				wantKey = "config-key"
+			}
+			if source == "dotenv" || source == "environment" {
+				envFile = filepath.Join(home, ".env")
+				if err := os.WriteFile(envFile, []byte("LASTFM_API_KEY=dotenv-key\n"), 0600); err != nil {
+					test.Fatal(err)
+				}
+				wantKey = "dotenv-key"
+			}
+			if source == "environment" {
+				wantKey = "environment key&+?"
+				test.Setenv("LASTFM_API_KEY", wantKey)
+			}
+			config, err := loadConfigFromHome(home, envFile, "")
+			if err != nil {
+				test.Fatal(err)
+			}
+			app := testApp(test)
+			app.Store.Config["LASTFM_API_KEY"] = config["LASTFM_API_KEY"]
+			app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) {
+				query := request.URL.Query()
+				if query.Get("api_key") != wantKey || query.Get("artist") != "Artist & Friends" || query.Get("method") != "artist.getsimilar" || query.Get("format") != "json" {
+					return nil, fmt.Errorf("Last.fm request did not use the effective configuration")
+				}
+				return remoteResponse(`{"similarartists":{"artist":[{"name":"Another"}]}}`), nil
+			})
+			names, err := app.fetchSimilarNames(context.Background(), "Artist & Friends")
+			if err != nil || !reflect.DeepEqual(names, []string{"Another"}) {
+				test.Fatal("configured Last.fm lookup failed", names, err)
+			}
+		})
+	}
+}
 
 func TestSimilarArtistsCacheAndLibraryChanges(test *testing.T) {
 	app := testApp(test)
