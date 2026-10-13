@@ -23,7 +23,7 @@ func (app *App) latestAdditions() ([]Row, error) {
 	}
 	if !cache.loaded || cache.revision != revision {
 		// Keep the original SQLite grouping and representative-track selection:
-		// changing the query or its indexes can change the rows Django displays.
+		// changing the query or its indexes can change the displayed rows.
 		tracks, err := app.Store.Query(tracksSQL + latestAdditionsClause)
 		if err != nil {
 			return nil, err

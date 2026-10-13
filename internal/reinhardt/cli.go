@@ -128,7 +128,6 @@ func newCLI() *cobra.Command {
 		defer stop()
 		return app.Work(ctx, once)
 	})
-	worker.Aliases = []string{"run_huey"}
 	worker.Flags().BoolVar(&once, "once", false, "process ready jobs and exit")
 	add("migrate", "Initialize SQLite schema and rebuild the search index", 0, func(cmd *cobra.Command, args []string) error { return store.ReindexFTS() })
 	add("check", "Check the database and compile all embedded templates", 0, func(cmd *cobra.Command, args []string) error {

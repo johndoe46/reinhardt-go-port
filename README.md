@@ -1,10 +1,10 @@
-# Go Reinhardt
+# Reinhardt
 
 For installation from release downloads, first-run setup, and everyday use,
 see the [Reinhardt user manual](USER_MANUAL.md).
 
-A Go port of the Django Reinhardt music application. SQLite, templates,
-translations, and every static asset are included in a single executable.
+Reinhardt is a music library and streaming application written in Go. SQLite,
+templates, translations, and every static asset are included in a single executable.
 The server runs with `CGO_ENABLED=0`; its normal streaming, indexing, MP3 tag
 editing, playlist, and artwork features require no Python or external programs.
 
@@ -13,16 +13,14 @@ escaping. Layouts and partials use native Go template definitions; helpers handl
 translations, grouping, URLs, and formatting. Each page has an isolated template
 set so its layout overrides cannot affect another page. Runtime translations use
 embedded Go message catalogues. URLs, element IDs, `data-*`
-attributes, Unpoly fragment targets, the persistent player, oscilloscope, and DJ
-interface are preserved. The template sources use Go syntax; rendered HTML may
-differ in comments, whitespace, and equivalent HTML or JavaScript escaping.
+attributes, and Unpoly fragment targets support navigation, the persistent
+player, oscilloscope, and DJ interface.
 
 ## Source layout
 
 - `cmd/reinhardt/`: executable entry point.
 - `internal/reinhardt/`: application code and its regression tests.
 - `internal/assets/`: embedded schema, HTML templates, static files, and translations.
-- `scripts/`: Django comparison and benchmark tools.
 - `docs/` and `examples/`: performance reports and deployment examples.
 - `vendor/`: vendored Go dependencies.
 - `bin/`: generated executables and coverage reports, excluded from Git.
@@ -31,8 +29,8 @@ Run the Makefile targets from the repository root. For direct Go commands, use
 `go build -mod=vendor -o bin/reinhardt ./cmd/reinhardt`,
 `go run -mod=vendor ./cmd/reinhardt`, or `go test -mod=vendor ./...`.
 Set `CGO_ENABLED=0` for production builds, as the Makefile does automatically.
-The internal asset paths keep their original names inside the binary; installed
-executables need no resource directories alongside them.
+Assets are embedded in the binary; installed executables need no resource
+directories alongside them.
 
 ## Direct Go dependencies
 
@@ -44,7 +42,7 @@ The direct dependencies listed in [go.mod](go.mod) serve these purposes:
 | `github.com/dhowden/tag` | Read audio metadata during indexing and extract embedded cover artwork. |
 | `github.com/emersion/go-sasl` | Provide SASL PLAIN authentication for SMTP connections using configured email credentials. |
 | `github.com/emersion/go-smtp` | Send login-link emails over SMTP, including STARTTLS and implicit TLS connections. |
-| `github.com/joho/godotenv` | Parse `.env` files and the original application's configuration file. |
+| `github.com/joho/godotenv` | Parse `.env` files and `~/.reinhardt/config`. |
 | `github.com/nicksnyder/go-i18n/v2` | Load embedded message catalogues and translate messages with language fallback, named variables, and plural rules. |
 | `github.com/spf13/cobra` | Define CLI commands, flags, aliases, and help output for the server, worker, and management tools. |
 | `github.com/tcolgate/mp3` | Scan MP3 frames to calculate track duration during indexing. |
@@ -71,7 +69,6 @@ helper binaries. Install the following tools for the features you use:
 | `git` | Obtaining the source checkout; unnecessary for a copied release binary |
 | `node` | Optional tests that execute the shared player's JavaScript |
 | `cc` (`gcc` or `clang`) | `make test-race` only; production builds and normal tests disable CGO |
-| Python 3.13+ and `uv` | Optional Django parity tests using the adjacent Django checkout |
 
 The Go application invokes only `yt-dlp` and `ffmpeg` directly. yt-dlp invokes
 `ffprobe` and its JavaScript runtime. Deno is enabled by default by yt-dlp;
@@ -131,11 +128,10 @@ Optional additional test tools:
 
 ```sh
 sudo apt install -y build-essential nodejs
-pipx install uv
 ```
 
 `build-essential` supplies the C compiler for race tests; `nodejs` supplies
-`node`. `uv` prepares the Python 3.13+ Django parity environment as shown below.
+`node`.
 
 ### macOS (Mac OS X)
 
@@ -147,12 +143,12 @@ brew install yt-dlp ffmpeg deno
 
 Homebrew handles yt-dlp's Python dependencies and EJS component; FFmpeg includes
 `ffprobe`. See the [yt-dlp formula](https://formulae.brew.sh/formula/yt-dlp).
-For source builds and optional JavaScript/parity tests:
+For source builds and optional JavaScript tests:
 
 ```sh
 brew install go make git
 # Optional test tools:
-brew install node uv
+brew install node
 ```
 
 Homebrew's GNU Make is named `gmake`; use `gmake` in place of `make` throughout
@@ -170,22 +166,6 @@ install Apple's Command Line Tools, which provide `clang`/`cc`:
 xcode-select --install
 ```
 
-### Optional Django parity environment
-
-With the original Django checkout at `../reinhardt`, prepare its environment on
-either platform after installing `uv`:
-
-```sh
-uv python install 3.13
-uv sync --project ../reinhardt --python 3.13 --group dev
-make test-parity
-```
-
-On macOS, use `gmake test-parity` if GNU Make is not on `PATH` as `make`.
-[uv installation options](https://docs.astral.sh/uv/getting-started/installation/)
-include both pipx and Homebrew. These Python dependencies are only for comparing
-the Go application with Django; they are unnecessary to deploy the Go binary.
-
 ### Verify and update helpers
 
 Run these checks as the service account, with the same `PATH` used by the service:
@@ -201,7 +181,7 @@ For Debian's pipx installation, update with `pipx upgrade yt-dlp` and
 `deno upgrade`. On macOS, use `brew upgrade yt-dlp ffmpeg deno`. Services must
 receive the helper directories in their own `PATH`; an interactive shell's
 profile is not automatically used by systemd. Use `make doctor` for the build
-and existing media/parity availability checks.
+and optional media availability checks.
 
 ## Build and start
 
@@ -227,7 +207,7 @@ absent, and builds the executable. It preserves existing configuration. Edit
 `make install` installs the binary in `~/.local/bin` by default. Set
 `PREFIX=/usr/local` or `BINDIR=/your/bin` to choose another location. Packaging
 can stage installation with `DESTDIR=/path/to/staging`. `make doctor` reports
-the Go toolchain and optional media/parity prerequisites.
+the Go toolchain and optional media tools.
 
 Use `make run LISTEN=127.0.0.1:8000` to choose a listen address, or run HTTP and
 jobs separately with `make run-http` and `make worker`. `make worker-once`
@@ -292,7 +272,7 @@ Configuration precedence, highest first:
 1. Command flags (`--database`, `--listen`).
 2. Process environment.
 3. `.env`, or the file selected with `--env-file`.
-4. The original application's `~/.reinhardt/config`.
+4. `~/.reinhardt/config`.
 5. Built-in defaults.
 
 Print the effective application settings with `bin/reinhardt config` or
@@ -302,12 +282,9 @@ as usual. The command does not open or modify SQLite. If `SECRET_KEY` is absent
 from configuration, it is labeled as database-managed rather than reading or
 generating the database's key. Unrelated process environment variables are omitted.
 
-Non-Django application environment variables retain their names and meanings;
-see [.env.example](.env.example) for the full list, including Jama, Dropbox,
-SMTP, import directory, URL prefixes, sanitization, language, and playlist
-download limits. `DISCOGS_TOKEN` is accepted for compatibility; the original
-Discogs helper is unused by application routes. Django implementation settings
-such as `USE_DJANGO_ADMIN` and `STATIC_ROOT` are unnecessary in this port.
+See [.env.example](.env.example) for application settings, including Jama,
+Dropbox, SMTP, import directory, URL prefixes, sanitization, language, and
+playlist download limits.
 
 ### Languages and message catalogues
 
@@ -326,8 +303,8 @@ match the available catalogue; unsupported languages fall back to English.
 
 Translations use [go-i18n/v2](https://github.com/nicksnyder/go-i18n), with embedded
 JSON catalogues in [`internal/assets/messages`](internal/assets/messages).
-The English catalogue supplies fallback messages, and the French catalogue
-preserves the existing translations migrated from Django.
+The English catalogue supplies fallback messages; the French catalogue
+provides French translations.
 
 To add a language, create `active.<BCP-47-language-tag>.json` in that directory.
 Include a `language_name` message containing the language's own name, translate
@@ -336,38 +313,32 @@ and adds their languages to the settings selector automatically. Missing message
 fall back to English. See the [catalogue guide](internal/assets/messages/README.md)
 for named variables, plurals, and template helpers.
 
-The default data directory is `~/.reinhardt`. The port uses the existing
-`~/.reinhardt/db.sqlite3`, `~/.reinhardt/covers`, and `~/.reinhardt/config`
-by default. `BASE_DIR` controls this directory, `DATABASE_PATH` selects SQLite,
-and `COVERS_DIR` can override the artwork cache location. No configuration is
-written to the original application. If `SECRET_KEY` is absent, a random key is
-generated once and stored in the Go database.
+The default data directory is `~/.reinhardt`, containing `db.sqlite3`,
+`covers`, and an optional `config` file. `BASE_DIR` controls this directory,
+`DATABASE_PATH` selects SQLite, and `COVERS_DIR` can override the artwork cache
+location. If `SECRET_KEY` is absent, a random key is generated once and stored
+in the database.
 
-The port uses the original `auth_user` and `reinhardt_*` tables. To migrate an
-existing installation:
+Database initialization is additive: existing users, preferences, login tokens,
+tags, shared links, ranks, and library paths are retained. Missing tables,
+indexes, and cache revision triggers are added automatically. Music stays in its
+registered directories. To update an existing installation:
 
-1. Apply the original Django migrations through `0017`.
-2. Back up the database and stop Django and its Huey worker before switching.
-   Use Django's preferences page or SQLite's backup API for a consistent backup;
-   a raw copy of a live database can miss its WAL contents.
-3. Keep `~/.reinhardt/config` to preserve the original `SECRET_KEY`. The existing
-   `~/.reinhardt/db.sqlite3` is selected automatically; set `BASE_DIR` or
-   `DATABASE_PATH` if your Django installation stores data elsewhere.
-4. Run `make migrate`, then `make run`.
+1. Back up the database before updating. Use the preferences page or SQLite's
+   backup API for a consistent snapshot; a raw copy of a live database can miss
+   its WAL contents.
+2. Stop the server and any separately running workers.
+3. Keep `~/.reinhardt/config` to preserve settings such as `SECRET_KEY`, which
+   protects shared playlist links. Set `BASE_DIR` or `DATABASE_PATH` if your
+   installation stores data elsewhere.
+4. Install the new executable, run `bin/reinhardt migrate`, then restart the
+   server and workers.
 
-Existing users, preferences, login tokens, tags, shared links, ranks, and library
-paths are retained. Music stays in its registered directories. Go adds its own
-session, settings, and job tables and FTS synchronization triggers. Sessions and
-pending Huey jobs are not imported; users log in using their existing invite
-links. Running both applications against the same live SQLite file is unsupported.
-For an isolated trial, set `DATABASE_PATH` to a consistent database copy. Earlier
-Go builds used `~/.go-reinhardt`; set `BASE_DIR` explicitly to keep using that
-directory.
+For an isolated trial, set `DATABASE_PATH` to a consistent database copy.
 
 ## Commands and jobs
 
-Every original application management command is available under its original
-name:
+The executable includes these management commands:
 
 | Command | Purpose |
 | --- | --- |
@@ -388,7 +359,7 @@ name:
 `giveaccess` adds `--email` and `--superuser`. Run any command with `--help`
 for usage.
 
-Additional commands are `serve` (alias `runserver`), `worker` (alias `run_huey`),
+Additional commands are `serve` (alias `runserver`), `worker`,
 `gathermusic`, `migrate`, `check`, `jobs`, and `config`. Use `serve --no-worker`
 when running a separate `worker`. `worker --once` processes ready jobs and exits.
 
@@ -403,7 +374,7 @@ Jobs persist in SQLite and retry twice at ten-minute intervals. Import scanning
 runs every five minutes when `MUSIC_IMPORT_DIR` is configured. Uploads are
 restricted to superusers and land in that directory. ZIP extraction rejects
 path traversal and symlinks and limits expanded size. Imports refuse to
-overwrite existing music. Failed YouTube downloads appear on the original
+overwrite existing music. Failed YouTube downloads appear on the
 failure/retry screen. `jobs` reports pending and exhausted integration jobs.
 
 ## Media and integrations
@@ -435,8 +406,8 @@ YouTube features use `yt-dlp`, `ffmpeg`, `ffprobe` and Deno on the service's `PA
 see [Prerequisites](#prerequisites) for Debian and macOS installation commands.
 Artwork embedding in non-MP3 formats uses `ffmpeg`; the
 validated sidecar image remains available even if embedding is unsuccessful.
-Automatic cover discovery uses Apple's music search API, matching the original
-`get-cover-art` integration. Embedded covers, adjacent images, uploaded images,
+Automatic cover discovery uses Apple's music search API.
+Embedded covers, adjacent images, uploaded images,
 and YouTube thumbnails are supported. The artwork search link remains available
 in track details. Failed external lookups are cached and fall back to a generated
 sleeve.
@@ -449,9 +420,9 @@ for one hour. See [artwork concurrency](docs/artwork-performance.md).
 YouTube downloads also require a registered destination in the database used by
 the server. Register an existing music directory with
 `make cli ARGS='addmusicdir /path/to/music'`, using the same `DATABASE` or
-`DATABASE_PATH` as `serve`. Existing Django directory registrations are reused
-when using its database; a fresh database has no registrations. The web form
-reports a missing destination before queuing a download. After registering one,
+`DATABASE_PATH` as `serve`. Existing directory registrations are reused; a
+fresh database has no registrations. The web form reports a missing destination
+before queuing a download. After registering one,
 retry an existing failure from the failed-downloads screen; pending jobs also
 retry automatically.
 
@@ -487,26 +458,9 @@ native metadata indexing, durable job failures, archive traversal, and SQLite
 snapshots. Template tests cover layout isolation, missing values, query encoding,
 and escaping of untrusted metadata. If Node.js is available, they also execute
 the rendered shared-player title assignment to check JavaScript injection and
-round-trip values. When the Django checkout is adjacent, tests also verify that
-embedded static files are byte-identical.
+round-trip values.
 
-For differential checks using the original Django migrations and views:
-
-```sh
-make test-parity
-```
-
-This optional target uses the adjacent Django virtual environment and test-owned
-temporary files. It compares full pages, Unpoly fragments, and API JSON with
-Django responses in English and French across populated, empty, and
-special-character libraries, plus playback state transitions (388 comparisons).
-It normalizes comments,
-whitespace, CSRF tokens, and equivalent HTML/JavaScript escaping. The language
-selector and corrected document language are covered by Go-specific tests;
-the comparisons account for these intentional UI additions.
-It is not required to build or run the Go application.
-
-For dropdown response-time measurements and reproducible Go/Django benchmarks,
+For dropdown response-time measurements and reproducible benchmarks,
 see [the performance investigation](docs/dropdown-performance.md).
 Playback query counts and timings are documented in
 [the next-song investigation](docs/next-song-performance.md).
@@ -518,5 +472,4 @@ Initialized queue and favorites pages use read-only tag lookups; missing tags
 are still created on first use without changing their defaults.
 Search-suggestion caching, automatic invalidation, and measurements are documented
 in [the suggestions investigation](docs/suggestions-performance.md).
-`make verify` runs both normal CI and the Django comparisons. Set
-`DJANGO_PYTHON=/path/to/python` if the original virtual environment is elsewhere.
+`make verify` is an alias for `make ci`.

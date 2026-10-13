@@ -1,7 +1,7 @@
 
 <button data-trackid="{{ .music_file.pk }}"
         data-remove_from_tag="{{ if .remove_from_tag }}{{ .remove_from_tag }}{{ end }}"
-        data-playing="{{ djangoBool .playing }}"
+        data-playing="{{ boolString .playing }}"
         class="track_menu btn btn-sm btn-link dropdown-toggle btn-link-no-underline"
         type="button"
         data-bs-toggle="dropdown" aria-expanded="false" style="white-space: normal">

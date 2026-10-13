@@ -16,10 +16,10 @@ Opening a database automatically adds `go_suggestions_revision` and three SQLite
 triggers. Inserts, deletes, and changes to artist or album advance the revision
 in the same transaction as the library write. This covers indexing, imports,
 metadata edits, cascading deletes, and writes from separate worker, CLI, or
-Django processes. Rolled-back writes do not invalidate the list. Preferences,
+external processes. Rolled-back writes do not invalidate the list. Preferences,
 queue changes, other metadata, and unchanged artist/album updates leave it cached.
 
-Existing Django databases require no manual migration or search reindex for
+Existing databases require no manual migration or search reindex for
 this change. Suggestions retain the original query semantics: distinct artists
 followed by distinct albums, including empty strings, missing tracks, and a word
 appearing in both categories. Empty libraries are cached too. Partials and
@@ -51,7 +51,6 @@ timings.
 Regression tests cover ordering, duplicate words across categories, empty
 values/libraries, missing tracks, local and external edits, rollback, cascading
 deletion, concurrent refreshes, shared caches across users, and HTML escaping.
-The Django differential comparisons continue to check full pages and fragments.
 
 To reproduce current measurements:
 

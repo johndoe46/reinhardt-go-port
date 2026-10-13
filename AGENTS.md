@@ -2,12 +2,11 @@
 
 ## Project Structure & Module Organization
 
-Reinhardt ports a Django music application to Go, embedding SQLite resources and assets in one executable.
+Reinhardt is a Go music application, embedding SQLite resources and assets in one executable.
 
 - `cmd/reinhardt/`: executable entry point.
 - `internal/reinhardt/`: application logic and adjacent `*_test.go` regression tests.
 - `internal/assets/`: embedded SQL schema, Go HTML templates, static assets, and JSON message catalogues.
-- `scripts/`: Django parity checks and benchmark tooling.
 - `docs/`, `USER_MANUAL.md`, and `examples/`: documentation, screenshots, and deployment examples.
 - `vendor/`: dependency sources; `bin/`: ignored build and coverage outputs.
 
@@ -33,7 +32,7 @@ Preserve contextual HTML escaping, Unpoly fragment targets, and persistent-playe
 
 Use `testing` and `httptest`, naming tests `Test<Behavior>` in adjacent `*_test.go` files. Cover changed behavior with isolated fixtures.
 
-Run `make test`, or target a test with `make test TEST=TestUserLanguageSettings`. Use `make test-race` for concurrency changes; it requires a C compiler. `make test-coverage` generates reports without an enforced percentage threshold. Optional `make test-parity` requires the adjacent Django checkout and its Python environment.
+Run `make test`, or target a test with `make test TEST=TestUserLanguageSettings`. Use `make test-race` for concurrency changes; it requires a C compiler. `make test-coverage` generates reports without an enforced percentage threshold.
 
 ## Commit & Pull Request Guidelines
 

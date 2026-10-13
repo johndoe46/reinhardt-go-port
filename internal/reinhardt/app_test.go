@@ -11,7 +11,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -578,37 +577,6 @@ func TestRejectArchiveTraversal(test *testing.T) {
 	os.WriteFile(path, buffer.Bytes(), 0600)
 	if err := extractArchive(path, root, 1000); err == nil {
 		test.Fatal("accepted traversal")
-	}
-}
-
-func TestAssetsAreByteIdenticalToDjango(test *testing.T) {
-	// Go runs package tests from internal/reinhardt; Django is a sibling checkout.
-	djangoRoot := filepath.Join("..", "..", "..", "reinhardt", "reinhardt")
-	if _, err := os.Stat(filepath.Join(djangoRoot, "templates")); os.IsNotExist(err) {
-		test.Skip("Django source checkout not present")
-	}
-	err := fs.WalkDir(assets, "static", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		original, err := os.ReadFile(filepath.Join(djangoRoot, path))
-		if err != nil {
-			return err
-		}
-		copy, err := assets.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(original, copy) {
-			return fmt.Errorf("asset differs: %s", path)
-		}
-		return nil
-	})
-	if err != nil {
-		test.Fatal(err)
 	}
 }
 

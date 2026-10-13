@@ -32,7 +32,7 @@ func TestConfigCLI(test *testing.T) {
 				"URL_PREFIX": "/music/", "EMAIL_PORT": "2525",
 				"SECRET_KEY": "test-secret", "JAMA_KEY": "test-jama-key",
 				"DBX_KEY": "test-dbx-key", "DBX_SECRET": "test-dbx-secret",
-				"DBX_TOKEN": "test-dbx-token", "DISCOGS_TOKEN": "test-discogs-token",
+				"DBX_TOKEN":           "test-dbx-token",
 				"EMAIL_HOST_PASSWORD": "test-smtp-password",
 			}
 			var dotenv strings.Builder
@@ -64,7 +64,7 @@ func TestConfigCLI(test *testing.T) {
 					test.Errorf("missing effective value for %s", key)
 				}
 			}
-			for _, key := range []string{"SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "DISCOGS_TOKEN", "EMAIL_HOST_PASSWORD"} {
+			for _, key := range []string{"SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD"} {
 				want := "[redacted]"
 				if reveal {
 					want = values[key]
@@ -87,7 +87,7 @@ func TestConfigCLI(test *testing.T) {
 	}
 }
 
-func TestConfigDefaultsToDjangoUserDirectory(test *testing.T) {
+func TestConfigDefaultsToUserDirectory(test *testing.T) {
 	unsetConfigEnvironment(test, "BASE_DIR", "DATABASE_PATH", "COVERS_DIR", "SECRET_KEY", "TIME_ZONE")
 	home := test.TempDir()
 	userDir := filepath.Join(home, ".reinhardt")
@@ -95,7 +95,7 @@ func TestConfigDefaultsToDjangoUserDirectory(test *testing.T) {
 		test.Fatal(err)
 	}
 	configFile := filepath.Join(userDir, "config")
-	original := []byte("SECRET_KEY=existing-django-secret\nTIME_ZONE=Europe/Paris\n")
+	original := []byte("SECRET_KEY=existing-secret\nTIME_ZONE=Europe/Paris\n")
 	if err := os.WriteFile(configFile, original, 0600); err != nil {
 		test.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestConfigDefaultsToDjangoUserDirectory(test *testing.T) {
 	for key, want := range map[string]string{
 		"BASE_DIR": userDir, "DATABASE_PATH": filepath.Join(userDir, "db.sqlite3"),
 		"COVERS_DIR": filepath.Join(userDir, "covers"),
-		"SECRET_KEY": "existing-django-secret", "TIME_ZONE": "Europe/Paris",
+		"SECRET_KEY": "existing-secret", "TIME_ZONE": "Europe/Paris",
 	} {
 		if config[key] != want {
 			test.Errorf("%s = %q; want %q", key, config[key], want)

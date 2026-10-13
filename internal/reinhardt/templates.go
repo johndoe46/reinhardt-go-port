@@ -36,7 +36,7 @@ func newTemplates() (Templates, error) {
 		"regroup": regroup, "loopInfo": templateLoopInfo, "contains": templateContains,
 		"eq": templateEqual, "ne": func(left, right any) bool { return !templateEqual(left, right) },
 		"gt":           func(left, right any) bool { return number(left) > number(right) },
-		"defaultValue": templateDefault, "yesno": templateYesNo, "djangoBool": templateBool,
+		"defaultValue": templateDefault, "yesno": templateYesNo, "boolString": templateBool,
 		"truncate": templateTruncate, "humanDuration": templateDuration,
 		"hasManyArtists": templateHasManyArtists, "title": templateTitle, "urlencode": templateURLQuery,
 	}).Option("missingkey=zero")
@@ -113,8 +113,8 @@ func templateUsesLayout(list *parse.ListNode, baseName string) bool {
 }
 
 func templateScope(ctx TemplateContext, pairs ...any) TemplateContext {
-	// Includes need isolated bindings like Django's "include ... with". This is
-	// a shallow copy: assigning a binding is safe, but nested Rows remain shared.
+	// Partials need isolated bindings. This shallow copy makes binding
+	// assignments safe, but nested Rows remain shared.
 	result := make(TemplateContext, len(ctx)+len(pairs)/2)
 	for key, value := range ctx {
 		result[key] = value
@@ -259,13 +259,13 @@ func templateURLQuery(value any) template.URL {
 		return ""
 	}
 	encoded := strings.ReplaceAll(url.QueryEscape(fmt.Sprint(value)), "+", "%20")
-	// Django leaves '/' safe. Every other reserved character is encoded before
+	// Leave '/' unescaped. Every other reserved character is encoded before
 	// marking this query component as a URL, preventing a second escaping pass.
 	return template.URL(strings.ReplaceAll(encoded, "%2F", "/"))
 }
 
 func regroup(rows []Row, key string) []Row {
-	// Django regroup combines consecutive values; it neither sorts nor merges
+	// Group consecutive values without sorting or merging
 	// distant matches. Query ordering therefore determines the displayed groups.
 	groups := []Row{}
 	for _, row := range rows {

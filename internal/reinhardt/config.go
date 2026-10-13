@@ -23,7 +23,7 @@ var configKeys = []string{
 	"URL_PREFIX", "ACCESS_URL_PREFIX", "DELEGATE_DOWNLOAD_PREFIX", "SECRET_KEY",
 	"LANGUAGE_CODE", "TIME_ZONE", "SANITIZE_TAGS", "SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS",
 	"MUSIC_IMPORT_DIR", "MAX_UPLOAD_BYTES", "COOKIE_SECURE", "LOG_LEVEL", "CSRF_TRUSTED_ORIGINS",
-	"JAMA_ENDPOINT", "JAMA_KEY", "JAMA_PROJECT", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "DISCOGS_TOKEN",
+	"JAMA_ENDPOINT", "JAMA_KEY", "JAMA_PROJECT", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN",
 	"EMAIL_HOST", "EMAIL_PORT", "EMAIL_USE_TLS", "EMAIL_USE_SSL", "EMAIL_HOST_USER",
 	"EMAIL_HOST_PASSWORD", "DEFAULT_FROM_EMAIL",
 }
@@ -34,7 +34,7 @@ func printConfig(writer io.Writer, config Config, showSecrets bool) error {
 	for _, key := range keys {
 		value := config[key]
 		switch key {
-		case "SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "DISCOGS_TOKEN", "EMAIL_HOST_PASSWORD":
+		case "SECRET_KEY", "JAMA_KEY", "DBX_KEY", "DBX_SECRET", "DBX_TOKEN", "EMAIL_HOST_PASSWORD":
 			if key == "SECRET_KEY" && value == "" {
 				value = "[database-managed; generated on first use if absent]"
 			} else if value != "" && !showSecrets {
@@ -65,8 +65,8 @@ func loadConfigFromHome(home, envFile, database string) (Config, error) {
 		"EMAIL_PORT": "25", "DEFAULT_FROM_EMAIL": "webmaster@localhost",
 		"LOG_LEVEL": "30", "ALLOWED_HOSTS": "127.0.0.1,localhost", "MAX_UPLOAD_BYTES": "536870912",
 	}
-	// Read the original app's configuration without modifying it. Process values
-	// override .env, which overrides the shared configuration.
+	// Read configuration files without modifying them. Process values override
+	// .env, which overrides ~/.reinhardt/config.
 	for _, file := range []string{filepath.Join(userDir, "config"), envFile} {
 		if file == "" {
 			continue

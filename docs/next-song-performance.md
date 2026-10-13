@@ -38,10 +38,7 @@ Run `CGO_ENABLED=0 go test -mod=vendor ./internal/reinhardt -run '^$' -bench Ben
 -benchtime=20x -count=1` to reproduce current results.
 
 Regression tests check queue-size-independent SQL counts, ownership, invalid
-selections, tied ranks, blacklist autofeed, and empty libraries. Differential
-tests add 32 Django playback comparisons (eight scenarios, two languages, with
-and without the Unpoly header), checking returned HTML, saved position, and queue
-contents. The full differential suite now contains 388 comparisons.
+selections, tied ranks, blacklist autofeed, and empty libraries.
 
 Autofeed is a separate path: at the end of a queue, enabled similarity matching
 can wait for a cold or expired Last.fm lookup (up to five seconds). Warm lookups
@@ -60,7 +57,7 @@ one mocked Last.fm request, providing a positive control. No live services are
 contacted by these tests.
 
 The separate `/similar_artists/` endpoint uses the shared Last.fm cache for
-artist-page suggestions, fetching on a miss. The preference controls queue autofeed, matching Django's behavior;
+artist-page suggestions, fetching on a miss. The preference controls queue autofeed;
 it does not disable artist-page suggestions. After playback updates, the browser
 also requests artwork and refreshes `/queue/` when viewing the queue page.
 Those are separate requests from the playback response.
@@ -103,7 +100,7 @@ also covers tags temporarily renamed or transferred between users. Existing
 database rows need no backfill: initial cache construction reads current contents,
 and reserved tag identities detect creation, deletion, renaming, and ownership
 changes. Startup adds the revision tables and triggers automatically; no manual
-migration or search rebuild is required. External worker, CLI, and Django writes
+migration or search rebuild is required. External worker and CLI writes
 invalidate caches too, while rolled-back writes do not.
 
 Normal autofeed includes already queued tracks, matching the previous behavior;
@@ -142,7 +139,7 @@ Regression tests cover user and artist isolation, queue and blacklist edits,
 tag renaming/ownership/membership changes, missing tracks, sparse IDs, external
 writes, rollback, cascading deletes, empty pools, concurrent refreshes, stale
 selection revalidation, eviction, and warm endpoint query bounds. All existing
-Last.fm preference checks and Django response/state comparisons remain in place.
+Last.fm preference checks remain in place.
 
 ## Cached similar-artist lookups
 

@@ -12,10 +12,10 @@ The application now caches the original query's results, limited to 25 raw track
 rows. Each request reads one revision counter instead of rerunning the grouped
 query. The query and indexes remain unchanged to preserve SQLite's existing
 representative-track selection, ordering, timestamps, missing-track behavior,
-empty-album grouping and the HTML produced by Django.
+empty-album grouping and rendered HTML.
 
 SQLite triggers advance `go_home_revision` on track inserts, updates and deletes,
-including writes from a worker, CLI or Django process. Music-directory path
+including writes from a worker, CLI or external process. Music-directory path
 changes also invalidate the cache; cascading directory deletion invalidates it
 through the track-delete trigger. Rolled-back changes leave the revision intact.
 Queue and preference changes do not invalidate the shared library selection.
@@ -25,7 +25,7 @@ and derives playback/download paths using the current configuration.
 The next request after an invalidation rebuilds the cache. Startup begins with
 an empty cache, so the initial query and its library-size cost still apply.
 The counter and triggers are added automatically when opening SQLite, including
-an existing Django database. No new dependencies or configuration are required.
+existing databases. No new dependencies or configuration are required.
 GET and HEAD requests themselves make no database writes once preferences exist.
 
 ## Local measurements

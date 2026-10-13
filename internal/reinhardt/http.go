@@ -129,7 +129,7 @@ func (app *App) checkCSRF(request *http.Request) error {
 	if err != nil {
 		return forbidden()
 	}
-	// JavaScript can send the header; ordinary forms use the Django-compatible
+	// JavaScript can send the header; ordinary forms use the
 	// hidden field. A nonempty header takes precedence over the form value.
 	submittedToken := request.Header.Get("X-CSRFToken")
 	if submittedToken == "" {

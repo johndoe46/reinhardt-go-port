@@ -9,8 +9,7 @@ It does not send `X-Up-Target`. The renderer interpreted
 this as a full-page request and selected every distinct artist and album from
 the library to prepare the navigation bar's search suggestions. The dropdown
 renders `_track_dropdown_menu_items.html`, which has no navigation bar and never
-uses those suggestions. Django's dropdown view does not invoke its `suggest_data`
-template tag at all.
+uses those suggestions.
 
 The renderer also called `Preferences()` unnecessarily. Its `INSERT OR IGNORE`
 attempt writes even when preferences already exist: SQLite advances the table's
@@ -21,14 +20,13 @@ the shared connection.
 ## Measurements
 
 Local warm-request measurements on Linux/amd64, AMD Ryzen 7 5700X, using synthetic
-SQLite databases stored on `/tmp` (tmpfs). Each case uses 20 requests. The Go
-measurement invokes the real HTTP handler with `httptest`; the Django measurement
-uses its test client and middleware, with the same schema/data copied into
-test-owned databases. Django uses its existing file-based ORM cache. These are
-in-process handler measurements, excluding network, proxy, and browser costs;
+SQLite databases stored on `/tmp` (tmpfs). Each case uses 20 requests. The
+measurement invokes the real HTTP handler with `httptest` and test-owned
+databases. These are in-process handler measurements, excluding network, proxy,
+and browser costs;
 they do not measure the production host.
 
-| Library size | Go before, plain fetch | Go after, plain fetch |
+| Library size | Before, plain fetch | After, plain fetch |
 | --- | ---: | ---: |
 | 3 tracks | 0.409 ms | 0.275 ms |
 | 10,000 tracks | 6.559 ms | 0.280 ms |
@@ -40,11 +38,9 @@ small menu. Afterward it allocates about 54 KB. Query count falls from six to
 three (session/user, track, favorite status), with zero writes and zero suggestion
 queries. Request cost no longer grows with library size in these measurements.
 
-With gzip enabled at 100,000 tracks, Go drops from 66.929 ms to 0.723 ms. Django's
-mean is 3.429 ms with gzip and 3.399 ms without it on the same synthetic data.
-The two test harnesses differ, so these numbers should not be taken as a general
-language/framework speed comparison. The before/after Go measurements and SQL
-trace identify the redundant library query directly.
+With gzip enabled at 100,000 tracks, handler time drops from 66.929 ms to
+0.723 ms. The before/after measurements and SQL trace identify the redundant
+library query directly.
 
 ## Change and regression coverage
 
@@ -55,8 +51,7 @@ gets the same optimization as a partial requested through Unpoly. No frontend
 header change is required.
 
 `TestDropdownAvoidsLayoutQueriesAndWrites` checks both request forms, counts SQL,
-and verifies the preferences sequence remains unchanged. Existing Django response
-comparisons check the rendered controls, translations, and fragment behavior.
+and verifies the preferences sequence remains unchanged.
 
 ## Reproduce
 
@@ -65,15 +60,8 @@ CGO_ENABLED=0 go test -mod=vendor ./internal/reinhardt -run '^$' \
   -bench BenchmarkMusicFileDropdown -benchtime=20x -count=1
 ```
 
-To compare Django on the same generated data, set `REINHARDT_HTTP_BENCH_EXPORT`
-to a **new, empty directory** for that command, then run:
-
-```sh
-../reinhardt/.venv/bin/python scripts/benchmark_dropdown.py /path/to/snapshots
-```
-
-The tools create temporary fixtures and do not read the user's library. Gzip
-compressors are now reused as described below. Full pages now
+The benchmark creates temporary fixtures and does not read the user's library.
+Gzip compressors are now reused as described below. Full pages now
 [cache search suggestions](suggestions-performance.md).
 Queue and footer query costs are covered in
 [the full-page investigation](full-page-queue-performance.md); this change

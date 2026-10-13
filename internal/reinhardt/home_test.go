@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestLatestAdditionsParityAndInvalidation(test *testing.T) {
+func TestLatestAdditionsSelectionAndInvalidation(test *testing.T) {
 	app := testApp(test)
 	populateHomeLibrary(test, app, 330)
 	stats := measureAppSQL(test, app)
@@ -72,7 +72,7 @@ VALUES(1,'new.mp3','New artist','New tune','New album','','','2030-01-01','2030-
 		test.Fatal(err)
 	}
 	check(0)
-	// Worker/CLI/Django writes must invalidate without touching the App object.
+	// Worker, CLI, and external writes must invalidate without touching the App object.
 	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)

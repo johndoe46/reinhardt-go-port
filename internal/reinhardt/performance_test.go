@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -267,17 +265,6 @@ func BenchmarkMusicFileDropdown(benchmark *testing.B) {
 INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,comment,year,duration,track_number,created_at,modified_at,missing)
 SELECT 1,printf('%d.mp3',id),printf('Artist %d',id/10),printf('Tune %d',id),printf('Album %d',id/5),'jazz','','2001',10,id,'2026-01-01','2026-01-01',0 FROM n`, tracks)
 				if err != nil {
-					benchmark.Fatal(err)
-				}
-			}
-			// Optional consistent snapshots let the Django benchmark use the same
-			// schema and data without ever opening the user's database.
-			if export := os.Getenv("REINHARDT_HTTP_BENCH_EXPORT"); export != "" {
-				if err := os.MkdirAll(export, 0700); err != nil {
-					benchmark.Fatal(err)
-				}
-				path := filepath.Join(export, fmt.Sprintf("tracks-%d.sqlite3", tracks))
-				if _, err := app.Store.DB.Exec("VACUUM INTO ?", path); err != nil {
 					benchmark.Fatal(err)
 				}
 			}

@@ -1,6 +1,5 @@
--- Bootstrap both new and existing Django databases without recreating legacy
--- tables. Go-only state uses a separate go_ namespace; Django migration history
--- remains owned by Django.
+-- Initialize new databases and add missing schema objects to existing ones
+-- without recreating tables or discarding their data.
 CREATE TABLE IF NOT EXISTS auth_user (
  id INTEGER PRIMARY KEY AUTOINCREMENT, password TEXT NOT NULL DEFAULT '!', last_login DATETIME,
  is_superuser BOOL NOT NULL DEFAULT 0, username TEXT NOT NULL UNIQUE,
@@ -43,8 +42,8 @@ CREATE TABLE IF NOT EXISTS reinhardt_youtuberipfailure (
 CREATE TABLE IF NOT EXISTS go_session (token TEXT PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS go_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- Cache revisions belong in SQLite, not just HTTP handlers: workers, CLI commands,
--- and Django can all write the same library. Trigger increments roll back with
--- their originating transaction, so aborted edits do not invalidate caches.
+-- and external processes can all write the library. Trigger increments roll back
+-- with their originating transaction, so aborted edits do not invalidate caches.
 CREATE TABLE IF NOT EXISTS go_suggestions_revision (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO go_suggestions_revision(id) VALUES(1);
 CREATE TRIGGER IF NOT EXISTS go_suggestions_insert AFTER INSERT ON reinhardt_musicfile BEGIN

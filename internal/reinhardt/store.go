@@ -107,7 +107,7 @@ func openStore(config Config) (*Store, error) {
 		sep = "&"
 	}
 	// Put connection-local pragmas in the DSN so replacement connections also
-	// enforce foreign keys and wait for locks held by a worker or Django process.
+	// enforce foreign keys and wait for locks held by a worker or external process.
 	db, err := sql.Open("sqlite", dsn+sep+"_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
@@ -117,8 +117,8 @@ func openStore(config Config) (*Store, error) {
 	// transaction. Close result sets before another query: otherwise that query
 	// waits for the connection still held by the first set of rows.
 	db.SetMaxOpenConns(1)
-	// The bootstrap is additive: existing Django tables and rows stay in place;
-	// Go-specific sessions, jobs, settings, and cache revisions live alongside them.
+	// The bootstrap is additive: existing tables and rows stay in place;
+	// missing tables, indexes, and cache revisions are added automatically.
 	schema, _ := assets.ReadFile("schema.sql")
 	if _, err = db.Exec(string(schema)); err != nil {
 		db.Close()
@@ -172,7 +172,7 @@ func migrateLanguagePreference(db *sql.DB) error {
 		return err
 	}
 	if legacyTable {
-		// Explicit defaults also support Django tables whose required columns
+		// Explicit defaults also support existing tables whose required columns
 		// have application-level defaults rather than SQLite defaults.
 		if _, err = conn.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token,language_code)
 SELECT owner_id,1,1,1,1,0,NULL,language_code FROM go_user_language WHERE 1
@@ -209,7 +209,7 @@ func scanRows(rows *sql.Rows) ([]Row, error) {
 			columnValue := values[columnIndex]
 			if timestamp, ok := columnValue.(time.Time); ok {
 				// The SQLite driver decodes DATETIME columns; templates and the API
-				// expect Django-style UTC strings, not Go's default time formatting.
+				// expect ISO 8601 UTC strings with a numeric timezone offset.
 				format := "2006-01-02T15:04:05"
 				if timestamp.Nanosecond() != 0 {
 					format += ".000000"

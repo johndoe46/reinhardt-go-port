@@ -21,13 +21,12 @@ TEST ?= .
 TEST_FLAGS ?=
 COVERAGE ?= $(BUILD_DIR)/coverage.out
 COVERAGE_HTML ?= $(BUILD_DIR)/coverage.html
-DJANGO_PYTHON ?= ../reinhardt/.venv/bin/python
 
 # Production and normal verification use pure Go and vendored sources.
 # Go's race detector requires CGO, so test-race is an explicit exception.
 export CGO_ENABLED := 0
 export GOTOOLCHAIN ?= local
-export GO DJANGO_PYTHON
+export GO
 MODULE_FLAGS := -mod=vendor
 APP_FLAGS = --env-file "$(ENV_FILE)" $(if $(DATABASE),--database "$(DATABASE)")
 LISTEN_FLAGS = $(if $(LISTEN),--listen "$(LISTEN)")
@@ -35,7 +34,7 @@ DEV_BUILD_CMD = $(MAKE) build BIN="$(abspath $(BUILD_DIR))/dev/reinhardt"
 
 .PHONY: help doctor deps env setup install build build-debug build-linux-arm64 dev run run-http \
 	worker worker-once cli migrate check-app fmt fmt-check vet check test \
-	test-verbose test-coverage test-race test-parity ci verify vendor tidy clean
+	test-verbose test-coverage test-race ci verify vendor tidy clean
 
 ##@ Help and prerequisites
 help: ## Show targets, variables, and examples (default)
@@ -50,26 +49,22 @@ help: ## Show targets, variables, and examples (default)
 	@printf '  ENV_FILE, DATABASE    Dotenv file and optional SQLite path override\n'
 	@printf '  LISTEN, ARGS          Server listen address and extra CLI arguments\n'
 	@printf '  TEST, TEST_FLAGS      Test name regexp and extra go test flags\n'
-	@printf '  DJANGO_PYTHON         Python interpreter for optional Django parity tests\n'
 	@printf '\nExamples:\n'
 	@printf '  make setup\n  make install\n  make run LISTEN=127.0.0.1:8000\n'
 	@printf '  make dev LISTEN=127.0.0.1:8000\n'
 	@printf '  make cli ARGS="giveaccess example-user --superuser"\n'
 	@printf '  make cli ARGS="addmusicdir /path/to/music"\n'
 	@printf '  make test TEST=TestStreamingAndDelegate TEST_FLAGS=-count=1\n'
-	@printf '  make migrate DATABASE=/path/to/copied-django.sqlite3\n'
+	@printf '  make migrate DATABASE=/path/to/copy.sqlite3\n'
 	@printf '  make build-linux-arm64\n'
 
-doctor: ## Report Go, optional media tools, and parity prerequisites
+doctor: ## Report Go and optional media tools
 	@command -v "$(GO)" >/dev/null || { printf 'Missing Go: install Go 1.26 or newer.\n' >&2; exit 1; }
 	@$(GO) version
 	@for tool in ffmpeg yt-dlp; do \
 		if command -v "$$tool" >/dev/null; then printf '%s: available\n' "$$tool"; \
 		else printf '%s: absent (optional media features)\n' "$$tool"; fi; \
 	done
-	@if command -v "$(DJANGO_PYTHON)" >/dev/null; then \
-		printf 'Django parity interpreter: %s\n' "$(DJANGO_PYTHON)"; \
-	else printf 'Django parity interpreter: absent (set DJANGO_PYTHON if needed)\n'; fi
 
 ##@ Setup and installation
 deps: ## Verify all required Go packages are available from vendor, offline
@@ -156,12 +151,9 @@ test-coverage: ## Write coverage data and an HTML report under BUILD_DIR
 test-race: ## Run the race detector (requires a C compiler; CGO enabled for tests)
 	CGO_ENABLED=1 $(GO) test $(MODULE_FLAGS) $(TEST_FLAGS) -race -run "$(TEST)" ./...
 
-test-parity: ## Compare Go responses with Django (requires DJANGO_PYTHON)
-	sh scripts/test-parity.sh
-
 ci: check test build ## Run normal CI checks, regressions, and a release build
 
-verify: ci test-parity ## Run CI plus Django response comparisons
+verify: ci ## Run all CI checks
 
 ##@ Dependency maintenance and cleanup
 vendor: ## Refresh vendored sources from go.mod (may download modules)
