@@ -298,6 +298,9 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 		if len(tracks) != expected {
 			test.Fatal(source, tracks)
 		}
+		if !strings.Contains(response.Body.String(), source+" playlist") || !strings.Contains(response.Body.String(), fmt.Sprintf("(%d tracks)", expected)) {
+			test.Fatal("tag form lost its selected tag or added count", response.Body.String())
+		}
 		if source == "queue" && tracks[0].N("id") != 2 {
 			test.Fatal("queue ordering lost")
 		}
@@ -321,6 +324,64 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 	requireCode(test, response, 200)
 	response = call(app, "POST", "/reorder_queue/", 1, url.Values{"list_pk": {fmt.Sprint(foreign)}, "new_order": {`[{"item":1,"rank":1}]`}}, true)
 	requireCode(test, response, 404)
+}
+
+func TestBulkDirectActionsAvoidTagFormData(test *testing.T) {
+	for _, scenario := range []struct {
+		source, target string
+		tracks         []int64
+	}{
+		{"artist", "queue", []int64{2, 1}},
+		{"artist", "favorites", []int64{1, 2}},
+		{"search", "queue", []int64{2, 1, 3}},
+		{"search", "favorites", []int64{1, 2, 3}},
+		{"queue", "favorites", []int64{2, 1}},
+	} {
+		test.Run(scenario.source+"/"+scenario.target, func(test *testing.T) {
+			app := testApp(test)
+			mustTag(test, app, 1, "queue", []int64{2, 1})
+			favorites := mustTag(test, app, 1, "favorites", nil)
+			stats := measureAppSQL(test, app)
+			path := "/" + scenario.source + "/add_to_" + scenario.target + "/"
+			for _, fragment := range []bool{false, true} {
+				stats.calls.Store(0)
+				response := call(app, "POST", path, 1, url.Values{"artist": {"Artist"}, "sq": {"tune"}}, fragment)
+				requireCode(test, response, 200)
+				// Session, source tracks, target ID, maximum rank, and one insert per
+				// source track suffice. Neither tag-form query belongs in this path.
+				if queries := stats.calls.Load(); queries != int64(len(scenario.tracks)+4) {
+					test.Fatalf("direct addition fetched unused data: SQL=%d, want %d", queries, len(scenario.tracks)+4)
+				}
+				if !strings.Contains(response.Body.String(), `id="alert_space"`) || !strings.Contains(response.Body.String(), `data-taglabel="`+scenario.target+`"`) {
+					test.Fatal("direct addition lost its confirmation", response.Body.String())
+				}
+			}
+			var tracks []int64
+			if scenario.target == "queue" {
+				queue, err := app.Store.Queue(1)
+				if err != nil {
+					test.Fatal(err)
+				}
+				for _, item := range queue {
+					tracks = append(tracks, item.N("music_file_id"))
+				}
+			} else {
+				rows, err := app.Store.TagTracks(favorites)
+				if err != nil {
+					test.Fatal(err)
+				}
+				tracks = ids(rows)
+			}
+			if fmt.Sprint(tracks) != fmt.Sprint(scenario.tracks) {
+				test.Fatalf("tracks=%v, want %v", tracks, scenario.tracks)
+			}
+			stats.calls.Store(0)
+			requireCode(test, call(app, "GET", path, 1, nil, true), http.StatusMethodNotAllowed)
+			if queries := stats.calls.Load(); queries != 1 {
+				test.Fatalf("rejected GET fetched action data: SQL=%d, want only session lookup", queries)
+			}
+		})
+	}
 }
 
 func TestSearchAPIValidationAndFTS(test *testing.T) {

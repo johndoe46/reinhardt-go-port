@@ -404,7 +404,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 	case "add_to_tag/", "remove_from_tag/", "toggle_tag/":
 		return app.tagAction(responseWriter, request, user, path)
 	case "artist/add_to_tag/", "artist/add_to_favorites/", "artist/add_to_queue/", "search/add_to_tag/", "search/add_to_favorites/", "search/add_to_queue/", "queue/add_to_tag/", "queue/add_to_favorites/":
-		return app.bulk(responseWriter, request, user, path)
+		return app.bulkAddTracks(responseWriter, request, user, path)
 	case "music_file_tagger/", "music_file_dropdown/":
 		if err := safeOnly(request); err != nil {
 			return err
@@ -676,7 +676,12 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 	return app.render(responseWriter, request, user, "reinhardt/_tag_message.html", TemplateContext{"object_label": object, "tag_label": name, "action": action, "object_pk": query}, 200)
 }
 
-func (app *App) bulk(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
+// bulkAddTracks adds an artist's tracks, search results, or the current queue to
+// a destination tag belonging to the current user. The route identifies the
+// source and action. Adding to a custom tag displays a selection/creation form
+// and processes its submission; adding to queue or favorites requires POST and
+// returns a confirmation fragment. Store.AddTracks preserves existing memberships.
+func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	source, action := parts[0], parts[1]
 	ctx := TemplateContext{}
@@ -684,15 +689,17 @@ func (app *App) bulk(responseWriter http.ResponseWriter, request *http.Request, 
 	if source == "search" {
 		value = request.FormValue("sq")
 	}
-	ctx["artist"] = value
-	ctx["q"] = value
-	tags, operationErr := app.Store.Tags(user.N("id"), false)
-	if operationErr != nil {
-		return operationErr
-	}
-	ctx["tags"] = tags
 	var target string
-	if action != "add_to_tag" {
+	if action == "add_to_tag" {
+		// Only the tag-selection form needs the user's available tags.
+		ctx["artist"] = value
+		ctx["q"] = value
+		tags, err := app.Store.Tags(user.N("id"), false)
+		if err != nil {
+			return err
+		}
+		ctx["tags"] = tags
+	} else {
 		if err := postOnly(request); err != nil {
 			return err
 		}
@@ -718,6 +725,7 @@ func (app *App) bulk(responseWriter http.ResponseWriter, request *http.Request, 
 			}
 		}
 		var tracks []Row
+		var operationErr error
 		switch source {
 		case "artist":
 			tracks, operationErr = app.Store.Tracks("WHERE m.artist=? AND m.missing=0 ORDER BY m.album,m.track_number", value)
@@ -737,12 +745,15 @@ func (app *App) bulk(responseWriter http.ResponseWriter, request *http.Request, 
 		if err != nil {
 			return err
 		}
-		ctx["added_count"] = count
-		tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.N("id"), target)
-		if err != nil {
-			return err
+		if action == "add_to_tag" {
+			// Redisplay the form with the destination and number of newly added tracks.
+			ctx["added_count"] = count
+			tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.N("id"), target)
+			if err != nil {
+				return err
+			}
+			ctx["selected_tag"] = tag
 		}
-		ctx["selected_tag"] = tag
 	}
 	if action == "add_to_tag" {
 		return app.render(responseWriter, request, user, "reinhardt/"+source+"_add_to_tag.html", ctx, 200)
