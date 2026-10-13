@@ -34,8 +34,11 @@ func newTemplates() (Templates, error) {
 		"dict":  templateDict,
 		"scope": templateScope, "length": templateLength, "first": templateFirst,
 		"regroup": regroup, "loopInfo": templateLoopInfo, "contains": templateContains,
-		"eq": templateEqual, "ne": func(left, right any) bool { return !templateEqual(left, right) },
-		"gt":           func(left, right any) bool { return number(left) > number(right) },
+		"eq": templateEqual, "ne": func(left, right any) (bool, error) {
+			equal, err := templateEqual(left, right)
+			return !equal, err
+		},
+		"gt":           templateGreater,
 		"defaultValue": templateDefault, "yesno": templateYesNo, "boolString": templateBool,
 		"truncate": templateTruncate, "humanDuration": templateDuration,
 		"hasManyArtists": templateHasManyArtists, "title": templateTitle, "urlencode": templateURLQuery,
@@ -163,29 +166,53 @@ func templateLoopInfo(index int) Row {
 	return Row{"first": index == 0, "counter": index + 1}
 }
 
-func templateContains(value, list any) bool {
+func templateContains(value, list any) (bool, error) {
 	reflectedList := reflect.ValueOf(list)
 	if !reflectedList.IsValid() || (reflectedList.Kind() != reflect.Slice && reflectedList.Kind() != reflect.Array) {
-		return false
+		return false, nil
 	}
 	for index := 0; index < reflectedList.Len(); index++ {
-		if templateEqual(value, reflectedList.Index(index).Interface()) {
-			return true
+		equal, err := templateEqual(value, reflectedList.Index(index).Interface())
+		if err != nil {
+			return false, err
+		}
+		if equal {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func templateEqual(left, right any) bool {
+func templateEqual(left, right any) (bool, error) {
 	// SQL IDs are int64 while Go template integer literals are int.
 	isInteger := func(value any) bool {
 		reflectedValue := reflect.ValueOf(value)
 		return reflectedValue.IsValid() && reflectedValue.Kind() >= reflect.Int && reflectedValue.Kind() <= reflect.Uint64
 	}
 	if isInteger(left) && isInteger(right) {
-		return number(left) == number(right)
+		leftNumber, err := number(left)
+		if err != nil {
+			return false, err
+		}
+		rightNumber, err := number(right)
+		if err != nil {
+			return false, err
+		}
+		return leftNumber == rightNumber, nil
 	}
-	return reflect.DeepEqual(left, right)
+	return reflect.DeepEqual(left, right), nil
+}
+
+func templateGreater(left, right any) (bool, error) {
+	leftNumber, err := number(left)
+	if err != nil {
+		return false, err
+	}
+	rightNumber, err := number(right)
+	if err != nil {
+		return false, err
+	}
+	return leftNumber > rightNumber, nil
 }
 
 func templateDefault(value, fallback any) any {
@@ -227,9 +254,12 @@ func templateTruncate(value any, count int) string {
 	return string(runes[:count-1]) + "…"
 }
 
-func templateDuration(value any) string {
-	seconds := number(value)
-	return fmt.Sprintf("%02d:%02d:%02d", seconds/3600, seconds/60%60, seconds%60)
+func templateDuration(value any) (string, error) {
+	seconds, err := number(value)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%02d:%02d:%02d", seconds/3600, seconds/60%60, seconds%60), nil
 }
 
 func templateHasManyArtists(rows []Row) bool {

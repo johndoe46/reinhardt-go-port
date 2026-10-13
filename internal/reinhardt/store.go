@@ -6,11 +6,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -39,16 +42,60 @@ func (row Row) S(key string) string {
 	}
 	return fmt.Sprint(row[key])
 }
-func (row Row) N(key string) int64 { return number(row[key]) }
+
+// N reads a numeric projection field, defaulting missing or invalid values to
+// zero. Call number directly when conversion errors must be reported.
+func (row Row) N(key string) int64 {
+	value, err := number(row[key])
+	if err != nil {
+		return 0
+	}
+	return value
+}
 func (row Row) B(key string) bool {
 	if booleanValue, ok := row[key].(bool); ok {
 		return booleanValue
 	}
 	return row.N(key) != 0
 }
-func number(value any) int64 {
-	integerValue, _ := strconv.ParseInt(fmt.Sprint(value), 10, 64)
-	return integerValue
+
+// number converts integer-valued inputs without formatting native numbers as
+// strings. Nil represents an absent value; other invalid inputs return an error.
+func number(value any) (int64, error) {
+	switch value := value.(type) {
+	case nil:
+		return 0, nil
+	case int64:
+		return value, nil
+	case int:
+		return int64(value), nil
+	case string:
+		return strconv.ParseInt(value, 10, 64)
+	case json.Number:
+		return value.Int64()
+	}
+	// Reflection also handles named numeric types used in template arguments.
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflected.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		integer := reflected.Uint()
+		if integer <= math.MaxInt64 {
+			return int64(integer), nil
+		}
+		return 0, fmt.Errorf("integer of type %T exceeds int64 range", value)
+	case reflect.Float32, reflect.Float64:
+		integer := reflected.Float()
+		// The upper bound is exclusive: float64(MaxInt64) rounds up to 2^63.
+		if !math.IsNaN(integer) && integer >= -0x1p63 && integer < 0x1p63 && math.Trunc(integer) == integer {
+			return int64(integer), nil
+		}
+		return 0, fmt.Errorf("value of type %T is not an integer within int64 range", value)
+	case reflect.String:
+		return strconv.ParseInt(reflected.String(), 10, 64)
+	}
+	return 0, fmt.Errorf("cannot convert %T to an integer", value)
 }
 func token() string {
 	randomBytes := make([]byte, 32)
