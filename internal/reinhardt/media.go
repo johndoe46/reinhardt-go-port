@@ -708,6 +708,12 @@ func (store *Store) indexFile(path string, dir Row) error {
 	if err != nil {
 		return err
 	}
+	return store.indexFileMetadata(path, dir, trackMetadata)
+}
+
+// indexFileMetadata stores already parsed metadata and queues synchronization
+// without reopening the audio. Callers supply timestamps for the indexed file.
+func (store *Store) indexFileMetadata(path string, dir, trackMetadata Row) error {
 	if trackMetadata.S("artist") == "" || trackMetadata.S("title") == "" {
 		return fmt.Errorf("artist and title are required")
 	}

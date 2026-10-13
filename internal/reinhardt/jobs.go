@@ -140,7 +140,16 @@ func (store *Store) importFile(path string, dir Row) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err = store.indexFile(dest, dir); err != nil {
+	// The audio was copied unchanged, so reuse its parsed tags and duration.
+	// Index timestamps still reflect the new library file, rather than the source.
+	info, err := os.Stat(dest)
+	if err != nil {
+		return "", err
+	}
+	modifiedAt := info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")
+	trackMetadata["created_at"] = modifiedAt
+	trackMetadata["modified_at"] = modifiedAt
+	if err = store.indexFileMetadata(dest, dir, trackMetadata); err != nil {
 		return "", err
 	}
 	// Keep the import source until both publication and indexing succeed. Those

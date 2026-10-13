@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func remoteResponse(data string) *http.Response {
@@ -245,6 +246,38 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 			metadata, err = app.Store.Metadata(path)
 			if err != nil || metadata.S("title") != "Generated track" {
 				test.Fatal("artwork embedding lost metadata", err)
+			}
+		}
+		// Imports must retain the parsed audio fields but use the copied file's
+		// timestamps, even when the source has an old modification time.
+		sourceTime := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		if err = os.Chtimes(path, sourceTime, sourceTime); err != nil {
+			test.Fatal(err)
+		}
+		destination, err := app.Store.importFile(path, dir)
+		if err != nil {
+			test.Fatal(err)
+		}
+		if _, err = os.Stat(path); !os.IsNotExist(err) {
+			test.Fatal("successful import retained its source", err)
+		}
+		info, err := os.Stat(destination)
+		if err != nil {
+			test.Fatal(err)
+		}
+		imported, err := app.Store.One("SELECT * FROM reinhardt_musicfile WHERE relative_path=?", filepath.Join("a", "artist", "generated-album", "03-generated-track"+ext))
+		if err != nil {
+			test.Fatal(err)
+		}
+		for _, field := range []string{"artist", "title", "album", "genre", "year", "comment", "duration", "track_number"} {
+			if imported.S(field) != metadata.S(field) {
+				test.Fatalf("import changed %s: got %q, want %q", field, imported.S(field), metadata.S(field))
+			}
+		}
+		for _, field := range []string{"created_at", "modified_at"} {
+			indexedTime, err := time.Parse(time.RFC3339Nano, imported.S(field))
+			if err != nil || !indexedTime.Equal(info.ModTime().Truncate(time.Microsecond)) || indexedTime.Equal(sourceTime) {
+				test.Fatalf("%s=%q, want destination time %s: %v", field, imported.S(field), info.ModTime(), err)
 			}
 		}
 	}
