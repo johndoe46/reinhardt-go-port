@@ -29,9 +29,9 @@
                 <div class="mb-3 add-to-tag-choice__existing">
                     <label for="taginput" class="form-label">{{ call .translate_literal "tag" }}</label>
                     <select id="taginput" name="tag_pk" class="form-select">
-                        {{ $context1 := . }}{{ range $index1, $row1 := .tags }}{{ with scope $context1 "tag" $row1 "forloop" (loopInfo $index1) }}
-                            <option value="{{ .tag.pk }}">{{ .tag.label }}</option>
-                        {{ end }}{{ end }}
+                        {{ range .tags }}
+                            <option value="{{ .pk }}">{{ .label }}</option>
+                        {{ end }}
                     </select>
                 </div>
             {{ else }}
