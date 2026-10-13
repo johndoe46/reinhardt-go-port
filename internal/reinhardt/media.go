@@ -724,15 +724,12 @@ func (store *Store) indexFileMetadata(path string, dir, trackMetadata Row) error
 	// The legacy schema makes relative_path globally unique, even across music
 	// directories. Update in place so rescans preserve IDs and playlist membership;
 	// INSERT OR REPLACE would delete the old row and cascade its associations.
-	_, err = store.DB.Exec(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0`, dir.N("id"), relative, trackMetadata["artist"], trackMetadata["title"], trackMetadata["album"], trackMetadata["genre"], trackMetadata["year"], trackMetadata["comment"], trackMetadata["duration"], trackMetadata["track_number"], trackMetadata["created_at"], trackMetadata["modified_at"])
+	var trackID int64
+	err = store.DB.QueryRow(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0 RETURNING id`, dir.N("id"), relative, trackMetadata["artist"], trackMetadata["title"], trackMetadata["album"], trackMetadata["genre"], trackMetadata["year"], trackMetadata["comment"], trackMetadata["duration"], trackMetadata["track_number"], trackMetadata["created_at"], trackMetadata["modified_at"]).Scan(&trackID)
 	if err != nil {
 		return err
 	}
-	existingTrack, err := store.One("SELECT id FROM reinhardt_musicfile WHERE relative_path=?", relative)
-	if err != nil {
-		return fmt.Errorf("find indexed music file %q in database %q: %w", relative, store.Config["DATABASE_PATH"], err)
-	}
-	return store.enqueueSync(existingTrack.N("id"))
+	return store.enqueueSync(trackID)
 }
 func walkMusic(root string, visit func(string) error) error {
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
