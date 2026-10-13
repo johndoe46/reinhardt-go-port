@@ -457,8 +457,9 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		if err != nil {
 			return err
 		}
+		translator := app.translator(user)
 		for _, failure := range failures {
-			failure["modified_at"] = app.displayDate(failure.S("modified_at"))
+			failure["modified_at"] = translator.displayDate(failure.S("modified_at"), app.Store.Config["TIME_ZONE"])
 		}
 		return app.render(responseWriter, request, user, "reinhardt/ytrip_failures.html", TemplateContext{"failures": failures}, 200)
 	}

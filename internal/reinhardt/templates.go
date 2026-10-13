@@ -1,7 +1,6 @@
 package reinhardt
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -32,6 +31,7 @@ func newTemplates() (Templates, error) {
 	}
 	baseName := "reinhardt/_base.html"
 	base := template.New(baseName).Funcs(template.FuncMap{
+		"dict":  templateDict,
 		"scope": templateScope, "length": templateLength, "first": templateFirst,
 		"regroup": regroup, "loopInfo": templateLoopInfo, "contains": templateContains,
 		"eq": templateEqual, "ne": func(left, right any) bool { return !templateEqual(left, right) },
@@ -123,6 +123,21 @@ func templateScope(ctx TemplateContext, pairs ...any) TemplateContext {
 		result[fmt.Sprint(pairs[index])] = pairs[index+1]
 	}
 	return result
+}
+
+func templateDict(pairs ...any) (map[string]any, error) {
+	if len(pairs)%2 != 0 {
+		return nil, fmt.Errorf("dict requires key/value pairs")
+	}
+	result := make(map[string]any, len(pairs)/2)
+	for index := 0; index < len(pairs); index += 2 {
+		key, ok := pairs[index].(string)
+		if !ok {
+			return nil, fmt.Errorf("dict key must be a string")
+		}
+		result[key] = pairs[index+1]
+	}
+	return result, nil
 }
 
 func templateLength(value any) int {
@@ -305,43 +320,6 @@ func (store *Store) URL(name string, args ...any) string {
 		}
 	}
 	return store.Config.Path(path)
-}
-
-// Use the committed gettext catalogue, including multiline messages.
-func translations() map[string]string {
-	catalogueData, _ := assets.ReadFile("locale/fr/LC_MESSAGES/django.po")
-	result := map[string]string{}
-	key, value, mode := "", "", ""
-	flush := func() {
-		if key != "" && value != "" {
-			result[key] = value
-		}
-	}
-	for _, line := range strings.Split(string(catalogueData), "\n") {
-		if strings.HasPrefix(line, "msgid ") {
-			flush()
-			key = ""
-			value = ""
-			mode = "id"
-			line = strings.TrimPrefix(line, "msgid ")
-		} else if strings.HasPrefix(line, "msgstr ") {
-			mode = "str"
-			line = strings.TrimPrefix(line, "msgstr ")
-		} else if !strings.HasPrefix(line, "\"") {
-			continue
-		}
-		var text string
-		if json.Unmarshal([]byte(line), &text) != nil {
-			continue
-		}
-		if mode == "id" {
-			key += text
-		} else {
-			value += text
-		}
-	}
-	flush()
-	return result
 }
 
 func generatedAt() string { return time.Now().UTC().Format("2006-01-02 15:04:05") }

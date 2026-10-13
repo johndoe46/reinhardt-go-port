@@ -2,40 +2,46 @@ package reinhardt
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
-func (app *App) displayDate(raw string) string {
+func (translator *Translator) displayDate(raw, timezone string) string {
 	parsedTime, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {
 		return raw
 	}
-	loc, err := time.LoadLocation(app.Store.Config["TIME_ZONE"])
+	loc, err := time.LoadLocation(timezone)
 	if err == nil {
 		parsedTime = parsedTime.In(loc)
 	}
-	month := int(parsedTime.Month()) - 1
-	if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
-		months := []string{"janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"}
-		return fmt.Sprintf("%d %s %d %02d:%02d", parsedTime.Day(), months[month], parsedTime.Year(), parsedTime.Hour(), parsedTime.Minute())
-	}
-	months := []string{"Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."}
 	hour := parsedTime.Hour() % 12
 	if hour == 0 {
 		hour = 12
 	}
-	ampm := "a.m."
+	period := translator.Text("date.am")
 	if parsedTime.Hour() >= 12 {
-		ampm = "p.m."
+		period = translator.Text("date.pm")
 	}
-	clock := fmt.Sprintf("%d %s", hour, ampm)
-	if parsedTime.Minute() != 0 {
-		clock = fmt.Sprintf("%d:%02d %s", hour, parsedTime.Minute(), ampm)
-	} else if parsedTime.Hour() == 0 {
-		clock = "midnight"
-	} else if parsedTime.Hour() == 12 {
-		clock = "noon"
+	data := map[string]any{
+		"Day": parsedTime.Day(), "Month": translator.Text(fmt.Sprintf("date.month.%d", parsedTime.Month())),
+		"Year": parsedTime.Year(), "Hour": parsedTime.Hour(), "Hour12": hour,
+		"Minute": parsedTime.Minute(), "Period": period,
 	}
-	return fmt.Sprintf("%s %d, %d, %s", months[month], parsedTime.Day(), parsedTime.Year(), clock)
+	clock, err := translator.Format("date.clock", data)
+	if err != nil {
+		return raw
+	}
+	if parsedTime.Minute() == 0 {
+		if parsedTime.Hour() == 0 {
+			clock = translator.Text("date.clock.midnight")
+		} else if parsedTime.Hour() == 12 {
+			clock = translator.Text("date.clock.noon")
+		}
+	}
+	data["Clock"] = clock
+	formatted, err := translator.Format("date.format", data)
+	if err != nil {
+		return raw
+	}
+	return formatted
 }

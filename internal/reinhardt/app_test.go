@@ -587,30 +587,28 @@ func TestAssetsAreByteIdenticalToDjango(test *testing.T) {
 	if _, err := os.Stat(filepath.Join(djangoRoot, "templates")); os.IsNotExist(err) {
 		test.Skip("Django source checkout not present")
 	}
-	for _, root := range []string{"static", "locale"} {
-		err := fs.WalkDir(assets, root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			original, err := os.ReadFile(filepath.Join(djangoRoot, path))
-			if err != nil {
-				return err
-			}
-			copy, err := assets.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			if !bytes.Equal(original, copy) {
-				return fmt.Errorf("asset differs: %s", path)
-			}
-			return nil
-		})
+	err := fs.WalkDir(assets, "static", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			test.Fatal(err)
+			return err
 		}
+		if entry.IsDir() {
+			return nil
+		}
+		original, err := os.ReadFile(filepath.Join(djangoRoot, path))
+		if err != nil {
+			return err
+		}
+		copy, err := assets.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(original, copy) {
+			return fmt.Errorf("asset differs: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		test.Fatal(err)
 	}
 }
 

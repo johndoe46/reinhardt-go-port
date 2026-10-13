@@ -326,6 +326,19 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		template = "queue"
 	case "preferences/":
 		if request.Method == "POST" {
+			if request.PostForm.Has("language_code") {
+				code := request.PostForm.Get("language_code")
+				if code != "" && !app.Translations.supports(code) {
+					return bad(app.translator(user).Text("Unsupported language"))
+				}
+				if err := store.SetUserLanguage(owner, code); err != nil {
+					return err
+				}
+				// Render the updated language in the main fragment while Unpoly
+				// keeps the current player and the rest of the document in place.
+				user["language_code"] = code
+				return app.render(responseWriter, request, user, "reinhardt/preferences.html", ctx, 200)
+			}
 			_, err := store.Preferences(owner)
 			if err != nil {
 				return err

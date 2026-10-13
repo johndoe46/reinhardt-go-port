@@ -3,7 +3,7 @@ package assets
 
 import "embed"
 
-// FS contains the application's resources at their original runtime paths.
+// FS contains the application's embedded resources.
 //
-//go:embed schema.sql all:templates all:static all:locale
+//go:embed schema.sql all:templates all:static all:messages
 var FS embed.FS

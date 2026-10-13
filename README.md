@@ -11,8 +11,8 @@ editing, playlist, and artwork features require no Python or external programs.
 The HTML templates use Go's standard `html/template` package with contextual
 escaping. Layouts and partials use native Go template definitions; helpers handle
 translations, grouping, URLs, and formatting. Each page has an isolated template
-set so its layout overrides cannot affect another page. Static files and locale
-catalogues are copied byte for byte from Django. URLs, element IDs, `data-*`
+set so its layout overrides cannot affect another page. Runtime translations use
+embedded Go message catalogues. URLs, element IDs, `data-*`
 attributes, Unpoly fragment targets, the persistent player, oscilloscope, and DJ
 interface are preserved. The template sources use Go syntax; rendered HTML may
 differ in comments, whitespace, and equivalent HTML or JavaScript escaping.
@@ -45,10 +45,11 @@ The direct dependencies listed in [go.mod](go.mod) serve these purposes:
 | `github.com/emersion/go-sasl` | Provide SASL PLAIN authentication for SMTP connections using configured email credentials. |
 | `github.com/emersion/go-smtp` | Send login-link emails over SMTP, including STARTTLS and implicit TLS connections. |
 | `github.com/joho/godotenv` | Parse `.env` files and the original application's configuration file. |
+| `github.com/nicksnyder/go-i18n/v2` | Load embedded message catalogues and translate messages with language fallback, named variables, and plural rules. |
 | `github.com/spf13/cobra` | Define CLI commands, flags, aliases, and help output for the server, worker, and management tools. |
 | `github.com/tcolgate/mp3` | Scan MP3 frames to calculate track duration during indexing. |
 | `golang.org/x/image` | Resize artwork, decode WebP images, and render fallback cover labels with the embedded Go Mono font. |
-| `golang.org/x/text` | Normalize Unicode for slug generation and compose combining accents before rendering cover labels. |
+| `golang.org/x/text` | Match language preferences to available catalogues, normalize Unicode for slug generation, and compose combining accents before rendering cover labels. |
 | `modernc.org/sqlite` | Provide the SQLite driver for library data, sessions, settings, and durable jobs without requiring CGO. |
 
 These libraries and their transitive dependencies are vendored in `vendor/`
@@ -308,6 +309,33 @@ download limits. `DISCOGS_TOKEN` is accepted for compatibility; the original
 Discogs helper is unused by application routes. Django implementation settings
 such as `USE_DJANGO_ADMIN` and `STATIC_ROOT` are unnecessary in this port.
 
+### Languages and message catalogues
+
+Users can select English or French in **Preferences > Language**; the choice
+saves automatically. It is stored in `reinhardt_preferences.language_code`, which
+is added automatically to existing databases. Saved choices from the initial
+`go_user_language` table are migrated into preferences before that table is removed.
+An unset language uses the server default. The language selector saves independently
+of the playback switches. Changing language updates the Preferences fragment through
+Unpoly while playback continues. The form explains that a full page refresh is
+needed to apply the change throughout navigation, the player, and the document's
+`lang` attribute.
+**Server default** clears the account override and uses `LANGUAGE_CODE` (default
+`en-us`). Anonymous pages also use that setting. Regional tags such as `fr-fr`
+match the available catalogue; unsupported languages fall back to English.
+
+Translations use [go-i18n/v2](https://github.com/nicksnyder/go-i18n), with embedded
+JSON catalogues in [`internal/assets/messages`](internal/assets/messages).
+The English catalogue supplies fallback messages, and the French catalogue
+preserves the existing translations migrated from Django.
+
+To add a language, create `active.<BCP-47-language-tag>.json` in that directory.
+Include a `language_name` message containing the language's own name, translate
+the desired English message IDs, and rebuild. The loader discovers catalogues
+and adds their languages to the settings selector automatically. Missing messages
+fall back to English. See the [catalogue guide](internal/assets/messages/README.md)
+for named variables, plurals, and template helpers.
+
 The default data directory is `~/.reinhardt`. The port uses the existing
 `~/.reinhardt/db.sqlite3`, `~/.reinhardt/covers`, and `~/.reinhardt/config`
 by default. `BASE_DIR` controls this directory, `DATABASE_PATH` selects SQLite,
@@ -460,7 +488,7 @@ snapshots. Template tests cover layout isolation, missing values, query encoding
 and escaping of untrusted metadata. If Node.js is available, they also execute
 the rendered shared-player title assignment to check JavaScript injection and
 round-trip values. When the Django checkout is adjacent, tests also verify that
-embedded static files and translations are byte-identical.
+embedded static files are byte-identical.
 
 For differential checks using the original Django migrations and views:
 
@@ -473,7 +501,9 @@ temporary files. It compares full pages, Unpoly fragments, and API JSON with
 Django responses in English and French across populated, empty, and
 special-character libraries, plus playback state transitions (388 comparisons).
 It normalizes comments,
-whitespace, CSRF tokens, and equivalent HTML/JavaScript escaping.
+whitespace, CSRF tokens, and equivalent HTML/JavaScript escaping. The language
+selector and corrected document language are covered by Go-specific tests;
+the comparisons account for these intentional UI additions.
 It is not required to build or run the Go application.
 
 For dropdown response-time measurements and reproducible Go/Django benchmarks,

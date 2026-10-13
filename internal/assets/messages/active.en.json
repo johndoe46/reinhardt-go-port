@@ -1,0 +1,482 @@
+{
+  "Albums from": {
+    "other": "Albums from"
+  },
+  "Are you sure ?": {
+    "other": "Are you sure ?"
+  },
+  "Could not fetch video details. Enter them manually.": {
+    "other": "Could not fetch video details. Enter them manually."
+  },
+  "Download %(title)s": {
+    "other": "Download {{.Title}}"
+  },
+  "Download all": {
+    "other": "Download all"
+  },
+  "Email label": {
+    "other": "email:"
+  },
+  "Enter a valid email address.": {
+    "other": "Enter a valid email address."
+  },
+  "If an account exists for that email, an invite link has been sent.": {
+    "other": "If an account exists for that email, an invite link has been sent."
+  },
+  "Language": {
+    "other": "Language"
+  },
+  "Language changes take full effect after a full page refresh.": {
+    "other": "Language changes take full effect after a full page refresh."
+  },
+  "Looking up video details…": {
+    "other": "Looking up video details…"
+  },
+  "Music player": {
+    "other": "Music player"
+  },
+  "Now playing": {
+    "other": "Now playing"
+  },
+  "Play %(title)s": {
+    "other": "Play {{.Title}}"
+  },
+  "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device.": {
+    "other": "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device."
+  },
+  "Remove this shared link?": {
+    "other": "Remove this shared link?"
+  },
+  "Search for artwork on Google Images": {
+    "other": "Search for artwork on Google Images"
+  },
+  "Send login link": {
+    "other": "Send login link"
+  },
+  "Server default": {
+    "other": "Server default"
+  },
+  "Shared playlist": {
+    "other": "Shared playlist"
+  },
+  "Show oscilloscope in player": {
+    "other": "Show oscilloscope in player"
+  },
+  "Shuffle": {
+    "other": "Shuffle"
+  },
+  "Signed in as": {
+    "other": "Signed in as"
+  },
+  "Similar artists": {
+    "other": "Similar artists"
+  },
+  "Tags for": {
+    "other": "Tags for"
+  },
+  "The image will be copied next to the track and named after the audio file.": {
+    "other": "The image will be copied next to the track and named after the audio file."
+  },
+  "The image will be copied next to the track with its original filename.": {
+    "other": "The image will be copied next to the track with its original filename."
+  },
+  "This field is required.": {
+    "other": "This field is required."
+  },
+  "This playlist has no tracks yet.": {
+    "other": "This playlist has no tracks yet."
+  },
+  "Unsupported language": {
+    "other": "Unsupported language"
+  },
+  "Upload": {
+    "other": "Upload"
+  },
+  "Use this link to log in: %(url)s": {
+    "other": "Use this link to log in: {{.URL}}"
+  },
+  "You don't have any favorite... yet.": {
+    "other": "You don't have any favorite... yet."
+  },
+  "You don't have any tracks here... yet.": {
+    "other": "You don't have any tracks here... yet."
+  },
+  "Your Reinhardt login link": {
+    "other": "Your Reinhardt login link"
+  },
+  "Your search generated a large number of results. Results shown here are limited to the first 1000 items.": {
+    "other": "Your search generated a large number of results. Results shown here are limited to the first 1000 items."
+  },
+  "Youtube Rip": {
+    "other": "Youtube Rip"
+  },
+  "Youtube URL": {
+    "other": "Youtube URL"
+  },
+  "activate autofeed": {
+    "other": "activate autofeed"
+  },
+  "add": {
+    "other": "add"
+  },
+  "add a tag": {
+    "other": "add a tag"
+  },
+  "add all to queue": {
+    "other": "add all to queue"
+  },
+  "add artist to tag": {
+    "other": "add artist to tag"
+  },
+  "add queue to tag": {
+    "other": "add queue to tag"
+  },
+  "add search results to tag": {
+    "other": "add search results to tag"
+  },
+  "add to favorites": {
+    "other": "add to favorites"
+  },
+  "add to queue": {
+    "other": "add to queue"
+  },
+  "add to tag": {
+    "other": "add to tag"
+  },
+  "added": {
+    "other": "added"
+  },
+  "album": {
+    "other": "album"
+  },
+  "albums": {
+    "other": "albums"
+  },
+  "albums containing": {
+    "other": "albums containing"
+  },
+  "artist": {
+    "other": "artist"
+  },
+  "artist added to tag": {
+    "other": "artist added to tag"
+  },
+  "artists": {
+    "other": "artists"
+  },
+  "artists containing": {
+    "other": "artists containing"
+  },
+  "artwork": {
+    "other": "artwork"
+  },
+  "autofeed": {
+    "other": "autofeed"
+  },
+  "autofeed activated": {
+    "other": "autofeed activated"
+  },
+  "autofeed deactivated": {
+    "other": "autofeed deactivated"
+  },
+  "autofeed similar": {
+    "other": "autofeed similar"
+  },
+  "by": {
+    "other": "by"
+  },
+  "clear": {
+    "other": "clear"
+  },
+  "comment": {
+    "other": "comment"
+  },
+  "compilation, various artists": {
+    "other": "compilation, various artists"
+  },
+  "current artwork": {
+    "other": "current artwork"
+  },
+  "date.am": {
+    "other": "a.m."
+  },
+  "date.clock": {
+    "other": "{{.Hour12}}{{if .Minute}}:{{printf \"%02d\" .Minute}}{{end}} {{.Period}}"
+  },
+  "date.clock.midnight": {
+    "other": "midnight"
+  },
+  "date.clock.noon": {
+    "other": "noon"
+  },
+  "date.format": {
+    "other": "{{.Month}} {{.Day}}, {{.Year}}, {{.Clock}}"
+  },
+  "date.month.1": {
+    "other": "Jan."
+  },
+  "date.month.10": {
+    "other": "Oct."
+  },
+  "date.month.11": {
+    "other": "Nov."
+  },
+  "date.month.12": {
+    "other": "Dec."
+  },
+  "date.month.2": {
+    "other": "Feb."
+  },
+  "date.month.3": {
+    "other": "March"
+  },
+  "date.month.4": {
+    "other": "April"
+  },
+  "date.month.5": {
+    "other": "May"
+  },
+  "date.month.6": {
+    "other": "June"
+  },
+  "date.month.7": {
+    "other": "July"
+  },
+  "date.month.8": {
+    "other": "Aug."
+  },
+  "date.month.9": {
+    "other": "Sept."
+  },
+  "date.pm": {
+    "other": "p.m."
+  },
+  "deactivate autofeed": {
+    "other": "deactivate autofeed"
+  },
+  "details": {
+    "other": "details"
+  },
+  "download": {
+    "other": "download"
+  },
+  "download database": {
+    "other": "download database"
+  },
+  "email": {
+    "other": "email"
+  },
+  "empty request": {
+    "other": "empty request"
+  },
+  "existing tag": {
+    "other": "existing tag"
+  },
+  "explorer": {
+    "other": "explorer"
+  },
+  "failed downloads": {
+    "other": "failed downloads"
+  },
+  "failure": {
+    "other": "failure"
+  },
+  "favorites": {
+    "other": "favorites"
+  },
+  "friend tag": {
+    "other": "friend tag"
+  },
+  "friends": {
+    "other": "friends"
+  },
+  "friends lists": {
+    "other": "friends lists"
+  },
+  "from": {
+    "other": "from"
+  },
+  "generate share link": {
+    "other": "generate share link"
+  },
+  "genre": {
+    "other": "genre"
+  },
+  "genres": {
+    "other": "genres"
+  },
+  "genres containing": {
+    "other": "genres containing"
+  },
+  "home": {
+    "other": "home"
+  },
+  "invalid image": {
+    "other": "invalid image"
+  },
+  "language_name": {
+    "other": "English"
+  },
+  "latest additions": {
+    "other": "latest additions"
+  },
+  "login": {
+    "other": "login"
+  },
+  "manage tags": {
+    "other": "manage tags"
+  },
+  "more from same album": {
+    "other": "more from same album"
+  },
+  "more from same artist": {
+    "other": "more from same artist"
+  },
+  "more from same genre": {
+    "other": "more from same genre"
+  },
+  "new tag": {
+    "other": "new tag"
+  },
+  "next": {
+    "other": "next"
+  },
+  "no failed downloads": {
+    "other": "no failed downloads"
+  },
+  "no results": {
+    "other": "no results"
+  },
+  "not enough data": {
+    "other": "not enough data"
+  },
+  "open share link": {
+    "other": "open share link"
+  },
+  "play now": {
+    "other": "play now"
+  },
+  "player": {
+    "other": "player"
+  },
+  "preferences": {
+    "other": "preferences"
+  },
+  "queue": {
+    "other": "queue"
+  },
+  "queue added to tag": {
+    "other": "queue added to tag"
+  },
+  "refresh": {
+    "other": "refresh"
+  },
+  "remove": {
+    "other": "remove"
+  },
+  "remove from favorites": {
+    "other": "remove from favorites"
+  },
+  "remove from queue": {
+    "other": "remove from queue"
+  },
+  "remove from tag": {
+    "other": "remove from tag"
+  },
+  "remove shared link": {
+    "other": "remove shared link"
+  },
+  "removed": {
+    "other": "removed"
+  },
+  "rename": {
+    "other": "rename"
+  },
+  "results": {
+    "other": "results"
+  },
+  "retries": {
+    "other": "retries"
+  },
+  "retry": {
+    "other": "retry"
+  },
+  "saved": {
+    "other": "saved"
+  },
+  "search": {
+    "other": "search"
+  },
+  "search results": {
+    "other": "search results"
+  },
+  "search results added to tag": {
+    "other": "search results added to tag"
+  },
+  "see queue": {
+    "other": "see queue"
+  },
+  "see tracks": {
+    "other": "see tracks"
+  },
+  "send": {
+    "other": "send"
+  },
+  "share link": {
+    "other": "share link"
+  },
+  "show art": {
+    "other": "show art"
+  },
+  "tag": {
+    "other": "tag"
+  },
+  "tag already exists": {
+    "other": "tag already exists"
+  },
+  "tag name": {
+    "other": "tag name"
+  },
+  "tag name is empty": {
+    "other": "tag name is empty"
+  },
+  "tags": {
+    "other": "tags"
+  },
+  "title": {
+    "other": "title"
+  },
+  "toggle player": {
+    "other": "toggle player"
+  },
+  "track": {
+    "other": "track"
+  },
+  "track image": {
+    "other": "track image"
+  },
+  "tracks": {
+    "other": "tracks"
+  },
+  "tracks containing": {
+    "other": "tracks containing"
+  },
+  "unknown album": {
+    "other": "unknown album"
+  },
+  "unknown artist": {
+    "other": "unknown artist"
+  },
+  "unknown genre": {
+    "other": "unknown genre"
+  },
+  "updated": {
+    "other": "updated"
+  },
+  "year": {
+    "other": "year"
+  },
+  "you have no tags yet": {
+    "other": "you have no tags yet"
+  }
+}

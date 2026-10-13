@@ -122,6 +122,16 @@ func testDjangoDatabaseAndResponseParity(test *testing.T, root string) {
 				return
 			}
 			original, ported := normalizeHTML(snapshot.Body), normalizeHTML(response.Body.String())
+			// These are intentional additions to the Go UI; catalogue and
+			// per-user language behavior have dedicated regression coverage.
+			code := app.Translations.forLanguage(snapshot.Language).Code
+			original = regexp.MustCompile(`<html lang="[^"]*"`).ReplaceAllString(original, `<html lang="`+code+`"`)
+			if snapshot.Path == "/preferences/" {
+				languageForm := regexp.MustCompile(`<form id="language_preferences".*?</form>`)
+				ported = languageForm.ReplaceAllString(ported, "")
+				ported = strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(ported, " "))
+				original = strings.Replace(original, "Connecté:", app.Translations.forLanguage(code).Text("Signed in as")+":", 1)
+			}
 			if original != ported {
 				first := 0
 				for first < len(original) && first < len(ported) && original[first] == ported[first] {

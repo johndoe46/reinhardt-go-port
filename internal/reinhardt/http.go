@@ -22,7 +22,7 @@ import (
 type App struct {
 	Store        *Store
 	Templates    Templates
-	French       map[string]string
+	Translations *Translations
 	Client       *http.Client
 	AudioClient  *http.Client
 	coverMu      sync.Mutex
@@ -47,20 +47,15 @@ func newApp(store *Store) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	translations, err := newTranslations(assets)
+	if err != nil {
+		return nil, err
+	}
 	audioTransport := http.DefaultTransport.(*http.Transport).Clone()
 	// Client.Timeout covers body reads too. Use only a header deadline for audio
 	// so slow downloads and long tracks can outlive the short API timeout.
 	audioTransport.ResponseHeaderTimeout = 35 * time.Second
-	return &App{Store: store, Templates: templates, French: translations(), Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, coverCache: map[string]coverResult{}}, nil
-}
-func (app *App) translate(value any) string {
-	text := fmt.Sprint(value)
-	if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
-		if translation, ok := app.French[text]; ok {
-			return translation
-		}
-	}
-	return text
+	return &App{Store: store, Templates: templates, Translations: translations, Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, coverCache: map[string]coverResult{}}, nil
 }
 func (app *App) redirect(responseWriter http.ResponseWriter, request *http.Request, path string) {
 	// Unpoly uses this header to update its location during fragment navigation;
@@ -83,7 +78,7 @@ func (app *App) sessionUser(request *http.Request) Row {
 	if err != nil {
 		return Row{"is_authenticated": false}
 	}
-	user, err := app.Store.One(`SELECT u.* FROM auth_user u JOIN go_session s ON s.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
+	user, err := app.Store.One(`SELECT u.*,p.language_code FROM auth_user u JOIN go_session s ON s.owner_id=u.id LEFT JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
 	if err != nil {
 		return Row{"is_authenticated": false}
 	}
@@ -255,14 +250,17 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	ctx["csrf_token"] = app.csrf(responseWriter, request)
 	ctx["url"] = app.Store.URL
 	ctx["static"] = func(path string) string { return app.Store.Config.Path("static/" + path) }
-	ctx["translate"] = app.translate
-	// Literal catalogue strings are trusted, as they are in Django's translate
-	// tag. html/template still applies contextual escaping inside JS and URLs.
-	ctx["translate_literal"] = func(value any) template.HTML { return template.HTML(app.translate(value)) }
+	translator := app.translator(user)
+	ctx["LANGUAGE_CODE"] = translator.Code
+	ctx["languages"] = app.Translations.Languages
+	ctx["preferred_language"] = user.S("language_code")
+	ctx["translate"] = translator.Text
+	ctx["translate_literal"] = translator.Text
+	ctx["localize"] = translator.Message
 	ctx["generated_at"] = generatedAt()
 	ctx["preferences"] = Row{}
-	ctx["translate_format"] = func(formatText string, title any) string {
-		return strings.ReplaceAll(app.translate(formatText), "%(title)s", fmt.Sprint(title))
+	ctx["translate_format"] = func(formatText string, title any) (string, error) {
+		return translator.Format(formatText, map[string]any{"Title": fmt.Sprint(title)})
 	}
 	// Raw fetch() partials have no X-Up-Target header. Only templates using the
 	// page layout need preferences, the player footer, or library suggestions.
@@ -342,17 +340,13 @@ func jsonResponse(responseWriter http.ResponseWriter, data any) error {
 	responseWriter.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(responseWriter).Encode(data)
 }
-func formHTML(next, emailLabel, language string) template.HTML {
+func formHTML(next, emailLabel string) template.HTML {
 	value := ""
-	suffix := ":"
-	if strings.HasPrefix(language, "fr") {
-		suffix = "\u00a0:"
-	}
 	if next != "" {
 		value = ` value="` + html.EscapeString(next) + `"`
 	}
 	return template.HTML(`<div>
-    <label for="id_email">` + html.EscapeString(emailLabel+suffix) + `</label>
+    <label for="id_email">` + html.EscapeString(emailLabel) + `</label>
     <input type="email" name="email" class="form-control" maxlength="320" required id="id_email">
     <input type="hidden" name="next"` + value + ` id="id_next">
 </div>`)

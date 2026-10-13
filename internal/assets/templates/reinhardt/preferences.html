@@ -11,7 +11,18 @@
         </ol>
     </nav>
     <hr>
-    <p>Connecté: <i class="bi bi-person"></i> {{ .request.user.username }}</p>
+    <p>{{ call .translate_literal "Signed in as" }}: <i class="bi bi-person"></i> {{ .request.user.username }}</p>
+    <form id="language_preferences" method="post" action="{{ call .url "preferences" }}" up-submit up-autosubmit up-target="main" up-history="false" class="mb-3">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <label class="form-label" for="language_code">{{ call .translate_literal "Language" }}</label>
+        <select class="form-select mb-2" name="language_code" id="language_code">
+            <option value="" {{ if eq .preferred_language "" }}selected{{ end }}>{{ call .translate_literal "Server default" }}</option>
+            {{ range .languages }}
+                <option value="{{ .Code }}" {{ if eq $.preferred_language .Code }}selected{{ end }}>{{ .Name }}</option>
+            {{ end }}
+        </select>
+        <p class="form-text" role="status">{{ call .translate_literal "Language changes take full effect after a full page refresh." }}</p>
+    </form>
     <form method="post" action="{{ call .url "preferences" }}" up-autosubmit>
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
         <div class="form-check form-switch">

@@ -1,6 +1,7 @@
 package reinhardt
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -123,6 +124,10 @@ func openStore(config Config) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err = migrateLanguagePreference(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate language preference: %w", err)
+	}
 	store := &Store{db, config}
 	if config["SECRET_KEY"] == "" {
 		// Persist the fallback key so shared-playlist hashes survive restarts.
@@ -139,6 +144,48 @@ func openStore(config Config) (*Store, error) {
 		config["SECRET_KEY"] = cSecret
 	}
 	return store, nil
+}
+
+// Upgrade existing preferences and move language choices from the initial Go
+// implementation. The write lock serializes upgrades by server/worker processes.
+func migrateLanguagePreference(db *sql.DB) error {
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, "ROLLBACK")
+	var name string
+	err = conn.QueryRowContext(ctx, "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'").Scan(&name)
+	if err == sql.ErrNoRows {
+		_, err = conn.ExecContext(ctx, "ALTER TABLE reinhardt_preferences ADD COLUMN language_code TEXT")
+	}
+	if err != nil {
+		return err
+	}
+	var legacyTable bool
+	if err = conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='go_user_language')").Scan(&legacyTable); err != nil {
+		return err
+	}
+	if legacyTable {
+		// Explicit defaults also support Django tables whose required columns
+		// have application-level defaults rather than SQLite defaults.
+		if _, err = conn.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token,language_code)
+SELECT owner_id,1,1,1,1,0,NULL,language_code FROM go_user_language WHERE 1
+ON CONFLICT(owner_id) DO UPDATE SET language_code=excluded.language_code
+WHERE reinhardt_preferences.language_code IS NULL OR reinhardt_preferences.language_code=''`); err != nil {
+			return err
+		}
+		if _, err = conn.ExecContext(ctx, "DROP TABLE go_user_language"); err != nil {
+			return err
+		}
+	}
+	_, err = conn.ExecContext(ctx, "COMMIT")
+	return err
 }
 
 func scanRows(rows *sql.Rows) ([]Row, error) {
@@ -205,6 +252,18 @@ func (store *Store) Preferences(owner int64) (Row, error) {
 		return nil, err
 	}
 	return store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
+}
+
+func (store *Store) SetUserLanguage(owner int64, code string) error {
+	if _, err := store.Preferences(owner); err != nil {
+		return err
+	}
+	var preference any
+	if code != "" {
+		preference = code
+	}
+	_, err := store.DB.Exec("UPDATE reinhardt_preferences SET language_code=? WHERE owner_id=?", preference, owner)
+	return err
 }
 
 const tracksSQL = `SELECT m.*,d.local_path FROM reinhardt_musicfile m JOIN reinhardt_musicdirectory d ON d.id=m.music_directory_id `

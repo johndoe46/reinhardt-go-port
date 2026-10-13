@@ -7,7 +7,7 @@ bin = "bin/dev/reinhardt"
 full_bin = "bin/dev/reinhardt --env-file .env serve"
 # Embedded resources must be rebuilt along with Go sources.
 include_dir = ["cmd", "internal"]
-include_ext = ["go", "html", "css", "js", "map", "sql", "po", "mo", "png", "woff", "woff2"]
+include_ext = ["go", "html", "css", "js", "json", "map", "sql", "png", "woff", "woff2"]
 include_file = ["go.mod", "go.sum", "Makefile"]
 exclude_dir = ["vendor", "bin", "build", "dist", ".git"]
 exclude_regex = ["_test\\.go$", "\\.sw[op]$", "~$"]

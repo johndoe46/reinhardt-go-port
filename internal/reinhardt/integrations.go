@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"io"
 	"net"
@@ -28,7 +29,8 @@ import (
 
 func (app *App) login(responseWriter http.ResponseWriter, request *http.Request, user Row) error {
 	next := request.FormValue("next")
-	ctx := TemplateContext{"form": formHTML(next, app.translate("email"), app.Store.Config["LANGUAGE_CODE"])}
+	translator := app.translator(user)
+	ctx := TemplateContext{"form": formHTML(next, translator.Text("Email label"))}
 	if request.Method == "POST" {
 		email := strings.TrimSpace(request.FormValue("email"))
 		if parsed, err := mail.ParseAddress(email); err != nil || parsed.Address != email {
@@ -36,13 +38,7 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			if email == "" {
 				message = "This field is required."
 			}
-			if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
-				message = "Saisissez une adresse de courriel valide."
-				if email == "" {
-					message = "Ce champ est obligatoire."
-				}
-			}
-			ctx["form"] = template.HTML(`<div class="alert alert-danger">` + message + `</div>` + string(formHTML(next, app.translate("email"), app.Store.Config["LANGUAGE_CODE"])))
+			ctx["form"] = template.HTML(`<div class="alert alert-danger">` + html.EscapeString(translator.Text(message)) + `</div>` + string(formHTML(next, translator.Text("Email label"))))
 			return app.render(responseWriter, request, user, "registration/login.html", ctx, 200)
 		}
 		user, err := app.Store.One(`SELECT * FROM auth_user WHERE lower(email)=lower(?) OR lower(username)=lower(?) LIMIT 1`, email, email)
@@ -51,6 +47,7 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			if err != nil {
 				return err
 			}
+			user["language_code"] = prefs["language_code"]
 			access := prefs.S("access_token")
 			if access == "" {
 				access = token()
@@ -63,11 +60,11 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			if recipient == "" {
 				recipient = email
 			}
-			subject := "Your Reinhardt login link"
-			body := "Use this link to log in: " + link
-			if strings.HasPrefix(app.Store.Config["LANGUAGE_CODE"], "fr") {
-				subject = "Votre lien de connexion Reinhardt"
-				body = "Utilisez ce lien pour vous connecter : " + link
+			translator := app.translator(user)
+			subject := translator.Text("Your Reinhardt login link")
+			body, err := translator.Format("Use this link to log in: %(url)s", map[string]any{"URL": link})
+			if err != nil {
+				return err
 			}
 			if err = sendMail(app.Store.Config, recipient, subject, body); err != nil {
 				return err

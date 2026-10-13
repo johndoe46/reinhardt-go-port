@@ -1,0 +1,449 @@
+{
+  "Albums from": {
+    "other": "Albums de"
+  },
+  "Are you sure ?": {
+    "other": "Êtes-vous sur ?"
+  },
+  "Could not fetch video details. Enter them manually.": {
+    "other": "Impossible de récupérer les informations de la vidéo. Saisissez-les manuellement."
+  },
+  "Download %(title)s": {
+    "other": "Télécharger {{.Title}}"
+  },
+  "Download all": {
+    "other": "Tout télécharger"
+  },
+  "Email label": {
+    "other": "adresse e-mail :"
+  },
+  "Enter a valid email address.": {
+    "other": "Saisissez une adresse de courriel valide."
+  },
+  "If an account exists for that email, an invite link has been sent.": {
+    "other": "Si un compte existe pour cette adresse e-mail, un lien d'invitation a été envoyé."
+  },
+  "Language": {
+    "other": "Langue"
+  },
+  "Language changes take full effect after a full page refresh.": {
+    "other": "Le changement de langue prendra pleinement effet après une actualisation complète de la page."
+  },
+  "Looking up video details…": {
+    "other": "Recherche des informations de la vidéo…"
+  },
+  "Music player": {
+    "other": "Lecteur audio"
+  },
+  "Now playing": {
+    "other": "Lecture en cours"
+  },
+  "Play %(title)s": {
+    "other": "Lire {{.Title}}"
+  },
+  "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device.": {
+    "other": "Reinhardt est une application de streaming audio basée sur le Web, vous permettant d'accéder à votre musique de n'importe où, en utilisant presque n'importe quel appareil connecté à Internet."
+  },
+  "Remove this shared link?": {
+    "other": "Supprimer ce lien de partage ?"
+  },
+  "Search for artwork on Google Images": {
+    "other": "Rechercher une pochette sur Google Images"
+  },
+  "Send login link": {
+    "other": "Envoyer le lien de connexion"
+  },
+  "Server default": {
+    "other": "Langue par défaut du serveur"
+  },
+  "Shared playlist": {
+    "other": "Playlist partagée"
+  },
+  "Show oscilloscope in player": {
+    "other": "Afficher l’oscilloscope dans le lecteur"
+  },
+  "Shuffle": {
+    "other": "Mélanger"
+  },
+  "Signed in as": {
+    "other": "Connecté"
+  },
+  "Similar artists": {
+    "other": "Artistes similaires"
+  },
+  "Tags for": {
+    "other": "Étiquettes pour"
+  },
+  "The image will be copied next to the track and named after the audio file.": {
+    "other": "L’image sera copiée à côté du morceau et nommée d’après le fichier audio."
+  },
+  "The image will be copied next to the track with its original filename.": {
+    "other": "L’image sera copiée à côté du morceau avec son nom de fichier d’origine."
+  },
+  "This field is required.": {
+    "other": "Ce champ est obligatoire."
+  },
+  "This playlist has no tracks yet.": {
+    "other": "Cette playlist ne contient encore aucun morceau."
+  },
+  "Unsupported language": {
+    "other": "Langue non prise en charge"
+  },
+  "Use this link to log in: %(url)s": {
+    "other": "Utilisez ce lien pour vous connecter : {{.URL}}"
+  },
+  "You don't have any favorite... yet.": {
+    "other": "Vous n'avez pas encore de favoris"
+  },
+  "You don't have any tracks here... yet.": {
+    "other": "Vous n'avez pas encore de morceaux ici."
+  },
+  "Your Reinhardt login link": {
+    "other": "Votre lien de connexion Reinhardt"
+  },
+  "Your search generated a large number of results. Results shown here are limited to the first 1000 items.": {
+    "other": "Votre recherche a généré un grand nombre de résultats. Les résultat présentés ici sont limités aux 1000 premiers éléments."
+  },
+  "Youtube Rip": {
+    "other": "Copie Youtube"
+  },
+  "Youtube URL": {
+    "other": "URL Youtube"
+  },
+  "activate autofeed": {
+    "other": "activer alimentation auto"
+  },
+  "add": {
+    "other": "ajouter"
+  },
+  "add a tag": {
+    "other": "ajouter une étiquette"
+  },
+  "add all to queue": {
+    "other": "tout ajouter à la file d'attente"
+  },
+  "add artist to tag": {
+    "other": "ajouter l'artiste à une étiquette"
+  },
+  "add queue to tag": {
+    "other": "ajouter la file d'attente à une étiquette"
+  },
+  "add search results to tag": {
+    "other": "ajouter les résultats de recherche à une étiquette"
+  },
+  "add to favorites": {
+    "other": "ajouter aux favoris"
+  },
+  "add to queue": {
+    "other": "ajouter à la file d'attente"
+  },
+  "add to tag": {
+    "other": "ajouter à une étiquette"
+  },
+  "added": {
+    "other": "ajouté"
+  },
+  "albums containing": {
+    "other": "titres d'album contenant"
+  },
+  "artist": {
+    "other": "artiste"
+  },
+  "artist added to tag": {
+    "other": "artiste ajouté à l'étiquette"
+  },
+  "artists": {
+    "other": "artistes"
+  },
+  "artists containing": {
+    "other": "noms d'artistes contenant"
+  },
+  "autofeed": {
+    "other": "alimenter automatiquement la liste d'attente"
+  },
+  "autofeed activated": {
+    "other": "alimentation auto activée"
+  },
+  "autofeed deactivated": {
+    "other": "alimentation auto désactivée"
+  },
+  "autofeed similar": {
+    "other": "alimenter automatiquement la liste d'attente avec des artistes similaires"
+  },
+  "by": {
+    "other": "par"
+  },
+  "clear": {
+    "other": "vider"
+  },
+  "comment": {
+    "other": "commentaire"
+  },
+  "compilation, various artists": {
+    "other": "compilation, artistes variés"
+  },
+  "current artwork": {
+    "other": "pochette actuelle"
+  },
+  "date.am": {
+    "other": "matin"
+  },
+  "date.clock": {
+    "other": "{{printf \"%02d\" .Hour}}:{{printf \"%02d\" .Minute}}"
+  },
+  "date.clock.midnight": {
+    "other": "00:00"
+  },
+  "date.clock.noon": {
+    "other": "12:00"
+  },
+  "date.format": {
+    "other": "{{.Day}} {{.Month}} {{.Year}} {{.Clock}}"
+  },
+  "date.month.1": {
+    "other": "janvier"
+  },
+  "date.month.10": {
+    "other": "octobre"
+  },
+  "date.month.11": {
+    "other": "novembre"
+  },
+  "date.month.12": {
+    "other": "décembre"
+  },
+  "date.month.2": {
+    "other": "février"
+  },
+  "date.month.3": {
+    "other": "mars"
+  },
+  "date.month.4": {
+    "other": "avril"
+  },
+  "date.month.5": {
+    "other": "mai"
+  },
+  "date.month.6": {
+    "other": "juin"
+  },
+  "date.month.7": {
+    "other": "juillet"
+  },
+  "date.month.8": {
+    "other": "août"
+  },
+  "date.month.9": {
+    "other": "septembre"
+  },
+  "date.pm": {
+    "other": "soir"
+  },
+  "deactivate autofeed": {
+    "other": "désactiver alimentation auto"
+  },
+  "details": {
+    "other": "détails"
+  },
+  "download": {
+    "other": "télécharger"
+  },
+  "email": {
+    "other": "adresse e-mail"
+  },
+  "empty request": {
+    "other": "requête vide"
+  },
+  "existing tag": {
+    "other": "étiquette existante"
+  },
+  "failed downloads": {
+    "other": "téléchargements échoués"
+  },
+  "favorites": {
+    "other": "favoris"
+  },
+  "friends": {
+    "other": "amis"
+  },
+  "friends lists": {
+    "other": "les playlists des amis"
+  },
+  "from": {
+    "other": "de"
+  },
+  "generate share link": {
+    "other": "générer un lien de partage"
+  },
+  "genre": {
+    "other": "genre"
+  },
+  "genres": {
+    "other": "genres"
+  },
+  "genres containing": {
+    "other": "titres de genres contenant"
+  },
+  "home": {
+    "other": "accueil"
+  },
+  "invalid image": {
+    "other": "image invalide"
+  },
+  "language_name": {
+    "other": "Français"
+  },
+  "latest additions": {
+    "other": "derniers ajouts"
+  },
+  "login": {
+    "other": "connexion"
+  },
+  "manage tags": {
+    "other": "gérer les étiquettes"
+  },
+  "more from same album": {
+    "other": "page de l'album"
+  },
+  "more from same artist": {
+    "other": "page de l'artiste"
+  },
+  "more from same genre": {
+    "other": "page du genre"
+  },
+  "new tag": {
+    "other": "nouvelle étiquette"
+  },
+  "next": {
+    "other": "suivant"
+  },
+  "no failed downloads": {
+    "other": "aucun téléchargement échoué"
+  },
+  "no results": {
+    "other": "pas de résultats"
+  },
+  "not enough data": {
+    "other": "pas assez de données"
+  },
+  "open share link": {
+    "other": "ouvrir le lien de partage"
+  },
+  "play now": {
+    "other": "écouter maintenant"
+  },
+  "player": {
+    "other": "lecteur"
+  },
+  "preferences": {
+    "other": "préférences"
+  },
+  "queue": {
+    "other": "file d'attente"
+  },
+  "queue added to tag": {
+    "other": "file d'attente ajoutée à l'étiquette"
+  },
+  "refresh": {
+    "other": "rafraichir"
+  },
+  "remove": {
+    "other": "supprimer"
+  },
+  "remove from favorites": {
+    "other": "supprimer des favoris"
+  },
+  "remove from queue": {
+    "other": "supprimer de la file d'attente"
+  },
+  "remove from tag": {
+    "other": "retirer l'étiquette"
+  },
+  "remove shared link": {
+    "other": "supprimer le lien de partage"
+  },
+  "removed": {
+    "other": "supprimé"
+  },
+  "rename": {
+    "other": "renommer"
+  },
+  "results": {
+    "other": "résultats"
+  },
+  "saved": {
+    "other": "sauvegardé"
+  },
+  "search": {
+    "other": "recherche"
+  },
+  "search results": {
+    "other": "résultats de recherche"
+  },
+  "search results added to tag": {
+    "other": "résultats de recherche ajoutés à l'étiquette"
+  },
+  "see queue": {
+    "other": "voir la file d'attente"
+  },
+  "see tracks": {
+    "other": "voir les morceaux"
+  },
+  "send": {
+    "other": "envoyer"
+  },
+  "share link": {
+    "other": "lien de partage"
+  },
+  "show art": {
+    "other": "montrer la pochette"
+  },
+  "tag": {
+    "other": "étiquette"
+  },
+  "tag already exists": {
+    "other": "l'étiquette existe déjà"
+  },
+  "tag name": {
+    "other": "nom de l'étiquette"
+  },
+  "tag name is empty": {
+    "other": "le nom de l'étiquette est vide"
+  },
+  "tags": {
+    "other": "étiquettes"
+  },
+  "title": {
+    "other": "titre"
+  },
+  "toggle player": {
+    "other": "afficher/masquer le lecteur"
+  },
+  "track": {
+    "other": "piste"
+  },
+  "track image": {
+    "other": "image du morceau"
+  },
+  "tracks": {
+    "other": "pistes"
+  },
+  "tracks containing": {
+    "other": "morceaux en relation avec"
+  },
+  "unknown album": {
+    "other": "album inconnu"
+  },
+  "unknown artist": {
+    "other": "album inconnu"
+  },
+  "unknown genre": {
+    "other": "genre inconnu"
+  },
+  "year": {
+    "other": "année"
+  },
+  "you have no tags yet": {
+    "other": "vous n'avez pas encore d'étiquette"
+  }
+}

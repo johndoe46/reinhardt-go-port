@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS reinhardt_musicfiletag (
 CREATE TABLE IF NOT EXISTS reinhardt_preferences (
  id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INTEGER NOT NULL UNIQUE REFERENCES auth_user(id) ON DELETE CASCADE,
  autofeed_queue BOOL NOT NULL DEFAULT 1, autofeed_similar BOOL NOT NULL DEFAULT 1, repeat_queue BOOL NOT NULL DEFAULT 1,
- show_oscilloscope BOOL NOT NULL DEFAULT 1, current_position INTEGER NOT NULL DEFAULT 0, access_token TEXT UNIQUE
+ show_oscilloscope BOOL NOT NULL DEFAULT 1, current_position INTEGER NOT NULL DEFAULT 0, access_token TEXT UNIQUE,
+ language_code TEXT
 );
 CREATE TABLE IF NOT EXISTS reinhardt_youtuberipfailure (
  id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, artist TEXT NOT NULL, title TEXT NOT NULL,

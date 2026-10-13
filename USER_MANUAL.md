@@ -273,15 +273,21 @@ device; see [Listen from another device](#listen-from-another-device).
 
 ### Playback preferences
 
+Open **Preferences** and choose a **Language** to switch between English and
+French for your account. The choice saves automatically. **Server default** follows the
+administrator's language setting. Saving a language keeps playback running and
+updates the settings text immediately. Refresh the whole page when you want the
+change to take full effect. The choice persists when you log in again.
+
 Open **Preferences** to change these options; switches save automatically:
 
 - **Autofeed** automatically supplies more tracks when the queue runs out.
 - **Autofeed similar** prefers similar artists when autofeed is enabled.
 - **Show oscilloscope in player** toggles the animated sound display.
 
-![Preferences switches for autofeed, similar artists, and the oscilloscope](docs/images/user-manual/preferences.png)
+![Preferences with the language selector, refresh notice, and playback switches](docs/images/user-manual/preferences.png)
 
-*Playback preferences save when you change a switch.*
+*Language selection and playback switches save automatically.*
 
 ### Edit track details and artwork
 
