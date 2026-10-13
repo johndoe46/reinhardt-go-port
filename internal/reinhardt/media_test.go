@@ -30,7 +30,7 @@ func TestIndexFileMetadataPreservesTrackAndMembership(test *testing.T) {
 	metadata.Title = "Updated title"
 	metadata.Duration = 42
 	metadata.ModifiedAt = "2002-03-04 05:06:07.123456"
-	app.Store.Config["DBX_TOKEN"] = "test-refresh-token"
+	app.Store.Config.DropboxToken = "test-refresh-token"
 	stats := measureAppSQL(test, app)
 	if err = app.Store.indexFileMetadata(track.FullPath, dir, metadata); err != nil {
 		test.Fatal(err)

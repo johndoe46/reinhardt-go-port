@@ -49,7 +49,7 @@ func TestSimilarArtistsAPIKeyConfiguration(test *testing.T) {
 				test.Fatal(err)
 			}
 			app := testApp(test)
-			app.Store.Config["LASTFM_API_KEY"] = config["LASTFM_API_KEY"]
+			app.Store.Config.LastFMAPIKey = config.LastFMAPIKey
 			app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) {
 				query := request.URL.Query()
 				if query.Get("api_key") != wantKey || query.Get("artist") != "Artist & Friends" || query.Get("method") != "artist.getsimilar" || query.Get("format") != "json" {
@@ -115,7 +115,7 @@ VALUES(1,'4.mp3','Imported','New tune','','','','2026-01-01','2026-01-01')`)
 		test.Fatal(err)
 	}
 	check("Artist", []string{"Renamed"}, 0)
-	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	other, err := sql.Open("sqlite", app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)
 	}

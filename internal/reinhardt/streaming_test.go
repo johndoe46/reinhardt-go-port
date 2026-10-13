@@ -35,7 +35,7 @@ func (body *delayedAudioBody) Close() error { body.closed = true; return nil }
 
 func TestDelegatedAudioOutlivesAPITimeout(test *testing.T) {
 	app := testApp(test)
-	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/library"
+	app.Store.Config.DelegateDownloadPrefix = "https://audio.example/library"
 	app.Client.Timeout = 5 * time.Millisecond
 	var body *delayedAudioBody
 	transport := transportFunc(func(request *http.Request) (*http.Response, error) {
@@ -60,7 +60,7 @@ func TestDelegatedAudioOutlivesAPITimeout(test *testing.T) {
 
 func TestDelegatedAudioCancellationClosesUpstream(test *testing.T) {
 	app := testApp(test)
-	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/library"
+	app.Store.Config.DelegateDownloadPrefix = "https://audio.example/library"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var body *delayedAudioBody

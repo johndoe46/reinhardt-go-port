@@ -82,7 +82,7 @@ func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request,
 		}
 		return serveLocal(responseWriter, request, track, false)
 	}
-	if app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] == "" {
+	if app.Store.Config.DelegateDownloadPrefix == "" {
 		return serveLocal(responseWriter, request, track, false)
 	}
 	req, err := http.NewRequestWithContext(request.Context(), request.Method, track.DownloadURL, nil)
@@ -325,7 +325,7 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 }
 
 func (app *App) invalidateCovers(id int64) {
-	files, _ := filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("*-%d-*", id)))
+	files, _ := filepath.Glob(filepath.Join(app.Store.Config.CoversDir, fmt.Sprintf("*-%d-*", id)))
 	for _, cachePath := range files {
 		os.Remove(cachePath)
 	}
@@ -411,7 +411,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	if err != nil {
 		return err
 	}
-	cache := filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("thumb-%d-%d-square.jpg", track.ID, size))
+	cache := filepath.Join(app.Store.Config.CoversDir, fmt.Sprintf("thumb-%d-%d-square.jpg", track.ID, size))
 	if cachedFile, err := os.Open(cache); err == nil {
 		defer cachedFile.Close()
 		info, err := cachedFile.Stat()
@@ -554,8 +554,8 @@ func (app *App) databaseBackup(responseWriter http.ResponseWriter, request *http
 
 var genrePrefix = regexp.MustCompile(`^\([0-9]+\)(.+)`)
 
-func (config Config) sanitize(text, field string) string {
-	if !config.Bool("SANITIZE_TAGS") {
+func (config *Config) sanitize(text, field string) string {
+	if !config.SanitizeTags {
 		return text
 	}
 	text = strings.ReplaceAll(text, "/", " / ")

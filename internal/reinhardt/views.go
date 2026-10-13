@@ -577,7 +577,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 			}
 			return sql.ErrNoRows
 		case "download":
-			if total >= int64(app.Store.Config.Int("SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS")) {
+			if total >= app.Store.Config.SharedPlaylistDownloadMaxSeconds {
 				return sql.ErrNoRows
 			}
 			return app.archive(responseWriter, request, tag)
@@ -585,7 +585,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 			return sql.ErrNoRows
 		}
 	}
-	return app.render(responseWriter, request, user, "reinhardt/shared_tag.html", TemplateContext{"tag": tag, "share_hash": parts[2], "music_files": tracks, "total_duration": total, "can_download_all": total < int64(app.Store.Config.Int("SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS"))}, 200)
+	return app.render(responseWriter, request, user, "reinhardt/shared_tag.html", TemplateContext{"tag": tag, "share_hash": parts[2], "music_files": tracks, "total_duration": total, "can_download_all": total < app.Store.Config.SharedPlaylistDownloadMaxSeconds}, 200)
 }
 
 func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {

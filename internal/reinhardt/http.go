@@ -64,7 +64,7 @@ func (app *App) redirect(responseWriter http.ResponseWriter, request *http.Reque
 	http.Redirect(responseWriter, request, path, http.StatusFound)
 }
 func (app *App) absolute(request *http.Request, path string) string {
-	if accessURLPrefix := app.Store.Config["ACCESS_URL_PREFIX"]; accessURLPrefix != "" {
+	if accessURLPrefix := app.Store.Config.AccessURLPrefix; accessURLPrefix != "" {
 		return strings.TrimRight(accessURLPrefix, "/") + path
 	}
 	scheme := "http"
@@ -89,7 +89,7 @@ func (app *App) cookie(responseWriter http.ResponseWriter, request *http.Request
 	// SameSite=Lax limits when browsers send cookies on cross-site requests.
 	// POST requests still need the explicit CSRF checks below. COOKIE_SECURE
 	// also supports HTTPS deployments where TLS terminates at a reverse proxy.
-	http.SetCookie(responseWriter, &http.Cookie{Name: name, Value: value, Path: app.Store.Config.Path(""), HttpOnly: httpOnly, Secure: request.TLS != nil || app.Store.Config.Bool("COOKIE_SECURE"), SameSite: http.SameSiteLaxMode, MaxAge: age})
+	http.SetCookie(responseWriter, &http.Cookie{Name: name, Value: value, Path: app.Store.Config.Path(""), HttpOnly: httpOnly, Secure: request.TLS != nil || app.Store.Config.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: age})
 }
 
 // csrf supplies the token for a double-submit cookie check: the browser sends
@@ -116,8 +116,8 @@ func (app *App) checkCSRF(request *http.Request) error {
 	if origin := request.Header.Get("Origin"); origin != "" {
 		originURL, err := url.Parse(origin)
 		trusted := false
-		for _, trustedOrigin := range strings.Split(app.Store.Config["CSRF_TRUSTED_ORIGINS"], ",") {
-			if origin == strings.TrimSpace(trustedOrigin) {
+		for _, trustedOrigin := range app.Store.Config.CSRFTrustedOrigins {
+			if origin == trustedOrigin {
 				trusted = true
 			}
 		}
@@ -151,8 +151,7 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 		host = hostname
 	}
 	allowed := false
-	for _, allowedHost := range strings.Split(app.Store.Config["ALLOWED_HOSTS"], ",") {
-		allowedHost = strings.TrimSpace(allowedHost)
+	for _, allowedHost := range app.Store.Config.AllowedHosts {
 		if allowedHost == "*" || allowedHost == host || (strings.HasPrefix(allowedHost, ".") && strings.HasSuffix(host, allowedHost)) {
 			allowed = true
 		}
@@ -187,7 +186,7 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 		http.Error(responseWriter, "Method not allowed", 405)
 		return
 	}
-	request.Body = http.MaxBytesReader(responseWriter, request.Body, int64(app.Store.Config.Int("MAX_UPLOAD_BYTES")))
+	request.Body = http.MaxBytesReader(responseWriter, request.Body, app.Store.Config.MaxUploadBytes)
 	defer func() {
 		if request.MultipartForm != nil {
 			request.MultipartForm.RemoveAll()

@@ -31,7 +31,7 @@ func (fn transportFunc) RoundTrip(request *http.Request) (*http.Response, error)
 func testApp(testingContext testing.TB) *App {
 	testingContext.Helper()
 	root := testingContext.TempDir()
-	config := Config{"DATABASE_PATH": filepath.Join(root, "db.sqlite3"), "BASE_DIR": root, "COVERS_DIR": filepath.Join(root, "covers"), "ALLOWED_HOSTS": "*", "LANGUAGE_CODE": "en-us", "SANITIZE_TAGS": "1", "MAX_UPLOAD_BYTES": "1048576", "SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": "10800", "SECRET_KEY": "test-secret"}
+	config := &Config{DatabasePath: filepath.Join(root, "db.sqlite3"), BaseDir: root, CoversDir: filepath.Join(root, "covers"), AllowedHosts: []string{"*"}, LanguageCode: "en-us", SanitizeTags: true, MaxUploadBytes: 1048576, SharedPlaylistDownloadMaxSeconds: 10800, SecretKey: "test-secret"}
 	store, err := openStore(config)
 	if err != nil {
 		testingContext.Fatal(err)
@@ -204,7 +204,7 @@ func TestStreamingAndDelegate(test *testing.T) {
 	response = httptest.NewRecorder()
 	app.ServeHTTP(response, request)
 	requireCode(test, response, 416)
-	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/library"
+	app.Store.Config.DelegateDownloadPrefix = "https://audio.example/library"
 	closed := false
 	app.AudioClient.Transport = transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.String() != "https://audio.example/library/1.mp3" || req.Header.Get("Range") != "bytes=3-6" || req.Header.Get("Accept-Encoding") != "identity" {
@@ -240,7 +240,7 @@ func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
 		test.Fatal(err)
 	}
 	path := tag.ShareURL
-	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	app.Store.Config.LanguageCode = "fr-fr"
 	response = call(app, "GET", path, 0, nil, false)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), "Mélanger") {
@@ -264,7 +264,7 @@ func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
 	if len(archiveReader.File) != 2 || !strings.Contains(archiveReader.File[0].Name, "second-tune") {
 		test.Fatal(archiveReader.File)
 	}
-	app.Store.Config["SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS"] = "20"
+	app.Store.Config.SharedPlaylistDownloadMaxSeconds = 20
 	response = call(app, "GET", path+"download/", 0, nil, false)
 	requireCode(test, response, 404)
 	response = call(app, "POST", "/tags/", 2, url.Values{"action": {"unshare_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
@@ -436,7 +436,7 @@ func TestCSRFMethodsLoginAndPrefix(test *testing.T) {
 	if len(response.Result().Cookies()) < 2 {
 		test.Fatal("no session or rotated CSRF")
 	}
-	app.Store.Config["URL_PREFIX"] = "music/"
+	app.Store.Config.URLPrefix = "music/"
 	response = call(app, "GET", "/music/", 1, nil, false)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), `src="/music/static/player.js"`) {
@@ -469,7 +469,7 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	if !bytes.Equal(first, response.Body.Bytes()) {
 		test.Fatal("unstable fallback")
 	}
-	files, _ := filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], "thumb-*"))
+	files, _ := filepath.Glob(filepath.Join(app.Store.Config.CoversDir, "thumb-*"))
 	if len(files) != 0 {
 		test.Fatal("fallback cached")
 	}
@@ -516,7 +516,7 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	if rr < 60000 || gg > 1000 {
 		test.Fatal("wrong cover crop")
 	}
-	files, _ = filepath.Glob(filepath.Join(app.Store.Config["COVERS_DIR"], "thumb-*"))
+	files, _ = filepath.Glob(filepath.Join(app.Store.Config.CoversDir, "thumb-*"))
 	if len(files) != 1 {
 		test.Fatal("cover not cached")
 	}
@@ -535,12 +535,9 @@ func TestDatabaseSnapshotAndExistingSchema(test *testing.T) {
 	if err := os.WriteFile(path, response.Body.Bytes(), 0600); err != nil {
 		test.Fatal(err)
 	}
-	config := Config{}
-	for configKey, configValue := range app.Store.Config {
-		config[configKey] = configValue
-	}
-	config["DATABASE_PATH"] = path
-	store, err := openStore(config)
+	config := *app.Store.Config
+	config.DatabasePath = path
+	store, err := openStore(&config)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -652,7 +649,7 @@ func TestConfigDotenvAndEnvironmentPrecedence(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	if config["EMAIL_PORT"] != "1025" || config["URL_PREFIX"] != "music/" || config["MUSIC_IMPORT_DIR"] != "/tmp/import with spaces" || config["DATABASE_PATH"] != filepath.Join(root, "explicit.sqlite3") {
+	if config.EmailPort != 1025 || config.URLPrefix != "music/" || config.MusicImportDir != "/tmp/import with spaces" || config.DatabasePath != filepath.Join(root, "explicit.sqlite3") {
 		test.Fatal("configuration precedence failed")
 	}
 }

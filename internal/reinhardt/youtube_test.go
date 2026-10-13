@@ -26,7 +26,7 @@ func TestYouTubeMissingMusicDirectoryReportsConfiguration(test *testing.T) {
 	if !errors.Is(err, errNoMusicDirectory) {
 		test.Fatalf("expected a missing-directory error, got %v", err)
 	}
-	for _, detail := range []string{"addmusicdir", app.Store.Config["DATABASE_PATH"]} {
+	for _, detail := range []string{"addmusicdir", app.Store.Config.DatabasePath} {
 		if !strings.Contains(err.Error(), detail) {
 			test.Fatalf("error omits %q: %v", detail, err)
 		}
@@ -69,7 +69,7 @@ func TestYouTubeSubmissionNeedsDestinationBeforeEnqueuing(test *testing.T) {
 	if err != nil || count.N("n") != 0 {
 		test.Fatalf("queued a download without a destination: %#v, %v", count, err)
 	}
-	destination := filepath.Join(app.Store.Config["BASE_DIR"], "music")
+	destination := filepath.Join(app.Store.Config.BaseDir, "music")
 	if _, err := app.Store.DB.Exec("INSERT INTO reinhardt_musicdirectory(local_path,created_at,modified_at) VALUES(?,?,?)", destination, now(), now()); err != nil {
 		test.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestYouTubeSubmissionNeedsDestinationBeforeEnqueuing(test *testing.T) {
 func TestGatherMissingMusicDirectoryReportsConfiguration(test *testing.T) {
 	app := testApp(test)
 	removeTestMusicDirectories(test, app)
-	app.Store.Config["MUSIC_IMPORT_DIR"] = test.TempDir()
+	app.Store.Config.MusicImportDir = test.TempDir()
 	if err := app.Store.Gather(context.Background()); !errors.Is(err, errNoMusicDirectory) {
 		test.Fatalf("expected a missing-directory error, got %v", err)
 	}

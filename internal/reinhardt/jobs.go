@@ -31,12 +31,12 @@ func (store *Store) Enqueue(kind string, payload any) error {
 	return err
 }
 func (store *Store) enqueueSync(id int64) error {
-	if store.Config["JAMA_ENDPOINT"] != "" && store.Config["JAMA_KEY"] != "" && store.Config["JAMA_PROJECT"] != "" {
+	if store.Config.JamaEndpoint != "" && store.Config.JamaKey != "" && store.Config.JamaProject != 0 {
 		if err := store.Enqueue("jama", id); err != nil {
 			return err
 		}
 	}
-	if store.Config["DBX_TOKEN"] != "" {
+	if store.Config.DropboxToken != "" {
 		return store.Enqueue("dropbox", id)
 	}
 	return nil
@@ -49,7 +49,7 @@ func (app *App) Work(ctx context.Context, once bool) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if app.Store.Config["MUSIC_IMPORT_DIR"] != "" && time.Now().After(nextGather) {
+		if app.Store.Config.MusicImportDir != "" && time.Now().After(nextGather) {
 			if err := app.Store.Gather(ctx); err != nil {
 				log.Printf("music import: %v", err)
 			}
@@ -160,7 +160,7 @@ func (store *Store) importFile(path string, dir *MusicDirectory) (string, error)
 	return dest, nil
 }
 func (store *Store) Gather(ctx context.Context) error {
-	root := store.Config["MUSIC_IMPORT_DIR"]
+	root := store.Config.MusicImportDir
 	if root == "" {
 		return fmt.Errorf("MUSIC_IMPORT_DIR is not configured")
 	}
@@ -184,7 +184,7 @@ func (store *Store) Gather(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err = extractArchive(path, root, int64(store.Config.Int("MAX_UPLOAD_BYTES"))); err != nil {
+		if err = extractArchive(path, root, store.Config.MaxUploadBytes); err != nil {
 			log.Printf("archive %s: %v", path, err)
 			continue
 		}
@@ -269,7 +269,7 @@ func (app *App) upload(responseWriter http.ResponseWriter, request *http.Request
 		return forbidden()
 	}
 	if request.Method == "POST" {
-		root := app.Store.Config["MUSIC_IMPORT_DIR"]
+		root := app.Store.Config.MusicImportDir
 		if root == "" {
 			return bad("MUSIC_IMPORT_DIR is not configured")
 		}
@@ -468,7 +468,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		}
 		translator := app.translator(user)
 		for _, failure := range failures {
-			failure["modified_at"] = translator.displayDate(failure.S("modified_at"), app.Store.Config["TIME_ZONE"])
+			failure["modified_at"] = translator.displayDate(failure.S("modified_at"), app.Store.Config.TimeZone)
 		}
 		return app.render(responseWriter, request, user, "reinhardt/ytrip_failures.html", TemplateContext{"failures": failures}, 200)
 	}

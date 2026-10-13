@@ -78,8 +78,8 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 	}
 	return app.render(responseWriter, request, user, "registration/login.html", ctx, 200)
 }
-func sendMail(config Config, to, subject, body string) error {
-	from, err := mail.ParseAddress(config["DEFAULT_FROM_EMAIL"])
+func sendMail(config *Config, to, subject, body string) error {
+	from, err := mail.ParseAddress(config.DefaultFromEmail)
 	if err != nil {
 		return err
 	}
@@ -87,10 +87,10 @@ func sendMail(config Config, to, subject, body string) error {
 	if err != nil {
 		return err
 	}
-	addr := net.JoinHostPort(config["EMAIL_HOST"], config["EMAIL_PORT"])
+	addr := net.JoinHostPort(config.EmailHost, strconv.Itoa(config.EmailPort))
 	var conn net.Conn
-	if config.Bool("EMAIL_USE_SSL") {
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr, &tls.Config{ServerName: config["EMAIL_HOST"], MinVersion: tls.VersionTLS12})
+	if config.EmailUseSSL {
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr, &tls.Config{ServerName: config.EmailHost, MinVersion: tls.VersionTLS12})
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
 	}
@@ -100,8 +100,8 @@ func sendMail(config Config, to, subject, body string) error {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(30 * time.Second))
 	var client *smtp.Client
-	if config.Bool("EMAIL_USE_TLS") && !config.Bool("EMAIL_USE_SSL") {
-		client, err = smtp.NewClientStartTLS(conn, &tls.Config{ServerName: config["EMAIL_HOST"], MinVersion: tls.VersionTLS12})
+	if config.EmailUseTLS && !config.EmailUseSSL {
+		client, err = smtp.NewClientStartTLS(conn, &tls.Config{ServerName: config.EmailHost, MinVersion: tls.VersionTLS12})
 		if err != nil {
 			return err
 		}
@@ -109,8 +109,8 @@ func sendMail(config Config, to, subject, body string) error {
 		client = smtp.NewClient(conn)
 	}
 	defer client.Close()
-	if config["EMAIL_HOST_USER"] != "" {
-		if err = client.Auth(sasl.NewPlainClient("", config["EMAIL_HOST_USER"], config["EMAIL_HOST_PASSWORD"])); err != nil {
+	if config.EmailHostUser != "" {
+		if err = client.Auth(sasl.NewPlainClient("", config.EmailHostUser, config.EmailHostPassword)); err != nil {
 			return err
 		}
 	}
@@ -172,7 +172,7 @@ func (app *App) request(ctx context.Context, method, endpoint string, headers ma
 }
 func (app *App) syncJama(ctx context.Context, id int64) error {
 	config := app.Store.Config
-	if config["JAMA_ENDPOINT"] == "" || config["JAMA_KEY"] == "" || config["JAMA_PROJECT"] == "" {
+	if config.JamaEndpoint == "" || config.JamaKey == "" || config.JamaProject == 0 {
 		return fmt.Errorf("JAMA_ENDPOINT, JAMA_KEY and JAMA_PROJECT are required")
 	}
 	track, err := app.Store.Track(id)
@@ -183,12 +183,9 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	project, err := strconv.Atoi(config["JAMA_PROJECT"])
-	if err != nil {
-		return err
-	}
+	project := config.JamaProject
 	data, _ := json.Marshal(Row{"method": "upload_infos", "params": []any{hash, project}, "id": 1})
-	responseBody, _, err := app.request(ctx, "POST", config["JAMA_ENDPOINT"], map[string]string{"X-Api-Key": config["JAMA_KEY"], "Content-Type": "application/json"}, bytes.NewReader(data))
+	responseBody, _, err := app.request(ctx, "POST", config.JamaEndpoint, map[string]string{"X-Api-Key": config.JamaKey, "Content-Type": "application/json"}, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -234,8 +231,8 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 			if rem := stat.Size() - chunkIndex*chunkSize; rem < size {
 				size = rem
 			}
-			headers := map[string]string{"X-Project": config["JAMA_PROJECT"], "X-Api-Key": config["JAMA_KEY"], "X-file-chunk": fmt.Sprintf("%d/%d", chunkIndex, chunks), "X-file-hash": hash, "X-file-name": base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(filepath.Base(track.FullPath))))}
-			_, status, err := app.request(ctx, "POST", strings.TrimRight(config["JAMA_ENDPOINT"], "/")+"/upload/partial/", headers, io.NewSectionReader(file, chunkIndex*chunkSize, size))
+			headers := map[string]string{"X-Project": strconv.FormatInt(config.JamaProject, 10), "X-Api-Key": config.JamaKey, "X-file-chunk": fmt.Sprintf("%d/%d", chunkIndex, chunks), "X-file-hash": hash, "X-file-name": base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(filepath.Base(track.FullPath))))}
+			_, status, err := app.request(ctx, "POST", strings.TrimRight(config.JamaEndpoint, "/")+"/upload/partial/", headers, io.NewSectionReader(file, chunkIndex*chunkSize, size))
 			if err != nil {
 				return err
 			}
@@ -253,7 +250,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 
 func (app *App) dropboxToken(ctx context.Context, grant, code string) (map[string]any, error) {
 	config := app.Store.Config
-	form := url.Values{"grant_type": {grant}, "client_id": {config["DBX_KEY"]}, "client_secret": {config["DBX_SECRET"]}}
+	form := url.Values{"grant_type": {grant}, "client_id": {config.DropboxKey}, "client_secret": {config.DropboxSecret}}
 	if grant == "refresh_token" {
 		form.Set("refresh_token", code)
 	} else {
@@ -272,7 +269,7 @@ func (app *App) syncDropbox(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	data, err := app.dropboxToken(ctx, "refresh_token", app.Store.Config["DBX_TOKEN"])
+	data, err := app.dropboxToken(ctx, "refresh_token", app.Store.Config.DropboxToken)
 	if err != nil {
 		return err
 	}

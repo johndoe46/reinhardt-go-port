@@ -117,7 +117,7 @@ func TestAutofeedExternalWritesRollbackAndCascades(test *testing.T) {
 	if ids, err := app.autofeedIDs(context.Background(), key, false); err != nil || len(ids) != 3 || stats.autofeedLoads.Load() != 0 {
 		test.Fatal("rollback invalidated the candidate list", ids, err)
 	}
-	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	other, err := sql.Open("sqlite", app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)
 	}

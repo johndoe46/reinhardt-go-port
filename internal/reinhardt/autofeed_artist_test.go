@@ -33,7 +33,7 @@ func TestAutofeedQueuedArtistCacheModesAndInvalidation(test *testing.T) {
 	check(normal, []int64{1, 2, 3}, 0)
 	check(unique, []int64{3}, 1)
 	check(autofeedKey{owner: 2, excludeQueuedArtists: true}, []int64{1, 2, 3}, 1)
-	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	other, err := sql.Open("sqlite", app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)
 	}

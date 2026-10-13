@@ -497,6 +497,15 @@ the process environment override the settings file. You can inspect the active
 settings with `./reinhardt config` or `.\reinhardt.exe config`; passwords and
 keys are hidden in the output.
 
+Numeric and boolean settings are parsed and validated at startup. Invalid values stop the application
+with an error naming the setting, before it opens the database. Boolean settings
+accept `true`/`false`, `yes`/`no`, `on`/`off`, and `1`/`0`, without case sensitivity;
+an empty boolean value disables the setting. `MAX_UPLOAD_BYTES` must be a positive
+integer, `SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS` and `LOG_LEVEL` must be
+non-negative integers, and `EMAIL_PORT` must be between 1 and 65535. An optional
+`JAMA_PROJECT` must be a positive integer when set. The `config` command displays
+the parsed values, including normalized booleans and comma-separated lists.
+
 Similar-artist suggestions use Last.fm with the existing bundled API key by
 default. To use your own key, add `LASTFM_API_KEY=your-lastfm-api-key` to `.env`
 or set it in the process environment. Leave the setting unset to keep the

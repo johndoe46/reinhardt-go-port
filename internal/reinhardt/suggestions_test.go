@@ -61,7 +61,7 @@ VALUES(1,'4.mp3','Zed','New tune','Album','','','2026-01-01','2026-01-01',1)`)
 	check(initial, 0)
 
 	// A separate SQLite connection represents a worker, CLI, or external writer.
-	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	other, err := sql.Open("sqlite", app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)
 	}

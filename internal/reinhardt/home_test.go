@@ -73,7 +73,7 @@ VALUES(1,'new.mp3','New artist','New tune','New album','','','2030-01-01','2030-
 	}
 	check(0)
 	// Worker, CLI, and external writes must invalidate without touching the App object.
-	other, err := sql.Open("sqlite", app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	other, err := sql.Open("sqlite", app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -103,8 +103,8 @@ func TestLatestAdditionsRowsAreIsolatedAndURLsUseCurrentConfig(test *testing.T) 
 	got[0].Artist = ""
 	*got[0].Hash = "Request hash mutation"
 	got[0] = &Track{ID: -1}
-	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/music/"
-	app.Store.Config["URL_PREFIX"] = "reinhardt/"
+	app.Store.Config.DelegateDownloadPrefix = "https://audio.example/music/"
+	app.Store.Config.URLPrefix = "reinhardt/"
 	want, err := app.Store.Tracks(latestAdditionsClause)
 	if err != nil {
 		test.Fatal(err)

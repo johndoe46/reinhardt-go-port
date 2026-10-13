@@ -28,7 +28,7 @@ func Execute() error {
 func newCLI() *cobra.Command {
 	var envFile, database string
 	var store *Store
-	var appConfig Config
+	var appConfig *Config
 	root := &cobra.Command{Use: "reinhardt", Short: "Reinhardt music library and streaming server", SilenceErrors: true, SilenceUsage: true}
 	root.PersistentFlags().StringVar(&envFile, "env-file", ".env", "dotenv file (process environment takes precedence)")
 	root.PersistentFlags().StringVar(&database, "database", "", "SQLite database path (overrides DATABASE_PATH)")
@@ -70,7 +70,7 @@ func newCLI() *cobra.Command {
 			addr = args[0]
 		}
 		if addr == "" {
-			addr = store.Config["LISTEN_ADDR"]
+			addr = store.Config.ListenAddr
 		}
 		app, err := newApp(store)
 		if err != nil {
@@ -200,7 +200,7 @@ func newCLI() *cobra.Command {
 				return err
 			}
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), store.Config["ACCESS_URL_PREFIX"]+store.URL("invite")+"?q="+access)
+		fmt.Fprintln(cmd.OutOrStdout(), store.Config.AccessURLPrefix+store.URL("invite")+"?q="+access)
 		return nil
 	})
 	access.Flags().StringVar(&email, "email", "", "account email address")
@@ -211,7 +211,7 @@ func newCLI() *cobra.Command {
 			return err
 		}
 		for _, user := range rows {
-			fmt.Fprintln(cmd.OutOrStdout(), user.S("username"), store.Config["ACCESS_URL_PREFIX"]+store.URL("invite")+"?q="+user.S("access_token"))
+			fmt.Fprintln(cmd.OutOrStdout(), user.S("username"), store.Config.AccessURLPrefix+store.URL("invite")+"?q="+user.S("access_token"))
 		}
 		return nil
 	})
@@ -345,11 +345,11 @@ func newCLI() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if store.Config["DBX_KEY"] == "" || store.Config["DBX_SECRET"] == "" {
+		if store.Config.DropboxKey == "" || store.Config.DropboxSecret == "" {
 			return fmt.Errorf("DBX_KEY and DBX_SECRET are required")
 		}
 		values := url.Values{
-			"client_id":         {store.Config["DBX_KEY"]},
+			"client_id":         {store.Config.DropboxKey},
 			"response_type":     {"code"},
 			"token_access_type": {"offline"},
 		}

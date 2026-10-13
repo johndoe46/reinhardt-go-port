@@ -24,9 +24,9 @@ func remoteResponse(data string) *http.Response {
 
 func TestJamaAndDropboxProtocols(test *testing.T) {
 	app := testApp(test)
-	app.Store.Config["JAMA_ENDPOINT"] = "https://jama.example/rpc/"
-	app.Store.Config["JAMA_KEY"] = "test-key"
-	app.Store.Config["JAMA_PROJECT"] = "17"
+	app.Store.Config.JamaEndpoint = "https://jama.example/rpc/"
+	app.Store.Config.JamaKey = "test-key"
+	app.Store.Config.JamaProject = 17
 	calls := 0
 	app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) {
 		calls++
@@ -59,9 +59,9 @@ func TestJamaAndDropboxProtocols(test *testing.T) {
 	if err != nil || len(stringValue(track.Hash)) != 64 {
 		test.Fatal("hash not saved", err)
 	}
-	app.Store.Config["DBX_KEY"] = "key"
-	app.Store.Config["DBX_SECRET"] = "secret"
-	app.Store.Config["DBX_TOKEN"] = "refresh"
+	app.Store.Config.DropboxKey = "key"
+	app.Store.Config.DropboxSecret = "secret"
+	app.Store.Config.DropboxToken = "refresh"
 	calls = 0
 	app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) {
 		calls++

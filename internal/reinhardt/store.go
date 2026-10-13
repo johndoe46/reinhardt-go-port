@@ -124,7 +124,7 @@ func slug(text string) string {
 
 type Store struct {
 	DB     *sql.DB
-	Config Config
+	Config *Config
 }
 
 var errNoMusicDirectory = errors.New("no music directory is registered")
@@ -132,16 +132,16 @@ var errNoMusicDirectory = errors.New("no music directory is registered")
 func (store *Store) DefaultMusicDirectory() (*MusicDirectory, error) {
 	dir, err := store.musicDirectory("SELECT * FROM reinhardt_musicdirectory ORDER BY id LIMIT 1")
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w in database %q; run 'reinhardt addmusicdir /path/to/music' using this database", errNoMusicDirectory, store.Config["DATABASE_PATH"])
+		return nil, fmt.Errorf("%w in database %q; run 'reinhardt addmusicdir /path/to/music' using this database", errNoMusicDirectory, store.Config.DatabasePath)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("select music directory in database %q: %w", store.Config["DATABASE_PATH"], err)
+		return nil, fmt.Errorf("select music directory in database %q: %w", store.Config.DatabasePath, err)
 	}
 	return dir, nil
 }
 
-func openStore(config Config) (*Store, error) {
-	path := config["DATABASE_PATH"]
+func openStore(config *Config) (*Store, error) {
+	path := config.DatabasePath
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			return nil, err
@@ -178,7 +178,7 @@ func openStore(config Config) (*Store, error) {
 		return nil, fmt.Errorf("migrate language preference: %w", err)
 	}
 	store := &Store{db, config}
-	if config["SECRET_KEY"] == "" {
+	if config.SecretKey == "" {
 		// Persist the fallback key so shared-playlist hashes survive restarts.
 		// INSERT OR IGNORE lets simultaneous startup processes agree on one key.
 		var cSecret string
@@ -190,7 +190,7 @@ func openStore(config Config) (*Store, error) {
 			db.Close()
 			return nil, err
 		}
-		config["SECRET_KEY"] = cSecret
+		config.SecretKey = cSecret
 	}
 	return store, nil
 }
@@ -347,8 +347,8 @@ func (store *Store) decorateTrack(track *Track) {
 	}
 	track.CleanFileName = slug(string(name)+" - "+fmt.Sprint(track.ID)) + filepath.Ext(track.RelativePath)
 	track.DownloadURL = store.Config.Path("download/" + fmt.Sprint(track.ID) + "/" + track.CleanFileName)
-	if store.Config["DELEGATE_DOWNLOAD_PREFIX"] != "" {
-		track.DownloadURL = strings.TrimRight(store.Config["DELEGATE_DOWNLOAD_PREFIX"], "/") + "/" + track.RelativePath
+	if store.Config.DelegateDownloadPrefix != "" {
+		track.DownloadURL = strings.TrimRight(store.Config.DelegateDownloadPrefix, "/") + "/" + track.RelativePath
 	}
 	track.PlaybackURL = store.Config.Path("stream/" + fmt.Sprint(track.ID) + "/")
 }
@@ -367,7 +367,7 @@ func (store *Store) Tags(owner int64, reserved bool) ([]*Tag, error) {
 	return tags, err
 }
 func (store *Store) decorateTag(tag *Tag) {
-	digest := sha256.Sum256([]byte(fmt.Sprint(tag.ID) + "-" + store.Config["SECRET_KEY"]))
+	digest := sha256.Sum256([]byte(fmt.Sprint(tag.ID) + "-" + store.Config.SecretKey))
 	tag.ShareHash = hex.EncodeToString(digest[:])
 	tag.ShareURL = store.Config.Path("shared/" + fmt.Sprint(tag.ID) + "/" + tag.ShareHash + "/")
 	tag.Duration = tag.TotalDuration

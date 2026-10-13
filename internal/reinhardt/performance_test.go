@@ -145,7 +145,7 @@ func measureAppSQL(testingContext testing.TB, app *App) *measuredSQL {
 	stats := &measuredSQL{}
 	name := fmt.Sprintf("sqlite-measured-%d", measuredDriverID.Add(1))
 	sql.Register(name, &measuredDriver{stats: stats})
-	db, err := sql.Open(name, app.Store.Config["DATABASE_PATH"]+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	db, err := sql.Open(name, app.Store.Config.DatabasePath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		testingContext.Fatal(err)
 	}

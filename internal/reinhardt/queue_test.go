@@ -25,7 +25,7 @@ func TestShuffleQueue(test *testing.T) {
 	if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=1", position); err != nil {
 		test.Fatal(err)
 	}
-	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	app.Store.Config.LanguageCode = "fr-fr"
 	response := call(app, "GET", "/queue/", 1, nil, true)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), `action="/shuffle_queue/"`) || !strings.Contains(response.Body.String(), "Mélanger") {

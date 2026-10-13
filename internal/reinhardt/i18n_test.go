@@ -80,7 +80,7 @@ func TestUserLanguageSettings(test *testing.T) {
 	if err != nil || stringValue(saved.LanguageCode) != "fr" {
 		test.Fatal("playback submission discarded saved language", err)
 	}
-	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	app.Store.Config.LanguageCode = "fr-fr"
 	requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"language_code": {"en"}}, false), 200)
 	response = call(app, "GET", "/", 1, nil, false)
 	if !strings.Contains(response.Body.String(), `<html lang="en"`) {
@@ -448,7 +448,7 @@ func TestEnglishCatalogueCoversTemplateMessages(test *testing.T) {
 
 func TestLoginCatalogueMessages(test *testing.T) {
 	app := testApp(test)
-	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
+	app.Store.Config.LanguageCode = "fr-fr"
 	response := call(app, "POST", "/accounts/login/", 0, url.Values{"email": {""}}, false)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), "Ce champ est obligatoire.") || !strings.Contains(response.Body.String(), `<html lang="fr"`) {
