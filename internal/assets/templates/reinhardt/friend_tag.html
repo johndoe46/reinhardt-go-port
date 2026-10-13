@@ -24,13 +24,11 @@
     </form>
     <hr>
     <div class="list-group list-group-flush">
-    {{ $context1 := . }}{{ range $index1, $row1 := .friend_tag.musicfiletag_set }}{{ with scope $context1 "assoc" $row1 "forloop" (loopInfo $index1) }}
-        {{ with scope . "music_file" .assoc.music_file }}
-            <div class="list-group-item list-group-item-action dropdown{{ if .handles }} queue_item{{ end }}" id="music_files_row_{{ .music_file.pk }}" data-itempk="{{ .music_file.pk }}">
-                {{ template "reinhardt/_music_file_dropdown.html" . }}
+    {{ range .music_files }}
+        <div class="list-group-item list-group-item-action dropdown{{ if $.handles }} queue_item{{ end }}" id="music_files_row_{{ .pk }}" data-itempk="{{ .pk }}">
+            {{ template "reinhardt/_music_file_dropdown.html" (scope $ "music_file" .) }}
         </div>
-        {{ end }}
-    {{ end }}{{ end }}
+    {{ end }}
     </div>
 {{ end }}
 {{ template "reinhardt/_base.html" . }}

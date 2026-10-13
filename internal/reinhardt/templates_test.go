@@ -39,6 +39,47 @@ func TestNativeTemplatesMetadataAndURLContexts(test *testing.T) {
 	}
 }
 
+func TestNativeTemplatesFriendPlaylistTracks(test *testing.T) {
+	app := testApp(test)
+	title := `<script>alert("track")</script>`
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET title=? WHERE id=1", title); err != nil {
+		test.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		name   string
+		tracks []int64
+	}{
+		{"ranked", []int64{2, 1}},
+		{"empty", nil},
+	} {
+		tag := mustTag(test, app, 2, scenario.name, scenario.tracks)
+		for _, fragment := range []bool{false, true} {
+			test.Run(fmt.Sprintf("%s/fragment=%v", scenario.name, fragment), func(test *testing.T) {
+				response := call(app, "GET", fmt.Sprintf("/friend_tag/?tag=%d", tag), 1, nil, fragment)
+				requireCode(test, response, 200)
+				body := response.Body.String()
+				if !strings.Contains(body, fmt.Sprintf(`name="q" value="%d"`, tag)) || !strings.Contains(body, `name="add_type" value="friend_tag"`) {
+					test.Fatal("friend playlist lost its add-to-queue form")
+				}
+				if count := strings.Count(body, `class="track_menu `); count != len(scenario.tracks) {
+					test.Fatalf("rendered %d track controls, want %d", count, len(scenario.tracks))
+				}
+				previous := -1
+				for _, track := range scenario.tracks {
+					position := strings.Index(body, fmt.Sprintf(`id="music_files_row_%d"`, track))
+					if position <= previous {
+						test.Fatal("friend playlist lost a track or changed its rank order")
+					}
+					previous = position
+				}
+				if len(scenario.tracks) > 0 && (!strings.Contains(body, html.EscapeString(title)) || strings.Contains(body, title)) {
+					test.Fatal("friend playlist did not escape track metadata")
+				}
+			})
+		}
+	}
+}
+
 func TestNativeTemplatesSharedJavaScriptEscaping(test *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

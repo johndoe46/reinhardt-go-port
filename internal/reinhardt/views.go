@@ -487,11 +487,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err != nil {
 			return err
 		}
-		assocs := []Row{}
-		for _, track := range tracks {
-			assocs = append(assocs, Row{"music_file": track})
-		}
-		tag["musicfiletag_set"] = assocs
+		ctx["music_files"] = tracks
 		ctx["friend_tag"] = tag
 		ctx["friend"] = friend
 		template = "friend_tag"
