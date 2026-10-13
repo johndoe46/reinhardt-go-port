@@ -167,7 +167,7 @@ func TestAutofeedConcurrentColdRequests(test *testing.T) {
 			track, err := app.randomAutofeedTrack(context.Background(), 1, nil)
 			if err != nil {
 				errors <- err
-			} else if id := track.N("id"); id < 1 || id > 3 {
+			} else if id := track.ID; id < 1 || id > 3 {
 				errors <- fmt.Errorf("invalid selected track: %v", track)
 			}
 		}()
@@ -204,7 +204,7 @@ JOIN go_autofeed_tag_revision bv ON bv.tag_id=b.id WHERE l.id=1`).Scan(&version.
 	app.autofeed.put(autofeedEntry{key: key, version: version, ids: []int64{1}})
 	app.autofeed.mu.Unlock()
 	track, err := app.randomAutofeedTrack(context.Background(), 1, nil)
-	if err != nil || track == nil || track.N("id") == 1 {
+	if err != nil || track == nil || track.ID == 1 {
 		test.Fatal("served a stale, blacklisted track", track, err)
 	}
 }

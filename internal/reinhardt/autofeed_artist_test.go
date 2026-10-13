@@ -77,7 +77,7 @@ func TestAutofeedRevalidatesQueuedArtist(test *testing.T) {
 			if track != nil {
 				test.Fatal("similar selection repeated a queued artist", track)
 			}
-		} else if track == nil || track.S("artist") != "Another" {
+		} else if track == nil || track.Artist != "Another" {
 			test.Fatal("fallback did not reject stale queued-artist candidates", track)
 		}
 	}
@@ -121,7 +121,7 @@ VALUES(4,1,'4.mp3','Fresh','New song','New album','','','2026-01-01','2026-01-01
 				if err != nil {
 					test.Fatal(err)
 				}
-				if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", last["id"]); err != nil {
+				if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", last.ID); err != nil {
 					test.Fatal(err)
 				}
 				// A warm unrestricted pool must only be used after all new-artist
@@ -149,13 +149,13 @@ VALUES(4,1,'4.mp3','Fresh','New song','New album','','','2026-01-01','2026-01-01
 					test.Fatal(err)
 				}
 				if scenario == "all-unavailable" {
-					if prefs.N("current_position") != 0 || len(items) != len(queue) {
+					if prefs.CurrentPosition != 0 || len(items) != len(queue) {
 						test.Fatal("an unavailable library must not enqueue missing tracks")
 					}
 					return
 				}
-				selected, err := app.Store.queueItem(1, "a.id=?", prefs["current_position"])
-				if err != nil || selected.N("music_file_id") != wantTrack || len(items) != wantLength || selected.N("rank") <= last.N("rank") {
+				selected, err := app.Store.queueItem(1, "a.id=?", prefs.CurrentPosition)
+				if err != nil || selected.MusicFileID != wantTrack || len(items) != wantLength || selected.Rank <= last.Rank {
 					test.Fatal("autofeed did not append the expected similar or random song", selected, err)
 				}
 			})

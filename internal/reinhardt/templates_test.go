@@ -100,7 +100,7 @@ func TestNativeTemplatesSharedJavaScriptEscaping(test *testing.T) {
 			if err != nil {
 				test.Fatal(err)
 			}
-			response := call(app, "GET", tag.S("share_url"), 0, nil, false)
+			response := call(app, "GET", tag.ShareURL, 0, nil, false)
 			requireCode(test, response, 200)
 			if strings.Count(response.Body.String(), "<script>") != 1 || strings.Contains(response.Body.String(), "<script>globalThis") {
 				test.Fatal("label escaped the script element")
@@ -174,7 +174,7 @@ func TestNativeTemplatesEmptyLibraryAndPermissions(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	response := call(app, "GET", tag.S("share_url"), 0, nil, false)
+	response := call(app, "GET", tag.ShareURL, 0, nil, false)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), "This playlist has no tracks yet.") {
 		test.Fatal("empty public playlist message missing")

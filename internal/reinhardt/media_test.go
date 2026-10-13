@@ -22,19 +22,17 @@ func TestIndexFileMetadataPreservesTrackAndMembership(test *testing.T) {
 		test.Fatal(err)
 	}
 	// The metadata-only path must work without access to the audio file.
-	if err = os.Remove(track.S("full_path")); err != nil {
+	if err = os.Remove(track.FullPath); err != nil {
 		test.Fatal(err)
 	}
-	metadata := Row{}
-	for key, value := range track {
-		metadata[key] = value
-	}
-	metadata["title"] = "Updated title"
-	metadata["duration"] = 42
-	metadata["modified_at"] = "2002-03-04 05:06:07.123456"
+	copied := *track
+	metadata := &copied
+	metadata.Title = "Updated title"
+	metadata.Duration = 42
+	metadata.ModifiedAt = "2002-03-04 05:06:07.123456"
 	app.Store.Config["DBX_TOKEN"] = "test-refresh-token"
 	stats := measureAppSQL(test, app)
-	if err = app.Store.indexFileMetadata(track.S("full_path"), dir, metadata); err != nil {
+	if err = app.Store.indexFileMetadata(track.FullPath, dir, metadata); err != nil {
 		test.Fatal(err)
 	}
 	if queries := stats.calls.Load(); queries != 2 {
@@ -44,11 +42,11 @@ func TestIndexFileMetadataPreservesTrackAndMembership(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	if updated.S("title") != "Updated title" || updated.N("duration") != 42 || updated.B("missing") || updated.S("created_at") != track.S("created_at") || updated.S("modified_at") != "2002-03-04T05:06:07.123456+00:00" {
+	if updated.Title != "Updated title" || updated.Duration != 42 || updated.Missing || updated.CreatedAt != track.CreatedAt || updated.ModifiedAt != "2002-03-04T05:06:07.123456+00:00" {
 		test.Fatalf("indexed metadata or track identity changed: %#v", updated)
 	}
 	tracks, err := app.Store.TagTracks(tag)
-	if err != nil || len(tracks) != 1 || tracks[0].N("id") != 1 {
+	if err != nil || len(tracks) != 1 || tracks[0].ID != 1 {
 		test.Fatal("indexing lost playlist membership", tracks, err)
 	}
 	jobs, err := app.Store.Query("SELECT kind,payload FROM go_job")
@@ -58,7 +56,7 @@ func TestIndexFileMetadataPreservesTrackAndMembership(test *testing.T) {
 	// A new path must enqueue the newly inserted ID, even if the supplied
 	// metadata came from an existing track.
 	stats.calls.Store(0)
-	if err = app.Store.indexFileMetadata(filepath.Join(dir.S("local_path"), "new.mp3"), dir, metadata); err != nil {
+	if err = app.Store.indexFileMetadata(filepath.Join(dir.LocalPath, "new.mp3"), dir, metadata); err != nil {
 		test.Fatal(err)
 	}
 	if queries := stats.calls.Load(); queries != 2 {
@@ -84,7 +82,7 @@ func TestImportFileRetainsSourceWhenIndexingFails(test *testing.T) {
 	if err = os.WriteFile(source, make([]byte, 32), 0644); err != nil {
 		test.Fatal(err)
 	}
-	metadata := Row{"full_path": source, "relative_path": "source.mp3", "artist": "Artist", "title": "Imported title", "album": "Album"}
+	metadata := &Track{FullPath: source, RelativePath: "source.mp3", Artist: "Artist", Title: "Imported title", Album: "Album"}
 	if err = writeID3(metadata, nil, ""); err != nil {
 		test.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,9 +12,9 @@ import (
 	"time"
 )
 
-func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
+func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
 	store := app.Store
-	owner := user.N("id")
+	owner := user.ID
 	query := request.URL.Query().Get("q")
 	ctx := TemplateContext{}
 	template := ""
@@ -51,7 +52,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if name == "" {
 					ctx["error_message"] = "tag name is empty"
 				} else {
-					_, err = store.DB.Exec("UPDATE reinhardt_tag SET label=?,modified_at=? WHERE id=? AND owner_id=?", name, now(), tag.N("id"), owner)
+					_, err = store.DB.Exec("UPDATE reinhardt_tag SET label=?,modified_at=? WHERE id=? AND owner_id=?", name, now(), tag.ID, owner)
 					if err == nil {
 						app.redirect(responseWriter, request, store.URL("tags"))
 						return nil
@@ -225,17 +226,17 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if err != nil {
 					return err
 				}
-				if tag.S("label") == "queue" || tag.S("label") == "favorites" {
+				if tag.Label == "queue" || tag.Label == "favorites" {
 					return forbidden()
 				}
 				switch action {
 				case "remove_tag":
-					_, err = store.DB.Exec("DELETE FROM reinhardt_musicfiletag WHERE tag_id=?", tag.N("id"))
+					_, err = store.DB.Exec("DELETE FROM reinhardt_musicfiletag WHERE tag_id=?", tag.ID)
 					if err == nil {
-						_, err = store.DB.Exec("DELETE FROM reinhardt_tag WHERE id=?", tag.N("id"))
+						_, err = store.DB.Exec("DELETE FROM reinhardt_tag WHERE id=?", tag.ID)
 					}
 				case "share_tag", "unshare_tag":
-					_, err = store.DB.Exec("UPDATE reinhardt_tag SET is_shared=?,modified_at=? WHERE id=?", action == "share_tag", now(), tag.N("id"))
+					_, err = store.DB.Exec("UPDATE reinhardt_tag SET is_shared=?,modified_at=? WHERE id=?", action == "share_tag", now(), tag.ID)
 				default:
 					return bad("Invalid action")
 				}
@@ -249,7 +250,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		for _, tag := range tags {
-			tag["share_url"] = app.absolute(request, tag.S("share_url"))
+			tag.ShareURL = app.absolute(request, tag.ShareURL)
 		}
 		ctx["tags"] = tags
 		template = "tags"
@@ -257,7 +258,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		var tag Row
+		var tag *Tag
 		var tagErr error
 		if path == "favorites/" {
 			id, err := store.AddTag(owner, "favorites")
@@ -271,14 +272,14 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if tagErr != nil {
 			return tagErr
 		}
-		tracks, tagErr := store.TagTracks(tag.N("id"))
+		tracks, tagErr := store.TagTracks(tag.ID)
 		if tagErr != nil {
 			return tagErr
 		}
 		ctx["music_files"] = tracks
 		ctx["tag"] = tag
-		if tag.B("is_shared") {
-			ctx["share_url"] = app.absolute(request, tag.S("share_url"))
+		if tag.IsShared {
+			ctx["share_url"] = app.absolute(request, tag.ShareURL)
 		}
 		template = strings.TrimSuffix(path, "/")
 	case "queue/", "clear_queue/", "shuffle_queue/":
@@ -313,16 +314,16 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		}
 		total := int64(0)
 		for _, queueItem := range queue {
-			total += queueItem["music_file"].(Row).N("duration")
+			total += queueItem.MusicFile.Duration
 		}
-		tag["duration"] = total
+		tag.Duration = total
 		ctx["queue"] = queue
 		ctx["music_tag"] = tag
 		preferences, err := store.Preferences(owner)
 		if err != nil {
 			return err
 		}
-		ctx["now_playing"] = preferences["current_position"]
+		ctx["now_playing"] = preferences.CurrentPosition
 		template = "queue"
 	case "preferences/":
 		if request.Method == "POST" {
@@ -336,7 +337,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				}
 				// Render the updated language in the main fragment while Unpoly
 				// keeps the current player and the rest of the document in place.
-				user["language_code"] = code
+				user.LanguageCode = code
 				return app.render(responseWriter, request, user, "reinhardt/preferences.html", ctx, 200)
 			}
 			_, err := store.Preferences(owner)
@@ -429,7 +430,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			if err != nil {
 				return err
 			}
-			ctx["assigned_tags_pks"] = ids(assigned)
+			ctx["assigned_tags_pks"] = rowIDs(assigned)
 			template = "music_file_tagger"
 		} else {
 			fav, err := store.One(`SELECT COUNT(*) n FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id WHERE t.owner_id=? AND t.label='favorites' AND a.music_file_id=?`, owner, id)
@@ -447,24 +448,25 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if err != nil {
 					return err
 				}
-				ctx["remove_from_tag"] = tag["label"]
+				ctx["remove_from_tag"] = tag.Label
 			}
 			template = "_track_dropdown_menu_items"
 		}
 	case "friends/":
-		friends, err := store.Query("SELECT * FROM auth_user WHERE id!=? ORDER BY username", owner)
+		friendRows, err := store.Query("SELECT * FROM auth_user WHERE id!=? ORDER BY username", owner)
 		if err != nil {
 			return err
 		}
 		visible := []Row{}
-		for _, friend := range friends {
-			tags, err := store.Tags(friend.N("id"), true)
+		for _, row := range friendRows {
+			friend := userFromRow(row)
+			tags, err := store.Tags(friend.ID, true)
 			if err != nil {
 				return err
 			}
-			ts := []Row{}
+			ts := []*Tag{}
 			for _, tag := range tags {
-				if tag.N("track_count") > 0 && (user.B("is_superuser") || tag.S("label") != "queue") {
+				if tag.TrackCount > 0 && (user.IsSuperuser || tag.Label != "queue") {
 					ts = append(ts, tag)
 				}
 			}
@@ -475,15 +477,15 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		ctx["friends"] = visible
 		template = "friends"
 	case "friend_tag/":
-		tag, err := store.One("SELECT * FROM reinhardt_tag WHERE id=?", request.URL.Query().Get("tag"))
+		tag, err := store.tag("SELECT * FROM reinhardt_tag WHERE id=?", request.URL.Query().Get("tag"))
 		if err != nil {
 			return err
 		}
-		friend, err := store.One("SELECT * FROM auth_user WHERE id=?", tag.N("owner_id"))
+		friend, err := store.user("SELECT * FROM auth_user WHERE id=?", tag.OwnerID)
 		if err != nil {
 			return err
 		}
-		tracks, err := store.TagTracks(tag.N("id"))
+		tracks, err := store.TagTracks(tag.ID)
 		if err != nil {
 			return err
 		}
@@ -511,7 +513,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		if !user.B("is_superuser") {
+		if !user.IsSuperuser {
 			return forbidden()
 		}
 		return app.databaseBackup(responseWriter, request)
@@ -539,28 +541,28 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 	return app.render(responseWriter, request, user, "reinhardt/"+template+".html", ctx, 200)
 }
 
-func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request, user Row, parts []string) error {
+func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request, user *User, parts []string) error {
 	if err := safeOnly(request); err != nil {
 		return err
 	}
 	if len(parts) < 3 {
 		return sql.ErrNoRows
 	}
-	tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", parts[1])
+	tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", parts[1])
 	if err != nil {
 		return err
 	}
 	app.Store.decorateTag(tag)
-	if subtle.ConstantTimeCompare([]byte(parts[2]), []byte(tag.S("share_hash"))) != 1 {
+	if subtle.ConstantTimeCompare([]byte(parts[2]), []byte(tag.ShareHash)) != 1 {
 		return sql.ErrNoRows
 	}
-	tracks, err := app.Store.TagTracks(tag.N("id"))
+	tracks, err := app.Store.TagTracks(tag.ID)
 	if err != nil {
 		return err
 	}
 	total := int64(0)
 	for _, track := range tracks {
-		total += track.N("duration")
+		total += track.Duration
 	}
 	if len(parts) > 3 {
 		switch parts[3] {
@@ -569,7 +571,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 				return sql.ErrNoRows
 			}
 			for _, track := range tracks {
-				if track.S("id") == parts[4] {
+				if fmt.Sprint(track.ID) == parts[4] {
 					return serveLocal(responseWriter, request, track, false)
 				}
 			}
@@ -586,17 +588,17 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 	return app.render(responseWriter, request, user, "reinhardt/shared_tag.html", TemplateContext{"tag": tag, "share_hash": parts[2], "music_files": tracks, "total_duration": total, "can_download_all": total < int64(app.Store.Config.Int("SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS"))}, 200)
 }
 
-func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
+func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
 	if err := postOnly(request); err != nil {
 		return err
 	}
-	owner := user.N("id")
+	owner := user.ID
 	name := label(request.FormValue("tag"))
 	query := request.FormValue("q")
 	kind := request.FormValue("add_type")
 	action := "added"
 	object := kind
-	var tracks []Row
+	var tracks []*Track
 	var operationErr error
 	if path == "toggle_tag/" {
 		query = request.FormValue("music_file_pk")
@@ -604,10 +606,10 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 		if err != nil {
 			return err
 		}
-		if tag.S("label") == "queue" || tag.S("label") == "favorites" {
+		if tag.Label == "queue" || tag.Label == "favorites" {
 			return forbidden()
 		}
-		name = tag.S("label")
+		name = tag.Label
 		kind = "music_file"
 		if request.FormValue("has_tag") != "on" {
 			action = "removed"
@@ -623,7 +625,7 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 		if err != nil {
 			return err
 		}
-		tracks = []Row{track}
+		tracks = []*Track{track}
 		object = "track"
 	case "artist", "genre", "album":
 		tracks, operationErr = app.Store.Tracks("WHERE m."+kind+"=? AND m.missing=0 ORDER BY m.artist,m.album,m.track_number", query)
@@ -632,11 +634,11 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 		if kind == "favorites" {
 			source = "favorites"
 		}
-		tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, source)
+		tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, source)
 		if err != nil {
 			return err
 		}
-		tracks, operationErr = app.Store.TagTracks(tag.N("id"))
+		tracks, operationErr = app.Store.TagTracks(tag.ID)
 	case "friend_tag":
 		tracks, operationErr = app.Store.TagTracks(query)
 	default:
@@ -647,7 +649,7 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 	}
 	if action == "added" {
 		if kind == "music_file" {
-			_, operationErr = app.Store.AddTrack(owner, name, tracks[0].N("id"))
+			_, operationErr = app.Store.AddTrack(owner, name, tracks[0].ID)
 		} else {
 			_, operationErr = app.Store.AddTracks(owner, name, ids(tracks))
 		}
@@ -661,7 +663,7 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 		}
 		defer tx.Rollback()
 		for _, track := range tracks {
-			if _, operationErr = tx.Exec("DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?)", track.N("id"), owner, name); operationErr != nil {
+			if _, operationErr = tx.Exec("DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?)", track.ID, owner, name); operationErr != nil {
 				return operationErr
 			}
 		}
@@ -677,7 +679,7 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 // source and action. Adding to a custom tag displays a selection/creation form
 // and processes its submission; adding to queue or favorites requires POST and
 // returns a confirmation fragment. Store.AddTracks preserves existing memberships.
-func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
+func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	source, action := parts[0], parts[1]
 	ctx := TemplateContext{}
@@ -690,7 +692,7 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 		// Only the tag-selection form needs the user's available tags.
 		ctx["artist"] = value
 		ctx["q"] = value
-		tags, err := app.Store.Tags(user.N("id"), false)
+		tags, err := app.Store.Tags(user.ID, false)
 		if err != nil {
 			return err
 		}
@@ -710,17 +712,17 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 					return bad("Invalid tag name.")
 				}
 			} else {
-				tag, tagErr := app.Store.Tag(request.FormValue("tag_pk"), user.N("id"))
+				tag, tagErr := app.Store.Tag(request.FormValue("tag_pk"), user.ID)
 				if tagErr != nil {
 					return tagErr
 				}
-				if tag.S("label") == "queue" || tag.S("label") == "favorites" {
+				if tag.Label == "queue" || tag.Label == "favorites" {
 					return forbidden()
 				}
-				target = tag.S("label")
+				target = tag.Label
 			}
 		}
-		var tracks []Row
+		var tracks []*Track
 		var operationErr error
 		switch source {
 		case "artist":
@@ -728,23 +730,23 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 		case "search":
 			tracks, operationErr = app.Store.Search(value)
 		case "queue":
-			queue, err := app.Store.Queue(user.N("id"))
+			queue, err := app.Store.Queue(user.ID)
 			operationErr = err
 			for _, queueItem := range queue {
-				tracks = append(tracks, queueItem["music_file"].(Row))
+				tracks = append(tracks, queueItem.MusicFile)
 			}
 		}
 		if operationErr != nil {
 			return operationErr
 		}
-		count, err := app.Store.AddTracks(user.N("id"), target, ids(tracks))
+		count, err := app.Store.AddTracks(user.ID, target, ids(tracks))
 		if err != nil {
 			return err
 		}
 		if action == "add_to_tag" {
 			// Redisplay the form with the destination and number of newly added tracks.
 			ctx["added_count"] = count
-			tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.N("id"), target)
+			tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.ID, target)
 			if err != nil {
 				return err
 			}
@@ -761,11 +763,11 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 	return app.render(responseWriter, request, user, "reinhardt/_tag_message.html", TemplateContext{"object_label": object, "tag_label": target, "action": "added"}, 200)
 }
 
-func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Request, user Row) error {
+func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
 	if err := postOnly(request); err != nil {
 		return err
 	}
-	tag, err := app.Store.Tag(request.FormValue("list_pk"), user.N("id"))
+	tag, err := app.Store.Tag(request.FormValue("list_pk"), user.ID)
 	if err != nil {
 		return err
 	}
@@ -787,7 +789,7 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 			return bad("Invalid order")
 		}
 		seen[item.Item] = true
-		res, err := tx.Exec("UPDATE reinhardt_musicfiletag SET rank=? WHERE music_file_id=? AND tag_id=?", item.Rank, item.Item, tag.N("id"))
+		res, err := tx.Exec("UPDATE reinhardt_musicfiletag SET rank=? WHERE music_file_id=? AND tag_id=?", item.Rank, item.Item, tag.ID)
 		if err != nil {
 			return err
 		}
@@ -803,28 +805,28 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 	return err
 }
 
-func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
+func (app *App) nextSong(request *http.Request, user *User) (*Track, any, error) {
 	store := app.Store
-	owner := user.N("id")
+	owner := user.ID
 	prefs, operationErr := store.Preferences(owner)
 	if operationErr != nil {
 		return nil, 0, operationErr
 	}
 	current := int64(0)
-	var currentItem Row
+	var currentItem *QueueItem
 	// The persisted position is an association id, while advancement compares
 	// ranks. Reordering the queue changes rank without changing the saved position.
-	if position := prefs.N("current_position"); position != 0 {
+	if position := prefs.CurrentPosition; position != 0 {
 		currentItem, operationErr = store.queueItem(owner, "a.id=?", position)
 		if operationErr != nil && operationErr != sql.ErrNoRows {
 			return nil, 0, operationErr
 		}
 		if currentItem != nil {
-			current = currentItem.N("rank")
+			current = currentItem.Rank
 		}
 	}
-	var chosen Row
-	var track Row
+	var chosen *QueueItem
+	var track *Track
 	if item := request.FormValue("list_item"); item != "" {
 		// list_item comes from the player's track controls, so it identifies a
 		// music file, not the association id stored in preferences.
@@ -841,7 +843,7 @@ func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
-			chosen, operationErr = store.AddTrack(owner, "queue", track.N("id"))
+			chosen, operationErr = store.AddTrack(owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
@@ -852,15 +854,15 @@ func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
 			}
 		}
 	}
-	if chosen == nil && prefs.B("autofeed_queue") {
+	if chosen == nil && prefs.AutofeedQueue {
 		// Keep Last.fm behind both the preference and queue-exhaustion checks.
 		// Normal advancement and disabled similarity must never contact Last.fm.
-		if prefs.B("autofeed_similar") && currentItem != nil {
-			last, err := store.Track(currentItem["music_file_id"])
+		if prefs.AutofeedSimilar && currentItem != nil {
+			last, err := store.Track(currentItem.MusicFileID)
 			if err != nil {
 				return nil, 0, err
 			}
-			similar := app.similarArtists(request.Context(), last.S("artist"))
+			similar := app.similarArtists(request.Context(), last.Artist)
 			for _, name := range similar {
 				track, operationErr = app.randomAutofeedTrack(request.Context(), owner, &name)
 				if operationErr != nil {
@@ -872,12 +874,12 @@ func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
 			}
 		}
 		if track == nil {
-			track, operationErr = app.sampleAutofeedTrack(request.Context(), autofeedKey{owner: owner, excludeQueuedArtists: prefs.B("autofeed_similar")})
+			track, operationErr = app.sampleAutofeedTrack(request.Context(), autofeedKey{owner: owner, excludeQueuedArtists: prefs.AutofeedSimilar})
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		}
-		if track == nil && prefs.B("autofeed_similar") {
+		if track == nil && prefs.AutofeedSimilar {
 			// Once every eligible artist is represented, keep autofeed playing
 			// with a random nonmissing, nonblacklisted track from any artist.
 			track, operationErr = app.randomAutofeedTrack(request.Context(), owner, nil)
@@ -886,7 +888,7 @@ func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
 			}
 		}
 		if track != nil {
-			chosen, operationErr = store.AddTrack(owner, "queue", track.N("id"))
+			chosen, operationErr = store.AddTrack(owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
@@ -895,27 +897,29 @@ func (app *App) nextSong(request *http.Request, user Row) (Row, any, error) {
 	position := int64(0)
 	var rank any = ""
 	if chosen != nil {
-		position = chosen.N("id")
+		position = chosen.ID
 		if track == nil {
-			track, operationErr = store.Track(chosen["music_file_id"])
+			track, operationErr = store.Track(chosen.MusicFileID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		}
-		rank = chosen["rank"]
+		rank = chosen.Rank
 	}
 	_, operationErr = store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", position, owner)
 	return track, rank, operationErr
 }
 
-func serializeTrack(track Row) Row {
-	serializedTrack := Row{}
-	for _, field := range []string{"id", "relative_path", "artist", "title", "album", "genre", "year", "comment", "duration", "track_number", "created_at", "modified_at", "hash", "download_url"} {
-		serializedTrack[field] = track[field]
+func serializeTrack(track *Track) Row {
+	return Row{
+		"id": track.ID, "relative_path": track.RelativePath,
+		"artist": track.Artist, "title": track.Title, "album": track.Album,
+		"genre": track.Genre, "year": track.Year, "comment": track.Comment,
+		"duration": track.Duration, "track_number": track.TrackNumber,
+		"created_at": track.CreatedAt, "modified_at": track.ModifiedAt,
+		"hash": track.Hash, "download_url": track.DownloadURL,
+		"music_directory": track.MusicDirectoryID, "missing": track.Missing,
 	}
-	serializedTrack["music_directory"] = track["music_directory_id"]
-	serializedTrack["missing"] = track.B("missing")
-	return serializedTrack
 }
 
 func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -1038,18 +1042,18 @@ func (app *App) playlists(responseWriter http.ResponseWriter, request *http.Requ
 	}
 	result := []Row{}
 	for _, tag := range tags {
-		if tag.S("label") == "queue" || tag.S("label") == "blacklist" || tag.S("label") == "corrompus" {
+		if tag.Label == "queue" || tag.Label == "blacklist" || tag.Label == "corrompus" {
 			continue
 		}
-		tracks, err := app.Store.TagTracks(tag.N("id"))
+		tracks, err := app.Store.TagTracks(tag.ID)
 		if err != nil {
 			return err
 		}
 		items := []Row{}
 		for _, track := range tracks {
-			items = append(items, Row{"artist": track["artist"], "title": track["title"], "album": track["album"], "url": track["download_url"], "file_name": slug(track.S("artist")) + "_-_" + slug(track.S("title")) + fileExtension(track)})
+			items = append(items, Row{"artist": track.Artist, "title": track.Title, "album": track.Album, "url": track.DownloadURL, "file_name": slug(track.Artist) + "_-_" + slug(track.Title) + fileExtension(track)})
 		}
-		result = append(result, Row{"label": tag["label"], "items": items})
+		result = append(result, Row{"label": tag.Label, "items": items})
 	}
 	return jsonResponse(responseWriter, result)
 }

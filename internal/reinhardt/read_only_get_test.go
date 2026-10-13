@@ -67,11 +67,11 @@ func TestTagPagesInitializeOnlyMissingTags(test *testing.T) {
 			if writes := stats.writes.Load(); writes != 1 {
 				test.Fatalf("first %s visit for owner %d made %d writes, want one tag creation", name, owner, writes)
 			}
-			tag, err := app.Store.One("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
+			tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
 			if err != nil {
 				test.Fatal(err)
 			}
-			if tag.B("is_playlist") || tag.B("is_shared") || tag.S("created_at") == "" || tag.S("modified_at") == "" {
+			if tag.IsPlaylist || tag.IsShared || tag.CreatedAt == "" || tag.ModifiedAt == "" {
 				test.Fatal("new tag defaults or timestamps changed")
 			}
 			stats.writes.Store(0)
@@ -107,7 +107,7 @@ func TestExistingTagLookupPreservesNormalizationAndOwner(test *testing.T) {
 		}
 	}
 	tag, err := app.Store.Tag(id, 1)
-	if err != nil || !tag.B("is_playlist") || !tag.B("is_shared") {
+	if err != nil || !tag.IsPlaylist || !tag.IsShared {
 		test.Fatal("lookup changed existing tag flags", err)
 	}
 	stats.calls.Store(0)

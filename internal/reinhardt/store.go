@@ -20,6 +20,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Row holds dynamic SQL projections or template/API data. Application domain
+// records use the typed models in models.go.
 type Row map[string]any
 
 func (row Row) String() string {
@@ -80,8 +82,8 @@ type Store struct {
 
 var errNoMusicDirectory = errors.New("no music directory is registered")
 
-func (store *Store) DefaultMusicDirectory() (Row, error) {
-	dir, err := store.One("SELECT * FROM reinhardt_musicdirectory ORDER BY id LIMIT 1")
+func (store *Store) DefaultMusicDirectory() (*MusicDirectory, error) {
+	dir, err := store.musicDirectory("SELECT * FROM reinhardt_musicdirectory ORDER BY id LIMIT 1")
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w in database %q; run 'reinhardt addmusicdir /path/to/music' using this database", errNoMusicDirectory, store.Config["DATABASE_PATH"])
 	}
@@ -240,18 +242,19 @@ func (store *Store) One(query string, args ...any) (Row, error) {
 	}
 	return rows[0], nil
 }
-func (store *Store) Preferences(owner int64) (Row, error) {
+func (store *Store) Preferences(owner int64) (*Preferences, error) {
 	// Even ignored AUTOINCREMENT inserts can write SQLite's sequence. Read first
 	// so rendering an initialized account does not acquire a write transaction.
 	prefs, err := store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
 	if err != sql.ErrNoRows {
-		return prefs, err
+		return preferencesFromRow(prefs), err
 	}
 	_, err = store.DB.Exec(`INSERT OR IGNORE INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,NULL)`, owner)
 	if err != nil {
 		return nil, err
 	}
-	return store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
+	row, err := store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
+	return preferencesFromRow(row), err
 }
 
 func (store *Store) SetUserLanguage(owner int64, code string) error {
@@ -268,17 +271,18 @@ func (store *Store) SetUserLanguage(owner int64, code string) error {
 
 const tracksSQL = `SELECT m.*,d.local_path FROM reinhardt_musicfile m JOIN reinhardt_musicdirectory d ON d.id=m.music_directory_id `
 
-func (store *Store) Tracks(clause string, args ...any) ([]Row, error) {
+func (store *Store) Tracks(clause string, args ...any) ([]*Track, error) {
 	rows, err := store.Query(tracksSQL+clause, args...)
 	if err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		store.decorateTrack(row)
+	tracks := tracksFromRows(rows)
+	for _, track := range tracks {
+		store.decorateTrack(track)
 	}
-	return rows, nil
+	return tracks, nil
 }
-func (store *Store) Track(id any) (Row, error) {
+func (store *Store) Track(id any) (*Track, error) {
 	rs, err := store.Tracks("WHERE m.id=?", id)
 	if err != nil {
 		return nil, err
@@ -288,47 +292,50 @@ func (store *Store) Track(id any) (Row, error) {
 	}
 	return rs[0], nil
 }
-func (store *Store) decorateTrack(track Row) {
-	track["full_path"] = filepath.Join(track.S("local_path"), track.S("relative_path"))
-	name := []rune(track.S("artist") + " - " + track.S("title"))
+func (store *Store) decorateTrack(track *Track) {
+	track.FullPath = filepath.Join(track.LocalPath, track.RelativePath)
+	name := []rune(track.Artist + " - " + track.Title)
 	if len(name) > 55 {
 		name = name[:55]
 	}
-	track["clean_file_name"] = slug(string(name)+" - "+track.S("id")) + filepath.Ext(track.S("relative_path"))
-	track["download_url"] = store.Config.Path("download/" + track.S("id") + "/" + track.S("clean_file_name"))
+	track.CleanFileName = slug(string(name)+" - "+fmt.Sprint(track.ID)) + filepath.Ext(track.RelativePath)
+	track.DownloadURL = store.Config.Path("download/" + fmt.Sprint(track.ID) + "/" + track.CleanFileName)
 	if store.Config["DELEGATE_DOWNLOAD_PREFIX"] != "" {
-		track["download_url"] = strings.TrimRight(store.Config["DELEGATE_DOWNLOAD_PREFIX"], "/") + "/" + track.S("relative_path")
+		track.DownloadURL = strings.TrimRight(store.Config["DELEGATE_DOWNLOAD_PREFIX"], "/") + "/" + track.RelativePath
 	}
-	track["playback_url"] = store.Config.Path("stream/" + track.S("id") + "/")
+	track.PlaybackURL = store.Config.Path("stream/" + fmt.Sprint(track.ID) + "/")
 }
-func (store *Store) Tags(owner int64, reserved bool) ([]Row, error) {
+func (store *Store) Tags(owner int64, reserved bool) ([]*Tag, error) {
 	clause := ""
 	if !reserved {
 		clause = " AND t.label NOT IN ('queue','favorites')"
 	}
 	rs, err := store.Query(`SELECT t.*,COUNT(a.id) track_count,COALESCE(SUM(m.duration),0) total_duration FROM reinhardt_tag t LEFT JOIN reinhardt_musicfiletag a ON a.tag_id=t.id LEFT JOIN reinhardt_musicfile m ON m.id=a.music_file_id WHERE t.owner_id=?`+clause+` GROUP BY t.id ORDER BY t.label`, owner)
+	tags := make([]*Tag, 0, len(rs))
 	for _, row := range rs {
-		store.decorateTag(row)
+		tag := tagFromRow(row)
+		store.decorateTag(tag)
+		tags = append(tags, tag)
 	}
-	return rs, err
+	return tags, err
 }
-func (store *Store) decorateTag(tag Row) {
-	digest := sha256.Sum256([]byte(tag.S("id") + "-" + store.Config["SECRET_KEY"]))
-	tag["share_hash"] = hex.EncodeToString(digest[:])
-	tag["share_url"] = store.Config.Path("shared/" + tag.S("id") + "/" + tag.S("share_hash") + "/")
-	tag["duration"] = tag["total_duration"]
+func (store *Store) decorateTag(tag *Tag) {
+	digest := sha256.Sum256([]byte(fmt.Sprint(tag.ID) + "-" + store.Config["SECRET_KEY"]))
+	tag.ShareHash = hex.EncodeToString(digest[:])
+	tag.ShareURL = store.Config.Path("shared/" + fmt.Sprint(tag.ID) + "/" + tag.ShareHash + "/")
+	tag.Duration = tag.TotalDuration
 }
-func (store *Store) Tag(id any, owner int64) (Row, error) {
-	tag, err := store.One("SELECT * FROM reinhardt_tag WHERE id=? AND owner_id=?", id, owner)
+func (store *Store) Tag(id any, owner int64) (*Tag, error) {
+	tag, err := store.tag("SELECT * FROM reinhardt_tag WHERE id=? AND owner_id=?", id, owner)
 	if err == nil {
 		store.decorateTag(tag)
 	}
 	return tag, err
 }
-func (store *Store) TagTracks(id any) ([]Row, error) {
+func (store *Store) TagTracks(id any) ([]*Track, error) {
 	return store.Tracks("JOIN reinhardt_musicfiletag a ON a.music_file_id=m.id WHERE a.tag_id=? AND m.missing=0 ORDER BY a.rank,a.id", id)
 }
-func (store *Store) Queue(owner int64) ([]Row, error) {
+func (store *Store) Queue(owner int64) ([]*QueueItem, error) {
 	tracks, err := store.Query(`SELECT m.*,d.local_path,
 a.id AS queue_id,a.tag_id AS queue_tag_id,a.rank AS queue_rank,
 a.created_at AS queue_created_at,a.modified_at AS queue_modified_at
@@ -339,18 +346,16 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY a.rank,a.id`, owner)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]Row, 0, len(tracks))
-	for _, track := range tracks {
-		// Both records have an id. Keep the track's id in the nested row and the
-		// association's id on the item: current_position refers to the latter.
-		item := Row{"music_file_id": track["id"], "music_file": track}
-		for _, key := range []string{"id", "tag_id", "rank", "created_at", "modified_at"} {
-			item[key] = track["queue_"+key]
-			delete(track, "queue_"+key)
-		}
-		item["pk"] = item["id"]
+	items := make([]*QueueItem, 0, len(tracks))
+	for _, row := range tracks {
+		track := trackFromRow(row)
 		store.decorateTrack(track)
-		items = append(items, item)
+		items = append(items, &QueueItem{
+			ID: row.N("queue_id"), TagID: row.N("queue_tag_id"),
+			MusicFileID: track.ID, Rank: row.N("queue_rank"),
+			CreatedAt: row.S("queue_created_at"), ModifiedAt: row.S("queue_modified_at"),
+			MusicFile: track,
+		})
 	}
 	return items, nil
 }
@@ -395,9 +400,9 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY random()`, owner)
 
 // Playback needs at most the current item and one selected item. Keep these
 // lookups separate from Queue, which decorates every track for queue pages.
-func (store *Store) queueItem(owner int64, predicate string, args ...any) (Row, error) {
+func (store *Store) queueItem(owner int64, predicate string, args ...any) (*QueueItem, error) {
 	params := append([]any{owner}, args...)
-	return store.One(`SELECT a.* FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id
+	return store.queueAssociation(`SELECT a.* FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id
 WHERE t.owner_id=? AND t.label='queue' AND `+predicate+` ORDER BY a.rank,a.id LIMIT 1`, params...)
 }
 func (store *Store) AddTag(owner int64, name string) (int64, error) {
@@ -450,7 +455,7 @@ func (store *Store) AddTracks(owner int64, name string, ids []int64) (int, error
 	return count, tx.Commit()
 }
 
-func (store *Store) AddTrack(owner int64, name string, track int64) (Row, error) {
+func (store *Store) AddTrack(owner int64, name string, track int64) (*QueueItem, error) {
 	tag, err := store.AddTag(owner, name)
 	if err != nil {
 		return nil, err
@@ -477,9 +482,9 @@ func (store *Store) AddTrack(owner int64, name string, track int64) (Row, error)
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	return store.One("SELECT * FROM reinhardt_musicfiletag WHERE tag_id=? AND music_file_id=?", tag, track)
+	return store.queueAssociation("SELECT * FROM reinhardt_musicfiletag WHERE tag_id=? AND music_file_id=?", tag, track)
 }
-func ids(rows []Row) []int64 {
+func rowIDs(rows []Row) []int64 {
 	out := []int64{}
 	for _, row := range rows {
 		out = append(out, row.N("id"))
@@ -495,13 +500,51 @@ func ftsEscape(query string) string {
 	}
 	return strings.Join(words, " ")
 }
-func (store *Store) Search(query string) ([]Row, error) {
+func (store *Store) Search(query string) ([]*Track, error) {
 	if strings.TrimSpace(query) == "" {
-		return []Row{}, nil
+		return []*Track{}, nil
 	}
 	return store.Tracks("JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0 ORDER BY f.rank LIMIT 1000", ftsEscape(query))
 }
 func (store *Store) ReindexFTS() error {
 	_, err := store.DB.Exec(`DELETE FROM music_index; INSERT INTO music_index(id,data,artist,title,album,genre,comment) SELECT id,trim(artist||' '||title||' '||album||' '||genre||' '||comment),artist,title,album,genre,comment FROM reinhardt_musicfile WHERE missing=0;`)
 	return err
+}
+
+func tracksFromRows(rows []Row) []*Track {
+	tracks := make([]*Track, 0, len(rows))
+	for _, row := range rows {
+		tracks = append(tracks, trackFromRow(row))
+	}
+	return tracks
+}
+func ids(tracks []*Track) []int64 {
+	result := make([]int64, 0, len(tracks))
+	for _, track := range tracks {
+		result = append(result, track.ID)
+	}
+	return result
+}
+func (store *Store) musicDirectory(query string, args ...any) (*MusicDirectory, error) {
+	row, err := store.One(query, args...)
+	return musicDirectoryFromRow(row), err
+}
+func (store *Store) user(query string, args ...any) (*User, error) {
+	row, err := store.One(query, args...)
+	return userFromRow(row), err
+}
+func (store *Store) tag(query string, args ...any) (*Tag, error) {
+	row, err := store.One(query, args...)
+	return tagFromRow(row), err
+}
+func (store *Store) queueAssociation(query string, args ...any) (*QueueItem, error) {
+	row, err := store.One(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &QueueItem{
+		ID: row.N("id"), TagID: row.N("tag_id"),
+		MusicFileID: row.N("music_file_id"), Rank: row.N("rank"),
+		CreatedAt: row.S("created_at"), ModifiedAt: row.S("modified_at"),
+	}, nil
 }

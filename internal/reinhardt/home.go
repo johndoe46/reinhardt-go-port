@@ -9,10 +9,10 @@ type homeCache struct {
 	// An empty library is a cached result too, not a reason to repeat the scan.
 	loaded   bool
 	revision int64
-	tracks   []Row
+	tracks   []*Track
 }
 
-func (app *App) latestAdditions() ([]Row, error) {
+func (app *App) latestAdditions() ([]*Track, error) {
 	cache := &app.home
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -24,7 +24,8 @@ func (app *App) latestAdditions() ([]Row, error) {
 	if !cache.loaded || cache.revision != revision {
 		// Keep the original SQLite grouping and representative-track selection:
 		// changing the query or its indexes can change the displayed rows.
-		tracks, err := app.Store.Query(tracksSQL + latestAdditionsClause)
+		rows, err := app.Store.Query(tracksSQL + latestAdditionsClause)
+		tracks := tracksFromRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -34,14 +35,15 @@ func (app *App) latestAdditions() ([]Row, error) {
 	}
 	// Each request owns its rows. Derive URLs from the current configuration,
 	// without retaining request changes or decorated paths in the shared cache.
-	tracks := make([]Row, 0, len(cache.tracks))
+	tracks := make([]*Track, 0, len(cache.tracks))
 	for _, cached := range cache.tracks {
-		track := make(Row, len(cached)+4)
-		for key, value := range cached {
-			track[key] = value
+		track := *cached
+		if cached.Hash != nil {
+			hash := *cached.Hash
+			track.Hash = &hash
 		}
-		app.Store.decorateTrack(track)
-		tracks = append(tracks, track)
+		app.Store.decorateTrack(&track)
+		tracks = append(tracks, &track)
 	}
 	return tracks, nil
 }

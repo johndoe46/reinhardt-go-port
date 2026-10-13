@@ -92,13 +92,17 @@ VALUES(1,'new.mp3','New artist','New tune','New album','','','2030-01-01','2030-
 
 func TestLatestAdditionsRowsAreIsolatedAndURLsUseCurrentConfig(test *testing.T) {
 	app := testApp(test)
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET hash='stored hash'"); err != nil {
+		test.Fatal(err)
+	}
 	got, err := app.latestAdditions()
 	if err != nil || len(got) == 0 {
 		test.Fatal("missing home tracks", err)
 	}
-	got[0]["title"] = "Request mutation"
-	delete(got[0], "artist")
-	got[0] = Row{"id": -1}
+	got[0].Title = "Request mutation"
+	got[0].Artist = ""
+	*got[0].Hash = "Request hash mutation"
+	got[0] = &Track{ID: -1}
 	app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] = "https://audio.example/music/"
 	app.Store.Config["URL_PREFIX"] = "reinhardt/"
 	want, err := app.Store.Tracks(latestAdditionsClause)

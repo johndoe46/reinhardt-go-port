@@ -288,7 +288,7 @@ func TestSimilarArtistsSharedByPageAndAutofeed(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", last["id"]); err != nil {
+	if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=?,autofeed_queue=1,autofeed_similar=1 WHERE owner_id=1", last.ID); err != nil {
 		test.Fatal(err)
 	}
 	response = call(app, "POST", "/next_song/", 1, url.Values{}, true)

@@ -35,7 +35,7 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-func fileExtension(track Row) string { return filepath.Ext(track.S("relative_path")) }
+func fileExtension(track *Track) string { return filepath.Ext(track.RelativePath) }
 func contentType(path string) string {
 	contentType := mime.TypeByExtension(filepath.Ext(path))
 	if contentType == "" {
@@ -43,8 +43,8 @@ func contentType(path string) string {
 	}
 	return contentType
 }
-func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track Row, attachment bool) error {
-	file, err := os.Open(track.S("full_path"))
+func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track *Track, attachment bool) error {
+	file, err := os.Open(track.FullPath)
 	if os.IsNotExist(err) {
 		return sql.ErrNoRows
 	}
@@ -56,15 +56,15 @@ func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track
 	if err != nil {
 		return err
 	}
-	responseWriter.Header().Set("Content-Type", contentType(track.S("relative_path")))
+	responseWriter.Header().Set("Content-Type", contentType(track.RelativePath))
 	disposition := "inline"
 	if attachment {
 		disposition = "attachment"
 	}
-	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": track.S("clean_file_name")}))
+	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": track.CleanFileName}))
 	// Keep the seekable file: ServeContent handles HEAD, conditional requests,
 	// and byte ranges that the browser uses to seek within an audio track.
-	http.ServeContent(responseWriter, request, track.S("clean_file_name"), info.ModTime(), file)
+	http.ServeContent(responseWriter, request, track.CleanFileName, info.ModTime(), file)
 	return nil
 }
 func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
@@ -76,8 +76,8 @@ func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request,
 		if len(parts) < 3 {
 			return sql.ErrNoRows
 		}
-		if parts[2] != track.S("clean_file_name") {
-			app.redirect(responseWriter, request, track.S("download_url"))
+		if parts[2] != track.CleanFileName {
+			app.redirect(responseWriter, request, track.DownloadURL)
 			return nil
 		}
 		return serveLocal(responseWriter, request, track, false)
@@ -85,7 +85,7 @@ func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request,
 	if app.Store.Config["DELEGATE_DOWNLOAD_PREFIX"] == "" {
 		return serveLocal(responseWriter, request, track, false)
 	}
-	req, err := http.NewRequestWithContext(request.Context(), request.Method, track.S("download_url"), nil)
+	req, err := http.NewRequestWithContext(request.Context(), request.Method, track.DownloadURL, nil)
 	if err != nil {
 		return err
 	}
@@ -116,14 +116,14 @@ func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request,
 		}
 	}
 	if responseWriter.Header().Get("Content-Type") == "" {
-		responseWriter.Header().Set("Content-Type", contentType(track.S("relative_path")))
+		responseWriter.Header().Set("Content-Type", contentType(track.RelativePath))
 	}
 	responseWriter.WriteHeader(resp.StatusCode)
 	if request.Method != "HEAD" {
 		// Browser seeks commonly cancel a previous stream. That cancellation also
 		// stops the upstream request and should not be logged as a relay failure.
 		if bytesCopied, err := io.Copy(responseWriter, resp.Body); err != nil && request.Context().Err() == nil {
-			log.Printf("audio relay track %s: received/wrote %d bytes (upstream length %s): %v", track.S("id"), bytesCopied, resp.Header.Get("Content-Length"), err)
+			log.Printf("audio relay track %d: received/wrote %d bytes (upstream length %s): %v", track.ID, bytesCopied, resp.Header.Get("Content-Length"), err)
 		}
 	}
 	return nil
@@ -194,11 +194,11 @@ func atomicModify(path string, modify func(string) error) error {
 	}
 	return os.Rename(temp, path)
 }
-func writeID3(track Row, picture []byte, pictureType string) error {
+func writeID3(track *Track, picture []byte, pictureType string) error {
 	if strings.ToLower(fileExtension(track)) != ".mp3" {
 		return nil
 	}
-	return atomicModify(track.S("full_path"), func(path string) error {
+	return atomicModify(track.FullPath, func(path string) error {
 		id3Tag, err := id3.Open(path, id3.Options{Parse: true})
 		if err != nil {
 			return err
@@ -209,15 +209,15 @@ func writeID3(track Row, picture []byte, pictureType string) error {
 		for _, frameID := range []string{"TPE1", "TIT2", "TALB", "TCON", "TDRC", "TYER", "COMM"} {
 			id3Tag.DeleteFrames(frameID)
 		}
-		id3Tag.SetArtist(track.S("artist"))
-		id3Tag.SetTitle(track.S("title"))
-		id3Tag.SetAlbum(track.S("album"))
-		id3Tag.SetGenre(track.S("genre"))
-		if track.S("year") != "" {
-			id3Tag.AddTextFrame("TYER", id3.EncodingUTF8, track.S("year"))
+		id3Tag.SetArtist(track.Artist)
+		id3Tag.SetTitle(track.Title)
+		id3Tag.SetAlbum(track.Album)
+		id3Tag.SetGenre(track.Genre)
+		if track.Year != "" {
+			id3Tag.AddTextFrame("TYER", id3.EncodingUTF8, track.Year)
 		}
-		if track.S("comment") != "" {
-			id3Tag.AddCommentFrame(id3.CommentFrame{Encoding: id3.EncodingUTF8, Language: "eng", Text: track.S("comment")})
+		if track.Comment != "" {
+			id3Tag.AddCommentFrame(id3.CommentFrame{Encoding: id3.EncodingUTF8, Language: "eng", Text: track.Comment})
 		}
 		if picture != nil {
 			id3Tag.DeleteFrames("APIC")
@@ -256,7 +256,7 @@ func normalizedImage(reader io.ReadSeeker) ([]byte, string, error) {
 	err = png.Encode(&buffer, im)
 	return buffer.Bytes(), ".png", err
 }
-func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.Request, user Row, id string) error {
+func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.Request, user *User, id string) error {
 	track, operationErr := app.Store.Track(id)
 	if operationErr != nil {
 		return operationErr
@@ -264,13 +264,16 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 	message := ""
 	status := 200
 	if request.Method == "POST" {
-		if !user.B("is_superuser") {
+		if !user.IsSuperuser {
 			return forbidden()
 		}
-		for _, field := range []string{"artist", "title", "album", "genre", "year", "comment"} {
-			track[field] = strings.TrimSpace(request.FormValue(field))
-		}
-		if track.S("artist") == "" || track.S("title") == "" {
+		track.Artist = strings.TrimSpace(request.FormValue("artist"))
+		track.Title = strings.TrimSpace(request.FormValue("title"))
+		track.Album = strings.TrimSpace(request.FormValue("album"))
+		track.Genre = strings.TrimSpace(request.FormValue("genre"))
+		track.Year = strings.TrimSpace(request.FormValue("year"))
+		track.Comment = strings.TrimSpace(request.FormValue("comment"))
+		if track.Artist == "" || track.Title == "" {
 			message = "not enough data"
 			status = 400
 		} else {
@@ -286,7 +289,7 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 				if operationErr != nil {
 					message = "invalid image"
 					status = 400
-				} else if _, operationErr = os.Stat(track.S("full_path")); operationErr != nil {
+				} else if _, operationErr = os.Stat(track.FullPath); operationErr != nil {
 					message = "audio file not found"
 					status = 400
 				}
@@ -296,21 +299,21 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 					log.Printf("metadata writing: %v", operationErr)
 				}
 				if data != nil {
-					if operationErr = atomicFile(track.S("full_path")+ext, bytes.NewReader(data), true); operationErr != nil {
+					if operationErr = atomicFile(track.FullPath+ext, bytes.NewReader(data), true); operationErr != nil {
 						return operationErr
 					}
-					app.invalidateCovers(track.N("id"))
+					app.invalidateCovers(track.ID)
 					if fileExtension(track) != ".mp3" {
-						if err := embedArtwork(request.Context(), track, track.S("full_path")+ext); err != nil {
+						if err := embedArtwork(request.Context(), track, track.FullPath+ext); err != nil {
 							log.Printf("embed artwork: %v", err)
 						}
 					}
 				}
-				_, operationErr = app.Store.DB.Exec(`UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, track["artist"], track["title"], track["album"], track["genre"], track["year"], track["comment"], now(), track.N("id"))
+				_, operationErr = app.Store.DB.Exec(`UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, track.Artist, track.Title, track.Album, track.Genre, track.Year, track.Comment, now(), track.ID)
 				if operationErr != nil {
 					return operationErr
 				}
-				if operationErr = app.Store.enqueueSync(track.N("id")); operationErr != nil {
+				if operationErr = app.Store.enqueueSync(track.ID); operationErr != nil {
 					return operationErr
 				}
 				app.redirect(responseWriter, request, app.Store.URL("index"))
@@ -327,8 +330,8 @@ func (app *App) invalidateCovers(id int64) {
 		os.Remove(cachePath)
 	}
 }
-func nearbyPicture(track Row) string {
-	path := track.S("full_path")
+func nearbyPicture(track *Track) string {
+	path := track.FullPath
 	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif"} {
 		if info, err := os.Stat(path + ext); err == nil && info.Mode().IsRegular() {
 			return path + ext
@@ -356,8 +359,8 @@ func cropSquare(im image.Image, size int) image.Image {
 	draw.CatmullRom.Scale(out, out.Bounds(), im, image.Rect(cropX, cropY, cropX+side, cropY+side), draw.Over, nil)
 	return out
 }
-func fallbackArtwork(track Row, size int) image.Image {
-	colorSeed := sha256.Sum256([]byte(track.S("artist") + "/" + track.S("album") + "/" + track.S("title")))
+func fallbackArtwork(track *Track, size int) image.Image {
+	colorSeed := sha256.Sum256([]byte(track.Artist + "/" + track.Album + "/" + track.Title))
 	im := image.NewRGBA(image.Rect(0, 0, 512, 512))
 	paper := color.RGBA{242, 232, 213, 255}
 	ink := color.RGBA{36 + colorSeed[0]%35, 45 + colorSeed[1]%35, 55 + colorSeed[2]%35, 255}
@@ -385,7 +388,7 @@ func fallbackArtwork(track Row, size int) image.Image {
 			}
 		}
 	}
-	drawFallbackArtworkText(im, ink, track.S("artist"), track.S("title"))
+	drawFallbackArtworkText(im, ink, track.Artist, track.Title)
 	return cropSquare(im, size)
 }
 func intSqrt(value int) int {
@@ -408,7 +411,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	if err != nil {
 		return err
 	}
-	cache := filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("thumb-%s-%d-square.jpg", track.S("id"), size))
+	cache := filepath.Join(app.Store.Config["COVERS_DIR"], fmt.Sprintf("thumb-%d-%d-square.jpg", track.ID, size))
 	if cachedFile, err := os.Open(cache); err == nil {
 		defer cachedFile.Close()
 		info, err := cachedFile.Stat()
@@ -421,14 +424,14 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	}
 	var im image.Image
 	// A track-specific sidecar records an explicit edit and must beat stale embedded artwork.
-	if picture := nearbyPicture(track); strings.HasPrefix(picture, track.S("full_path")) && picture != "" {
+	if picture := nearbyPicture(track); strings.HasPrefix(picture, track.FullPath) && picture != "" {
 		if pictureFile, err := os.Open(picture); err == nil {
 			im, _, _ = decodedImage(pictureFile)
 			pictureFile.Close()
 		}
 	}
 	if im == nil {
-		if audioFile, err := os.Open(track.S("full_path")); err == nil {
+		if audioFile, err := os.Open(track.FullPath); err == nil {
 			if metadata, err := tag.ReadFrom(audioFile); err == nil && metadata.Picture() != nil {
 				im, _, _ = decodedImage(bytes.NewReader(metadata.Picture().Data))
 			}
@@ -468,8 +471,8 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	return nil
 }
 
-func (app *App) archive(responseWriter http.ResponseWriter, request *http.Request, tag Row) error {
-	tracks, err := app.Store.TagTracks(tag.N("id"))
+func (app *App) archive(responseWriter http.ResponseWriter, request *http.Request, tag *Tag) error {
+	tracks, err := app.Store.TagTracks(tag.ID)
 	if err != nil {
 		return err
 	}
@@ -481,7 +484,7 @@ func (app *App) archive(responseWriter http.ResponseWriter, request *http.Reques
 	defer archiveFile.Close()
 	archiveWriter := zip.NewWriter(archiveFile)
 	for index, track := range tracks {
-		src, err := os.Open(track.S("full_path"))
+		src, err := os.Open(track.FullPath)
 		if err != nil {
 			archiveWriter.Close()
 			return err
@@ -498,7 +501,7 @@ func (app *App) archive(responseWriter http.ResponseWriter, request *http.Reques
 			archiveWriter.Close()
 			return err
 		}
-		header.Name = fmt.Sprintf("%03d-%s", index+1, track.S("clean_file_name"))
+		header.Name = fmt.Sprintf("%03d-%s", index+1, track.CleanFileName)
 		// Audio is already compressed; deflating it adds CPU cost for little gain.
 		header.Method = zip.Store
 		dst, err := archiveWriter.CreateHeader(header)
@@ -518,7 +521,7 @@ func (app *App) archive(responseWriter http.ResponseWriter, request *http.Reques
 		return err
 	}
 	responseWriter.Header().Set("Content-Type", "application/zip")
-	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": slug(tag.S("label")) + ".zip"}))
+	responseWriter.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": slug(tag.Label) + ".zip"}))
 	http.ServeContent(responseWriter, request, "playlist.zip", time.Time{}, archiveFile)
 	return nil
 }
@@ -601,7 +604,7 @@ func (config Config) sanitize(text, field string) string {
 	}
 	return text
 }
-func (store *Store) Metadata(path string) (Row, error) {
+func (store *Store) Metadata(path string) (*Track, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -643,7 +646,16 @@ func (store *Store) Metadata(path string) (Row, error) {
 	} else {
 		duration = mp4Duration(file)
 	}
-	return Row{"artist": store.Config.sanitize(metadata.Artist(), "artist"), "title": store.Config.sanitize(metadata.Title(), ""), "album": store.Config.sanitize(metadata.Album(), ""), "genre": store.Config.sanitize(genre, "genre"), "year": year, "comment": strings.TrimSpace(metadata.Comment()), "duration": duration, "track_number": track, "created_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"), "modified_at": info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")}, nil
+	return &Track{
+		Artist: store.Config.sanitize(metadata.Artist(), "artist"),
+		Title:  store.Config.sanitize(metadata.Title(), ""),
+		Album:  store.Config.sanitize(metadata.Album(), ""),
+		Genre:  store.Config.sanitize(genre, "genre"),
+		Year:   year, Comment: strings.TrimSpace(metadata.Comment()),
+		Duration: int64(duration), TrackNumber: int64(track),
+		CreatedAt:  info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"),
+		ModifiedAt: info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"),
+	}, nil
 }
 func mp4Duration(file *os.File) int {
 	info, err := file.Stat()
@@ -703,7 +715,7 @@ func mp4Duration(file *os.File) int {
 	}
 	return walk(0, info.Size(), 0)
 }
-func (store *Store) indexFile(path string, dir Row) error {
+func (store *Store) indexFile(path string, dir *MusicDirectory) error {
 	trackMetadata, err := store.Metadata(path)
 	if err != nil {
 		return err
@@ -713,11 +725,11 @@ func (store *Store) indexFile(path string, dir Row) error {
 
 // indexFileMetadata stores already parsed metadata and queues synchronization
 // without reopening the audio. Callers supply timestamps for the indexed file.
-func (store *Store) indexFileMetadata(path string, dir, trackMetadata Row) error {
-	if trackMetadata.S("artist") == "" || trackMetadata.S("title") == "" {
+func (store *Store) indexFileMetadata(path string, dir *MusicDirectory, trackMetadata *Track) error {
+	if trackMetadata.Artist == "" || trackMetadata.Title == "" {
 		return fmt.Errorf("artist and title are required")
 	}
-	relative, err := filepath.Rel(dir.S("local_path"), path)
+	relative, err := filepath.Rel(dir.LocalPath, path)
 	if err != nil {
 		return err
 	}
@@ -725,7 +737,7 @@ func (store *Store) indexFileMetadata(path string, dir, trackMetadata Row) error
 	// directories. Update in place so rescans preserve IDs and playlist membership;
 	// INSERT OR REPLACE would delete the old row and cascade its associations.
 	var trackID int64
-	err = store.DB.QueryRow(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0 RETURNING id`, dir.N("id"), relative, trackMetadata["artist"], trackMetadata["title"], trackMetadata["album"], trackMetadata["genre"], trackMetadata["year"], trackMetadata["comment"], trackMetadata["duration"], trackMetadata["track_number"], trackMetadata["created_at"], trackMetadata["modified_at"]).Scan(&trackID)
+	err = store.DB.QueryRow(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0 RETURNING id`, dir.ID, relative, trackMetadata.Artist, trackMetadata.Title, trackMetadata.Album, trackMetadata.Genre, trackMetadata.Year, trackMetadata.Comment, trackMetadata.Duration, trackMetadata.TrackNumber, trackMetadata.CreatedAt, trackMetadata.ModifiedAt).Scan(&trackID)
 	if err != nil {
 		return err
 	}
@@ -754,20 +766,21 @@ func (store *Store) Index(out io.Writer) error {
 		return indexErr
 	}
 	for _, track := range tracks {
-		if _, err := os.Stat(track.S("full_path")); os.IsNotExist(err) {
-			if _, indexErr = store.DB.Exec("UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", track.N("id")); indexErr != nil {
+		if _, err := os.Stat(track.FullPath); os.IsNotExist(err) {
+			if _, indexErr = store.DB.Exec("UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", track.ID); indexErr != nil {
 				return indexErr
 			}
 		} else if err != nil {
 			return err
 		}
 	}
-	dirs, indexErr := store.Query("SELECT * FROM reinhardt_musicdirectory ORDER BY id")
+	directoryRows, indexErr := store.Query("SELECT * FROM reinhardt_musicdirectory ORDER BY id")
 	if indexErr != nil {
 		return indexErr
 	}
-	for _, musicDirectory := range dirs {
-		if indexErr = walkMusic(musicDirectory.S("local_path"), func(path string) error {
+	for _, row := range directoryRows {
+		musicDirectory := musicDirectoryFromRow(row)
+		if indexErr = walkMusic(musicDirectory.LocalPath, func(path string) error {
 			if err := store.indexFile(path, musicDirectory); err != nil {
 				fmt.Fprintf(out, "Skipped %s: %v\n", path, err)
 			} else {
@@ -780,13 +793,13 @@ func (store *Store) Index(out io.Writer) error {
 	}
 	return store.ReindexFTS()
 }
-func embedArtwork(ctx context.Context, track Row, picture string) error {
+func embedArtwork(ctx context.Context, track *Track, picture string) error {
 	ext := strings.ToLower(fileExtension(track))
 	if ext != ".flac" && ext != ".m4a" && ext != ".mp4" && ext != ".ogg" && ext != ".oga" && ext != ".opus" {
 		return nil
 	}
 	// ffmpeg is only needed for artwork writing in formats without a Go writer.
-	return atomicModify(track.S("full_path"), func(temp string) error {
+	return atomicModify(track.FullPath, func(temp string) error {
 		out := temp + filepath.Ext(temp)
 		defer os.Remove(out)
 		args := []string{"-v", "error", "-y", "-i", temp, "-i", picture, "-map", "0:a", "-map", "1:v", "-map_metadata", "0", "-c:a", "copy", "-c:v", "mjpeg", "-disposition:v", "attached_pic", out}

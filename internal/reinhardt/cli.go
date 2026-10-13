@@ -175,28 +175,28 @@ func newCLI() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		user, err := store.One("SELECT * FROM auth_user WHERE username=?", username)
+		user, err := store.user("SELECT * FROM auth_user WHERE username=?", username)
 		if err != nil {
 			return err
 		}
 		if superuser {
-			if _, err = store.DB.Exec("UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", user.N("id")); err != nil {
+			if _, err = store.DB.Exec("UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", user.ID); err != nil {
 				return err
 			}
 		}
 		if email != "" {
-			if _, err = store.DB.Exec("UPDATE auth_user SET email=? WHERE id=?", email, user.N("id")); err != nil {
+			if _, err = store.DB.Exec("UPDATE auth_user SET email=? WHERE id=?", email, user.ID); err != nil {
 				return err
 			}
 		}
-		prefs, err := store.Preferences(user.N("id"))
+		prefs, err := store.Preferences(user.ID)
 		if err != nil {
 			return err
 		}
-		access := prefs.S("access_token")
+		access := prefs.AccessToken
 		if access == "" {
 			access = token()
-			if _, err = store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.N("id")); err != nil {
+			if _, err = store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
 				return err
 			}
 		}
@@ -241,8 +241,8 @@ func newCLI() *cobra.Command {
 			return err
 		}
 		for index, track := range tracks {
-			dest := filepath.Join(args[1], fmt.Sprintf("%03d-%s", index+1, filepath.Base(track.S("full_path"))))
-			file, err := os.Open(track.S("full_path"))
+			dest := filepath.Join(args[1], fmt.Sprintf("%03d-%s", index+1, filepath.Base(track.FullPath)))
+			file, err := os.Open(track.FullPath)
 			if err != nil {
 				return err
 			}
@@ -268,7 +268,7 @@ func newCLI() *cobra.Command {
 		writer := csv.NewWriter(outputFile)
 		writer.Write([]string{"path", "artist", "title", "album", "genre"})
 		for _, track := range tracks {
-			writer.Write([]string{track.S("full_path"), track.S("artist"), track.S("title"), track.S("album"), track.S("genre")})
+			writer.Write([]string{track.FullPath, track.Artist, track.Title, track.Album, track.Genre})
 		}
 		writer.Flush()
 		return writer.Error()
@@ -280,12 +280,12 @@ func newCLI() *cobra.Command {
 		}
 		count := 0
 		for _, track := range tracks {
-			metadata, err := store.Metadata(track.S("full_path"))
+			metadata, err := store.Metadata(track.FullPath)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %s: %v\n", track.S("full_path"), err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %s: %v\n", track.FullPath, err)
 				continue
 			}
-			if _, err = store.DB.Exec("UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.S("year"), track.N("id")); err != nil {
+			if _, err = store.DB.Exec("UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.Year, track.ID); err != nil {
 				return err
 			}
 			count++

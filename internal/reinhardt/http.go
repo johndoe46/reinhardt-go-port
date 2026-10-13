@@ -73,16 +73,16 @@ func (app *App) absolute(request *http.Request, path string) string {
 	}
 	return scheme + "://" + request.Host + path
 }
-func (app *App) sessionUser(request *http.Request) Row {
+func (app *App) sessionUser(request *http.Request) *User {
 	sessionCookie, err := request.Cookie("sessionid")
 	if err != nil {
-		return Row{"is_authenticated": false}
+		return &User{}
 	}
-	user, err := app.Store.One(`SELECT u.*,p.language_code FROM auth_user u JOIN go_session s ON s.owner_id=u.id LEFT JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
+	user, err := app.Store.user(`SELECT u.*,p.language_code FROM auth_user u JOIN go_session s ON s.owner_id=u.id LEFT JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
 	if err != nil {
-		return Row{"is_authenticated": false}
+		return &User{}
 	}
-	user["is_authenticated"] = true
+	user.IsAuthenticated = true
 	return user
 }
 func (app *App) cookie(responseWriter http.ResponseWriter, request *http.Request, name, value string, httpOnly bool, age int) {
@@ -178,7 +178,7 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 	responseWriter.Header().Set("Cache-Control", "private, no-cache")
 	user := app.sessionUser(request)
 	public := path == "accounts/login/" || path == "invite/" || strings.HasPrefix(path, "shared/") || strings.HasPrefix(path, "artwork/") || strings.HasPrefix(path, "artwork_modal/") || path == "similar_artists/" || path == "user_playlists_contents/"
-	if !public && !user.B("is_authenticated") {
+	if !public && !user.IsAuthenticated {
 		app.redirect(responseWriter, request, app.Store.URL("login")+"?next="+url.QueryEscape(request.URL.RequestURI()))
 		return
 	}
@@ -230,7 +230,7 @@ func safeOnly(request *http.Request) error {
 	}
 	return nil
 }
-func (app *App) render(responseWriter http.ResponseWriter, request *http.Request, user Row, name string, ctx TemplateContext, status int) error {
+func (app *App) render(responseWriter http.ResponseWriter, request *http.Request, user *User, name string, ctx TemplateContext, status int) error {
 	pageTemplate, ok := app.Templates[name]
 	if !ok {
 		return fmt.Errorf("unknown template %q", name)
@@ -253,7 +253,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	translator := app.translator(user)
 	ctx["LANGUAGE_CODE"] = translator.Code
 	ctx["languages"] = app.Translations.Languages
-	ctx["preferred_language"] = user.S("language_code")
+	ctx["preferred_language"] = user.LanguageCode
 	ctx["translate"] = translator.Text
 	ctx["translate_literal"] = translator.Text
 	ctx["localize"] = translator.Message
@@ -264,8 +264,8 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	}
 	// Raw fetch() partials have no X-Up-Target header. Only templates using the
 	// page layout need preferences, the player footer, or library suggestions.
-	if user.B("is_authenticated") && pageTemplate.UsesLayout {
-		prefs, err := app.Store.Preferences(user.N("id"))
+	if user.IsAuthenticated && pageTemplate.UsesLayout {
+		prefs, err := app.Store.Preferences(user.ID)
 		if err != nil {
 			return err
 		}
@@ -279,31 +279,31 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 			}
 			if _, ok := ctx["music_file"]; !ok && nowPlayingPage {
 				ctx["current_position"] = 0
-				if position := prefs.N("current_position"); position != 0 {
-					var current Row
-					if queue, ok := ctx["queue"].([]Row); ok {
+				if position := prefs.CurrentPosition; position != 0 {
+					var current *QueueItem
+					if queue, ok := ctx["queue"].([]*QueueItem); ok {
 						// Queue pages already loaded the tracks for display.
 						for _, item := range queue {
-							if item.N("id") == position {
+							if item.ID == position {
 								current = item
 								break
 							}
 						}
 					} else {
-						current, err = app.Store.queueItem(user.N("id"), "a.id=?", position)
+						current, err = app.Store.queueItem(user.ID, "a.id=?", position)
 						if err != nil && err != sql.ErrNoRows {
 							return err
 						}
 						if current != nil {
-							current["music_file"], err = app.Store.Track(current["music_file_id"])
+							current.MusicFile, err = app.Store.Track(current.MusicFileID)
 							if err != nil {
 								return err
 							}
 						}
 					}
 					if current != nil {
-						ctx["music_file"] = current["music_file"]
-						ctx["current_position"] = current["rank"]
+						ctx["music_file"] = current.MusicFile
+						ctx["current_position"] = current.Rank
 					}
 				}
 			}
@@ -317,7 +317,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	// Render before committing headers, so a template failure can still produce
 	// a clean HTTP error instead of an incomplete successful response.
 	var renderedHTML bytes.Buffer
-	if err := pageTemplate.ExecuteTemplate(&renderedHTML, name, ctx); err != nil {
+	if err := pageTemplate.ExecuteTemplate(&renderedHTML, name, templateDomainValue(ctx)); err != nil {
 		return err
 	}
 	var err error

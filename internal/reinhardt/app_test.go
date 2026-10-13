@@ -173,7 +173,7 @@ func TestUnpolyPreservesPlayerAndPreference(test *testing.T) {
 		test.Fatal(response.Body.String())
 	}
 	preferences, err := app.Store.Preferences(2)
-	if err != nil || !preferences.B("show_oscilloscope") {
+	if err != nil || !preferences.ShowOscilloscope {
 		test.Fatal("changed another user's preferences")
 	}
 }
@@ -239,7 +239,7 @@ func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	path := tag.S("share_url")
+	path := tag.ShareURL
 	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
 	response = call(app, "GET", path, 0, nil, false)
 	requireCode(test, response, 200)
@@ -253,7 +253,7 @@ func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
 	requireCode(test, response, 404)
 	response = call(app, "GET", path+"track/1/", 0, nil, false)
 	requireCode(test, response, 200)
-	response = call(app, "GET", strings.Replace(path, tag.S("share_hash"), "invalid", 1), 0, nil, false)
+	response = call(app, "GET", strings.Replace(path, tag.ShareHash, "invalid", 1), 0, nil, false)
 	requireCode(test, response, 404)
 	response = call(app, "GET", path+"download/", 0, nil, false)
 	requireCode(test, response, 200)
@@ -301,7 +301,7 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 		if !strings.Contains(response.Body.String(), source+" playlist") || !strings.Contains(response.Body.String(), fmt.Sprintf("(%d tracks)", expected)) {
 			test.Fatal("tag form lost its selected tag or added count", response.Body.String())
 		}
-		if source == "queue" && tracks[0].N("id") != 2 {
+		if source == "queue" && tracks[0].ID != 2 {
 			test.Fatal("queue ordering lost")
 		}
 		values.Set("tag_choice", "existing")
@@ -313,7 +313,7 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 		test.Fatal(err)
 	}
 	queue, err := app.Store.Queue(1)
-	if err != nil || len(queue) != 2 || queue[0].N("music_file_id") != 2 {
+	if err != nil || len(queue) != 2 || queue[0].MusicFileID != 2 {
 		test.Fatal("duplicates or ordering changed", queue, err)
 	}
 	queueTag, err := app.Store.One("SELECT id FROM reinhardt_tag WHERE label='queue' AND owner_id=1")
@@ -363,7 +363,7 @@ func TestBulkDirectActionsAvoidTagFormData(test *testing.T) {
 					test.Fatal(err)
 				}
 				for _, item := range queue {
-					tracks = append(tracks, item.N("music_file_id"))
+					tracks = append(tracks, item.MusicFileID)
 				}
 			} else {
 				rows, err := app.Store.TagTracks(favorites)
@@ -495,12 +495,12 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	response = send(1, []byte("invalid"))
 	requireCode(test, response, 400)
 	track, err := app.Store.Track(1)
-	if err != nil || track.S("artist") != "Artist" {
+	if err != nil || track.Artist != "Artist" {
 		test.Fatal("invalid upload mutated database")
 	}
 	response = send(1, imageBytes.Bytes())
 	requireCode(test, response, 302)
-	if _, err = os.Stat(originalTrack.S("full_path") + ".png"); err != nil {
+	if _, err = os.Stat(originalTrack.FullPath + ".png"); err != nil {
 		test.Fatal("format not derived from content", err)
 	}
 	response = call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
@@ -553,15 +553,15 @@ func TestDatabaseSnapshotAndExistingSchema(test *testing.T) {
 
 func TestNativeIndexAndID3(test *testing.T) {
 	app := testApp(test)
-	dir, err := app.Store.One("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
+	dir, err := app.Store.musicDirectory("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
 	if err != nil {
 		test.Fatal(err)
 	}
-	path := filepath.Join(dir.S("local_path"), "tagged.mp3")
+	path := filepath.Join(dir.LocalPath, "tagged.mp3")
 	if err = os.WriteFile(path, make([]byte, 32), 0644); err != nil {
 		test.Fatal(err)
 	}
-	track := Row{"full_path": path, "relative_path": "tagged.mp3", "artist": "the test & friends", "title": "Tagged title", "album": "Record", "genre": "(18)Techno", "year": "2020", "comment": "Hello"}
+	track := &Track{FullPath: path, RelativePath: "tagged.mp3", Artist: "the test & friends", Title: "Tagged title", Album: "Record", Genre: "(18)Techno", Year: "2020", Comment: "Hello"}
 	if err = writeID3(track, nil, ""); err != nil {
 		test.Fatal(err)
 	}
@@ -569,7 +569,7 @@ func TestNativeIndexAndID3(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	if tags.Artist() != track.S("artist") {
+	if tags.Artist() != track.Artist {
 		test.Fatal(tags.Artist())
 	}
 	tags.Close()
@@ -580,7 +580,7 @@ func TestNativeIndexAndID3(test *testing.T) {
 	if err != nil || len(tracks) != 1 {
 		test.Fatal(tracks, err)
 	}
-	if tracks[0].S("artist") != "Test And Friends (the)" || tracks[0].S("year") != "2020" || tracks[0].S("genre") != "techno" {
+	if tracks[0].Artist != "Test And Friends (the)" || tracks[0].Year != "2020" || tracks[0].Genre != "techno" {
 		test.Fatalf("metadata: %#v", tracks[0])
 	}
 	if err = os.Remove(path); err != nil {
@@ -589,8 +589,8 @@ func TestNativeIndexAndID3(test *testing.T) {
 	if err = app.Store.Index(io.Discard); err != nil {
 		test.Fatal(err)
 	}
-	track, err = app.Store.Track(tracks[0].N("id"))
-	if err != nil || !track.B("missing") {
+	track, err = app.Store.Track(tracks[0].ID)
+	if err != nil || !track.Missing {
 		test.Fatal(track, err)
 	}
 }

@@ -110,8 +110,8 @@ func (translator *Translator) Format(id string, data map[string]any) (string, er
 	return translator.Message(id, data, nil)
 }
 
-func (app *App) translator(user Row) *Translator {
-	code := user.S("language_code")
+func (app *App) translator(user *User) *Translator {
+	code := user.LanguageCode
 	if code == "" {
 		code = app.Store.Config["LANGUAGE_CODE"]
 	}

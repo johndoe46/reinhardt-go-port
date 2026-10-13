@@ -110,18 +110,18 @@ func (app *App) Work(ctx context.Context, once bool) error {
 	}
 }
 
-func libraryPath(track Row, ext string) (string, error) {
-	artist, title := slug(track.S("artist")), slug(track.S("title"))
+func libraryPath(track *Track, ext string) (string, error) {
+	artist, title := slug(track.Artist), slug(track.Title)
 	if artist == "" || title == "" {
 		return "", fmt.Errorf("artist and title must contain letters or numbers")
 	}
-	album := slug(track.S("album"))
+	album := slug(track.Album)
 	if album == "" {
 		album = "unknown"
 	}
-	return filepath.Join(artist[:1], artist, album, fmt.Sprintf("%02d-%s%s", track.N("track_number"), title, strings.ToLower(ext))), nil
+	return filepath.Join(artist[:1], artist, album, fmt.Sprintf("%02d-%s%s", track.TrackNumber, title, strings.ToLower(ext))), nil
 }
-func (store *Store) importFile(path string, dir Row) (string, error) {
+func (store *Store) importFile(path string, dir *MusicDirectory) (string, error) {
 	trackMetadata, err := store.Metadata(path)
 	if err != nil {
 		return "", err
@@ -130,7 +130,7 @@ func (store *Store) importFile(path string, dir Row) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(dir.S("local_path"), rel)
+	dest := filepath.Join(dir.LocalPath, rel)
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -147,8 +147,8 @@ func (store *Store) importFile(path string, dir Row) (string, error) {
 		return "", err
 	}
 	modifiedAt := info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")
-	trackMetadata["created_at"] = modifiedAt
-	trackMetadata["modified_at"] = modifiedAt
+	trackMetadata.CreatedAt = modifiedAt
+	trackMetadata.ModifiedAt = modifiedAt
 	if err = store.indexFileMetadata(dest, dir, trackMetadata); err != nil {
 		return "", err
 	}
@@ -264,8 +264,8 @@ func rejectSymlinkParents(root, dest string) error {
 	}
 	return nil
 }
-func (app *App) upload(responseWriter http.ResponseWriter, request *http.Request, user Row) error {
-	if !user.B("is_superuser") {
+func (app *App) upload(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
+	if !user.IsSuperuser {
 		return forbidden()
 	}
 	if request.Method == "POST" {
@@ -396,16 +396,16 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 		pictureType = contentType("cover" + ext)
 	}
 	if pic == nil {
-		if im := app.discoverCover(ctx, ripMetadata); im != nil {
+		if im := app.discoverCover(ctx, trackFromRow(ripMetadata)); im != nil {
 			pic, _ = os.ReadFile(path + ".jpg")
 		}
 	}
-	if operationErr = writeID3(ripMetadata, pic, pictureType); operationErr != nil {
+	if operationErr = writeID3(trackFromRow(ripMetadata), pic, pictureType); operationErr != nil {
 		return operationErr
 	}
 	dest, operationErr := app.Store.importFile(path, dir)
 	if operationErr != nil {
-		return fmt.Errorf("import downloaded audio into %q: %w", dir.S("local_path"), operationErr)
+		return fmt.Errorf("import downloaded audio into %q: %w", dir.LocalPath, operationErr)
 	}
 	if pic != nil {
 		if operationErr = atomicFile(dest+".jpg", bytes.NewReader(pic), false); operationErr != nil && !os.IsExist(operationErr) {
@@ -414,7 +414,7 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	}
 	return nil
 }
-func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Request, user Row, path string) error {
+func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
 	if path == "ytrip/metadata/" {
 		if err := safeOnly(request); err != nil {
 			return err
@@ -459,7 +459,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		return jsonResponse(responseWriter, Row{"artist": artist, "title": str("track", "title"), "album": str("album"), "year": year})
 	}
 	if path == "ytrip/failures/" {
-		if !user.B("is_superuser") {
+		if !user.IsSuperuser {
 			return forbidden()
 		}
 		failures, err := app.Store.Query("SELECT * FROM reinhardt_youtuberipfailure ORDER BY modified_at DESC")
@@ -496,11 +496,11 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 	}
 	return app.render(responseWriter, request, user, "reinhardt/ytrip.html", ctx, 200)
 }
-func (app *App) retryYouTube(responseWriter http.ResponseWriter, request *http.Request, ripMetadata Row, id string) error {
+func (app *App) retryYouTube(responseWriter http.ResponseWriter, request *http.Request, user *User, id string) error {
 	if err := postOnly(request); err != nil {
 		return err
 	}
-	if !ripMetadata.B("is_superuser") {
+	if !user.IsSuperuser {
 		return forbidden()
 	}
 	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure WHERE id=?", id)

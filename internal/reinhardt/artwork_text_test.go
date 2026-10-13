@@ -61,7 +61,7 @@ func TestFallbackArtworkDiacriticGlyphsAndNormalization(test *testing.T) {
 }
 
 func TestFallbackArtworkConcurrentRendering(test *testing.T) {
-	track := Row{"artist": "Béla Bartók", "album": "", "title": "No. 3"}
+	track := &Track{Artist: "Béla Bartók", Album: "", Title: "No. 3"}
 	want := fallbackArtwork(track, 512).(*image.RGBA)
 	const renders = 8
 	results := make(chan *image.RGBA, renders)

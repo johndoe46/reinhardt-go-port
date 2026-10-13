@@ -27,7 +27,7 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
-func (app *App) login(responseWriter http.ResponseWriter, request *http.Request, user Row) error {
+func (app *App) login(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
 	next := request.FormValue("next")
 	translator := app.translator(user)
 	ctx := TemplateContext{"form": formHTML(next, translator.Text("Email label"))}
@@ -41,22 +41,22 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			ctx["form"] = template.HTML(`<div class="alert alert-danger">` + html.EscapeString(translator.Text(message)) + `</div>` + string(formHTML(next, translator.Text("Email label"))))
 			return app.render(responseWriter, request, user, "registration/login.html", ctx, 200)
 		}
-		user, err := app.Store.One(`SELECT * FROM auth_user WHERE lower(email)=lower(?) OR lower(username)=lower(?) LIMIT 1`, email, email)
+		user, err := app.Store.user(`SELECT * FROM auth_user WHERE lower(email)=lower(?) OR lower(username)=lower(?) LIMIT 1`, email, email)
 		if err == nil {
-			prefs, err := app.Store.Preferences(user.N("id"))
+			prefs, err := app.Store.Preferences(user.ID)
 			if err != nil {
 				return err
 			}
-			user["language_code"] = prefs["language_code"]
-			access := prefs.S("access_token")
+			user.LanguageCode = stringValue(prefs.LanguageCode)
+			access := prefs.AccessToken
 			if access == "" {
 				access = token()
-				if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.N("id")); err != nil {
+				if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
 					return err
 				}
 			}
 			link := app.absolute(request, app.Store.URL("invite")+"?"+inviteQuery(access, next))
-			recipient := user.S("email")
+			recipient := user.Email
 			if recipient == "" {
 				recipient = email
 			}
@@ -179,7 +179,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	hash, err := hashFile(track.S("full_path"))
+	hash, err := hashFile(track.FullPath)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 		return fmt.Errorf("Jama: %v", info.Error)
 	}
 	if info.Result.Status != "available" {
-		file, err := os.Open(track.S("full_path"))
+		file, err := os.Open(track.FullPath)
 		if err != nil {
 			return err
 		}
@@ -234,7 +234,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 			if rem := stat.Size() - chunkIndex*chunkSize; rem < size {
 				size = rem
 			}
-			headers := map[string]string{"X-Project": config["JAMA_PROJECT"], "X-Api-Key": config["JAMA_KEY"], "X-file-chunk": fmt.Sprintf("%d/%d", chunkIndex, chunks), "X-file-hash": hash, "X-file-name": base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(filepath.Base(track.S("full_path")))))}
+			headers := map[string]string{"X-Project": config["JAMA_PROJECT"], "X-Api-Key": config["JAMA_KEY"], "X-file-chunk": fmt.Sprintf("%d/%d", chunkIndex, chunks), "X-file-hash": hash, "X-file-name": base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(filepath.Base(track.FullPath))))}
 			_, status, err := app.request(ctx, "POST", strings.TrimRight(config["JAMA_ENDPOINT"], "/")+"/upload/partial/", headers, io.NewSectionReader(file, chunkIndex*chunkSize, size))
 			if err != nil {
 				return err
@@ -280,7 +280,7 @@ func (app *App) syncDropbox(ctx context.Context, id int64) error {
 	if access == "" {
 		return fmt.Errorf("Dropbox did not return an access token")
 	}
-	file, err := os.Open(track.S("full_path"))
+	file, err := os.Open(track.FullPath)
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func (app *App) syncDropbox(ctx context.Context, id int64) error {
 		}
 		offset += chunkSize
 	}
-	_, err = call("upload_session/finish", Row{"cursor": Row{"session_id": session.ID, "offset": offset}, "commit": Row{"path": "/music_collection/" + filepath.ToSlash(track.S("relative_path")), "mode": "overwrite", "autorename": false, "mute": true}}, io.NewSectionReader(file, offset, info.Size()-offset))
+	_, err = call("upload_session/finish", Row{"cursor": Row{"session_id": session.ID, "offset": offset}, "commit": Row{"path": "/music_collection/" + filepath.ToSlash(track.RelativePath), "mode": "overwrite", "autorename": false, "mute": true}}, io.NewSectionReader(file, offset, info.Size()-offset))
 	return err
 }
 

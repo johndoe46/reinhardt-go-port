@@ -91,7 +91,7 @@ func TestIndependentArtworkLookupsAndCacheHitsDoNotBlock(test *testing.T) {
 	for _, cached := range []bool{false, true} {
 		track := other
 		if !cached {
-			track = Row{"artist": "Independent", "album": "Album", "full_path": filepath.Join(test.TempDir(), "new.mp3")}
+			track = &Track{Artist: "Independent", Album: "Album", FullPath: filepath.Join(test.TempDir(), "new.mp3")}
 		}
 		done := make(chan image.Image, 1)
 		go func() { done <- app.discoverCover(context.Background(), track) }()
@@ -246,7 +246,7 @@ func TestArtworkMissCacheExpiryAndFlightCleanup(test *testing.T) {
 		app.coverCache["artist/album"] = cached
 		app.coverMu.Unlock()
 	}
-	if _, err := os.Stat(track.S("full_path") + ".jpg"); !os.IsNotExist(err) {
+	if _, err := os.Stat(track.FullPath + ".jpg"); !os.IsNotExist(err) {
 		test.Fatal("failed discovery created a sidecar", err)
 	}
 }

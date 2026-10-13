@@ -42,7 +42,7 @@ func TestUserLanguageSettings(test *testing.T) {
 		}
 	}
 	after, err := app.Store.Preferences(1)
-	before["language_code"] = "fr"
+	before.LanguageCode = nullableString("fr")
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("changing language changed playback preferences", err)
 	}
@@ -77,7 +77,7 @@ func TestUserLanguageSettings(test *testing.T) {
 	// Older playback-only submissions preserve the saved language.
 	requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"autofeed_queue": {"on"}}, true), 200)
 	saved, err := store.Preferences(1)
-	if err != nil || saved.S("language_code") != "fr" {
+	if err != nil || stringValue(saved.LanguageCode) != "fr" {
 		test.Fatal("playback submission discarded saved language", err)
 	}
 	app.Store.Config["LANGUAGE_CODE"] = "fr-fr"
@@ -92,7 +92,7 @@ func TestUserLanguageSettings(test *testing.T) {
 		test.Fatal("clearing preference did not restore server default")
 	}
 	saved, err = store.Preferences(1)
-	if err != nil || saved["language_code"] != nil {
+	if err != nil || saved.LanguageCode != nil {
 		test.Fatal("server default must be an unset preference", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestLanguageSettingsValidationAndCSRF(test *testing.T) {
 	requireCode(test, response, 403)
 	requireCode(test, call(app, "POST", "/preferences/", 0, url.Values{"language_code": {"en"}}, false), 302)
 	saved, err := app.Store.Preferences(1)
-	if err != nil || saved.S("language_code") != "fr" {
+	if err != nil || stringValue(saved.LanguageCode) != "fr" {
 		test.Fatal("rejected submission changed language", err)
 	}
 	after, err := app.Store.Preferences(1)
@@ -192,7 +192,7 @@ INSERT INTO go_user_language(owner_id,language_code) VALUES(1,'fr'),(2,'fr'),(3,
 			}
 			defer store.DB.Close()
 			after, err := store.Preferences(1)
-			before["language_code"] = "fr"
+			before.LanguageCode = nullableString("fr")
 			if err != nil || !reflect.DeepEqual(before, after) {
 				test.Fatal("migration lost language or changed existing preference data", err)
 			}
@@ -201,7 +201,7 @@ INSERT INTO go_user_language(owner_id,language_code) VALUES(1,'fr'),(2,'fr'),(3,
 					expected = "en"
 				}
 				prefs, err := store.Preferences(owner)
-				if err != nil || prefs.S("language_code") != expected {
+				if err != nil || stringValue(prefs.LanguageCode) != expected {
 					test.Fatalf("owner %d: language was not preserved: %v %v", owner, prefs, err)
 				}
 			}
@@ -247,7 +247,7 @@ INSERT INTO go_user_language VALUES(1,'fr'),(999,'en')`); err != nil {
 		test.Fatal("migration could not be retried after rollback", err)
 	}
 	prefs, err := app.Store.Preferences(1)
-	if err != nil || prefs.S("language_code") != "fr" {
+	if err != nil || stringValue(prefs.LanguageCode) != "fr" {
 		test.Fatal("retried migration lost the saved language", err)
 	}
 }
@@ -275,7 +275,7 @@ INSERT INTO go_user_language VALUES(1,'fr')`); err != nil {
 		}
 	}
 	prefs, err := app.Store.Preferences(1)
-	if err != nil || prefs.S("language_code") != "fr" {
+	if err != nil || stringValue(prefs.LanguageCode) != "fr" {
 		test.Fatal("concurrent upgrade lost saved language", err)
 	}
 }
@@ -293,7 +293,7 @@ func TestLanguageForDocumentsFragmentsAndConcurrentUsers(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	paths := []string{"/", "/preferences/", "/dj/", "/accounts/login/", tag.S("share_url")}
+	paths := []string{"/", "/preferences/", "/dj/", "/accounts/login/", tag.ShareURL}
 	for _, path := range paths {
 		response := call(app, "GET", path, 1, nil, false)
 		requireCode(test, response, 200)
@@ -308,7 +308,7 @@ func TestLanguageForDocumentsFragmentsAndConcurrentUsers(test *testing.T) {
 	}
 	// Anonymous pages use the configured default, rather than the playlist
 	// owner's preference or the last authenticated request's language.
-	for _, path := range []string{"/accounts/login/", tag.S("share_url")} {
+	for _, path := range []string{"/accounts/login/", tag.ShareURL} {
 		response := call(app, "GET", path, 0, nil, false)
 		requireCode(test, response, 200)
 		if !strings.Contains(response.Body.String(), `<html lang="en"`) {
@@ -399,7 +399,7 @@ func TestMessageCataloguesDiscoverLanguagesAndSupportFallbackAndPlurals(test *te
 	app.Templates["catalogue.html"] = PageTemplate{Template: page}
 	response = httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/", nil)
-	if err := app.render(response, request, Row{"language_code": "es"}, "catalogue.html", TemplateContext{"name": `<script>alert(1)</script>`, "count": 2}, 200); err != nil {
+	if err := app.render(response, request, &User{LanguageCode: "es"}, "catalogue.html", TemplateContext{"name": `<script>alert(1)</script>`, "count": 2}, 200); err != nil {
 		test.Fatal(err)
 	}
 	if got := response.Body.String(); got != "Hola &lt;script&gt;alert(1)&lt;/script&gt; / 2 pistas" {
@@ -463,7 +463,7 @@ func TestLoginCatalogueMessages(test *testing.T) {
 		test.Fatal("validation did not use the signed-in user's catalogue")
 	}
 	link := "https://example.com/invite/?q=token&next=%2F"
-	translator := app.translator(Row{"language_code": "fr"})
+	translator := app.translator(&User{LanguageCode: "fr"})
 	body, err := translator.Format("Use this link to log in: %(url)s", map[string]any{"URL": link})
 	if err != nil || body != "Utilisez ce lien pour vous connecter : "+link || translator.Text("Your Reinhardt login link") != "Votre lien de connexion Reinhardt" {
 		test.Fatal("login email did not preserve its translation and URL", body, err)

@@ -70,11 +70,11 @@ func decimalRomans(text string) string {
 
 // Match the original get-cover-art lookup against Apple's music search API.
 // Cache failed lookups as well, since players request several sizes at once.
-func (app *App) discoverCover(ctx context.Context, track Row) image.Image {
+func (app *App) discoverCover(ctx context.Context, track *Track) image.Image {
 	if ctx.Err() != nil {
 		return nil
 	}
-	artist, album, title := coverName(track.S("artist"), true), coverName(track.S("album"), false), coverName(track.S("title"), false)
+	artist, album, title := coverName(track.Artist, true), coverName(track.Album, false), coverName(track.Title, false)
 	name := album
 	if name == "" {
 		name = title
@@ -97,7 +97,7 @@ func (app *App) discoverCover(ctx context.Context, track Row) image.Image {
 		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
 		// A successful lookup writes a sidecar for its first caller's track only.
 		// Other tracks on the album reuse the image through the in-memory cache.
-		path := track.S("full_path")
+		path := track.FullPath
 		go func() {
 			defer cancel()
 			im := app.fetchCover(lookupCtx, path, artist, album, title)

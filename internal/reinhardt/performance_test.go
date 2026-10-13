@@ -237,7 +237,7 @@ func TestPreferencesLookupAvoidsWriteForExistingUser(test *testing.T) {
 	app := testApp(test)
 	stats := measureAppSQL(test, app)
 	prefs, err := app.Store.Preferences(1)
-	if err != nil || prefs.N("owner_id") != 1 {
+	if err != nil || prefs.OwnerID != 1 {
 		test.Fatal("preferences lookup failed", err)
 	}
 	if stats.calls.Load() != 1 || stats.writes.Load() != 0 {
@@ -248,7 +248,7 @@ func TestPreferencesLookupAvoidsWriteForExistingUser(test *testing.T) {
 	}
 	stats.writes.Store(0)
 	prefs, err = app.Store.Preferences(2)
-	if err != nil || prefs.N("owner_id") != 2 || !prefs.B("autofeed_queue") || !prefs.B("show_oscilloscope") {
+	if err != nil || prefs.OwnerID != 2 || !prefs.AutofeedQueue || !prefs.ShowOscilloscope {
 		test.Fatal("missing preferences were not initialized", err)
 	}
 	if stats.writes.Load() != 1 {

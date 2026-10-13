@@ -127,7 +127,7 @@ WHERE l.id=1`, key.owner, key.owner, key.similar || key.excludeQueuedArtists).Sc
 	return ids, nil
 }
 
-func (app *App) randomAutofeedTrack(ctx context.Context, owner int64, artist *string) (Row, error) {
+func (app *App) randomAutofeedTrack(ctx context.Context, owner int64, artist *string) (*Track, error) {
 	key := autofeedKey{owner: owner}
 	if artist != nil {
 		key.artist, key.similar = *artist, true
@@ -135,7 +135,7 @@ func (app *App) randomAutofeedTrack(ctx context.Context, owner int64, artist *st
 	return app.sampleAutofeedTrack(ctx, key)
 }
 
-func (app *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (Row, error) {
+func (app *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (*Track, error) {
 	clause, args := autofeedFilter(key)
 	for attempt := range 3 {
 		ids, err := app.autofeedIDs(ctx, key, attempt > 0)
@@ -149,7 +149,8 @@ func (app *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (Row, 
 		if err != nil {
 			return nil, err
 		}
-		tracks, err := scanRows(rows)
+		rawTracks, err := scanRows(rows)
+		tracks := tracksFromRows(rawTracks)
 		if err != nil {
 			return nil, err
 		}

@@ -56,7 +56,7 @@ func TestJamaAndDropboxProtocols(test *testing.T) {
 		test.Fatal(calls)
 	}
 	track, err := app.Store.Track(1)
-	if err != nil || len(track.S("hash")) != 64 {
+	if err != nil || len(stringValue(track.Hash)) != 64 {
 		test.Fatal("hash not saved", err)
 	}
 	app.Store.Config["DBX_KEY"] = "key"
@@ -137,7 +137,7 @@ func TestArtworkDiscoveryAndMissCache(test *testing.T) {
 	if im := app.discoverCover(context.Background(), track); im == nil {
 		test.Fatal("cover missing")
 	}
-	if _, err = os.Stat(track.S("full_path") + ".jpg"); err != nil {
+	if _, err = os.Stat(track.FullPath + ".jpg"); err != nil {
 		test.Fatal(err)
 	}
 	if im := app.discoverCover(context.Background(), track); im == nil || calls != 2 {
@@ -145,7 +145,7 @@ func TestArtworkDiscoveryAndMissCache(test *testing.T) {
 	}
 	app.coverCache = map[string]coverResult{}
 	app.Client.Transport = transportFunc(func(request *http.Request) (*http.Response, error) { calls++; return nil, fmt.Errorf("offline") })
-	track["artist"] = "Other artist"
+	track.Artist = "Other artist"
 	app.discoverCover(context.Background(), track)
 	app.discoverCover(context.Background(), track)
 	if calls != 3 {
@@ -205,8 +205,8 @@ func TestCobraCommandsAndConfiguration(test *testing.T) {
 		test.Fatal(err)
 	}
 	defer store.DB.Close()
-	user, err := store.One("SELECT * FROM auth_user WHERE username='admin'")
-	if err != nil || !user.B("is_superuser") || user.S("email") != "admin@example.com" {
+	user, err := store.user("SELECT * FROM auth_user WHERE username='admin'")
+	if err != nil || !user.IsSuperuser || user.Email != "admin@example.com" {
 		test.Fatal(user, err)
 	}
 }
@@ -217,12 +217,12 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 		test.Skip("optional ffmpeg test fixture generator unavailable")
 	}
 	app := testApp(test)
-	dir, err := app.Store.One("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
+	dir, err := app.Store.musicDirectory("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
 	if err != nil {
 		test.Fatal(err)
 	}
 	for _, ext := range []string{".mp3", ".m4a"} {
-		path := filepath.Join(dir.S("local_path"), "generated"+ext)
+		path := filepath.Join(dir.LocalPath, "generated"+ext)
 		cmd := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-metadata", "artist=Artist", "-metadata", "title=Generated track", "-metadata", "album=Generated album", "-metadata", "date=2024", "-metadata", "track=3", path)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			test.Fatalf("fixture: %v: %s", err, output)
@@ -231,7 +231,7 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 		if err != nil {
 			test.Fatal(err)
 		}
-		if metadata.S("year") != "2024" || metadata.N("duration") < 1 || metadata.N("duration") > 3 || metadata.N("track_number") != 3 {
+		if metadata.Year != "2024" || metadata.Duration < 1 || metadata.Duration > 3 || metadata.TrackNumber != 3 {
 			test.Fatalf("metadata %#v", metadata)
 		}
 		if ext == ".m4a" {
@@ -239,12 +239,12 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 			png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 50, 50)))
 			picture := path + ".png"
 			os.WriteFile(picture, imageBytes.Bytes(), 0644)
-			track := Row{"full_path": path, "relative_path": "generated.m4a"}
+			track := &Track{FullPath: path, RelativePath: "generated.m4a"}
 			if err := embedArtwork(context.Background(), track, picture); err != nil {
 				test.Fatal(err)
 			}
 			metadata, err = app.Store.Metadata(path)
-			if err != nil || metadata.S("title") != "Generated track" {
+			if err != nil || metadata.Title != "Generated track" {
 				test.Fatal("artwork embedding lost metadata", err)
 			}
 		}
@@ -270,8 +270,8 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 			test.Fatal(err)
 		}
 		for _, field := range []string{"artist", "title", "album", "genre", "year", "comment", "duration", "track_number"} {
-			if imported.S(field) != metadata.S(field) {
-				test.Fatalf("import changed %s: got %q, want %q", field, imported.S(field), metadata.S(field))
+			if imported.S(field) != metadata.templateRow().S(field) {
+				test.Fatalf("import changed %s: got %q, want %q", field, imported.S(field), metadata.templateRow().S(field))
 			}
 		}
 		for _, field := range []string{"created_at", "modified_at"} {
