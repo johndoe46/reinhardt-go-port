@@ -371,19 +371,24 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := postOnly(request); err != nil {
 			return err
 		}
-		track, pos, err := app.nextSong(request, user)
+		track, rank, err := app.nextSong(request, user)
 		if err != nil {
 			return err
+		}
+		// Responses use an empty string for the position when playback ends.
+		var position any = ""
+		if track != nil {
+			position = rank
 		}
 		if path == "api/dj/next_song/" {
 			var data any
 			if track != nil {
 				data = serializeTrack(track)
 			}
-			return jsonResponse(responseWriter, Row{"music_file": data, "current_position": pos})
+			return jsonResponse(responseWriter, Row{"music_file": data, "current_position": position})
 		}
 		ctx["music_file"] = track
-		ctx["current_position"] = pos
+		ctx["current_position"] = position
 		ctx["autoplay"] = true
 		template = "_now_playing"
 	case "reorder_queue/":
@@ -805,7 +810,9 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 	return err
 }
 
-func (app *App) nextSong(request *http.Request, user *User) (*Track, any, error) {
+// nextSong returns the selected track and its queue rank. A nil track means
+// playback has ended; the returned rank is then zero.
+func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, error) {
 	store := app.Store
 	owner := user.ID
 	prefs, operationErr := store.Preferences(owner)
@@ -895,7 +902,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, any, error)
 		}
 	}
 	position := int64(0)
-	var rank any = ""
+	var rank int64
 	if chosen != nil {
 		position = chosen.ID
 		if track == nil {

@@ -1,6 +1,7 @@
 package reinhardt
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,55 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestNextSongAPIPosition(test *testing.T) {
+	for _, scenario := range []string{"selected", "empty", "exhausted"} {
+		test.Run(scenario, func(test *testing.T) {
+			app := testApp(test)
+			if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET autofeed_queue=0 WHERE owner_id=1"); err != nil {
+				test.Fatal(err)
+			}
+			var wantPosition int64
+			if scenario != "empty" {
+				queueID := mustTag(test, app, 1, "queue", []int64{1})
+				if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfiletag SET rank=17 WHERE tag_id=?", queueID); err != nil {
+					test.Fatal(err)
+				}
+				items, err := app.Store.Queue(1)
+				if err != nil {
+					test.Fatal(err)
+				}
+				if scenario == "exhausted" {
+					if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=1", items[0].ID); err != nil {
+						test.Fatal(err)
+					}
+				} else {
+					wantPosition = items[0].ID
+				}
+			}
+			response := call(app, "POST", "/api/dj/next_song/", 1, url.Values{}, false)
+			requireCode(test, response, 200)
+			var data struct {
+				MusicFile       *struct{ ID int64 } `json:"music_file"`
+				CurrentPosition json.RawMessage     `json:"current_position"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &data); err != nil {
+				test.Fatal(err)
+			}
+			if scenario == "selected" {
+				if data.MusicFile == nil || data.MusicFile.ID != 1 || string(data.CurrentPosition) != "17" {
+					test.Fatalf("wrong selected playback response: %s", response.Body.String())
+				}
+			} else if data.MusicFile != nil || string(data.CurrentPosition) != `""` {
+				test.Fatalf("wrong empty playback response: %s", response.Body.String())
+			}
+			prefs, err := app.Store.Preferences(1)
+			if err != nil || prefs.CurrentPosition != wantPosition {
+				test.Fatal("wrong saved queue item ID", prefs, err)
+			}
+		})
+	}
+}
 
 func TestNextSongLastFMPreference(test *testing.T) {
 	for _, mode := range []struct {
