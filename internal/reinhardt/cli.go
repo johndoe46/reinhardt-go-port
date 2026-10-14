@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // Execute runs the integrated CLI using the process arguments.
@@ -131,6 +132,20 @@ func newCLI() (*cobra.Command, func() error) {
 	serve.Flags().StringVar(&addr, "listen", "", "listen address (default LISTEN_ADDR)")
 	serve.Flags().BoolVar(&noWorker, "no-worker", false, "run the HTTP server without background jobs")
 	root.AddCommand(serve)
+	tui := add("tui", "Manage users in an interactive terminal interface", 0, func(cmd *cobra.Command, args []string) error {
+		ui, err := newUsersTUI(cmd.Context(), store)
+		if err != nil {
+			return err
+		}
+		return ui.run()
+	})
+	tui.Long = "Manage users in a full-screen terminal interface: create, edit, or permanently delete accounts, change active and administrative status, and view or reset login links."
+	tui.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+			return fmt.Errorf("tui requires an interactive terminal on stdin and stdout")
+		}
+		return root.PersistentPreRunE(cmd, args)
+	}
 	var once bool
 	worker := add("worker", "Process durable jobs and periodic imports", 0, func(cmd *cobra.Command, args []string) error {
 		app, err := newApp(store)
@@ -177,14 +192,11 @@ func newCLI() (*cobra.Command, func() error) {
 	var email string
 	var superuser bool
 	access := add("giveaccess <username>", "Create an account and print its persistent login link", 1, func(cmd *cobra.Command, args []string) error {
-		username := strings.ToLower(strings.TrimSpace(args[0]))
-		if username == "" {
-			return fmt.Errorf("username is required")
+		username, err := normalizeUsername(args[0])
+		if err != nil {
+			return err
 		}
-		if len(username) > 150 {
-			return fmt.Errorf("username must be at most 150 characters")
-		}
-		_, err := store.DB.ExecContext(cmd.Context(), `INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
+		_, err = store.DB.ExecContext(cmd.Context(), `INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
 		if err != nil {
 			return err
 		}
@@ -202,18 +214,11 @@ func newCLI() (*cobra.Command, func() error) {
 				return err
 			}
 		}
-		prefs, err := store.Preferences(cmd.Context(), user.ID)
+		link, err := store.userAccessURL(cmd.Context(), user.ID, false)
 		if err != nil {
 			return err
 		}
-		access := prefs.AccessToken
-		if access == "" {
-			access = token()
-			if _, err = store.DB.ExecContext(cmd.Context(), "UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
-				return err
-			}
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), store.Config.AccessURLPrefix+store.URL("invite")+"?q="+access)
+		fmt.Fprintln(cmd.OutOrStdout(), link)
 		return nil
 	})
 	access.Flags().StringVar(&email, "email", "", "account email address")

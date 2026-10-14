@@ -1,12 +1,52 @@
 {
+  "%(Count)d of %(Total)d users. Press n to create an account.": {
+    "one": "{{.Count}} sur {{.Total}} utilisateur. Appuyez sur n pour créer un compte.",
+    "other": "{{.Count}} sur {{.Total}} utilisateurs. Appuyez sur n pour créer un compte."
+  },
+  "/ search  f refresh  d delete account  q/Esc quit  Ctrl-C quit": {
+    "other": "/ chercher  f actualiser  d supprimer  q/Esc quitter  Ctrl-C quitter"
+  },
+  "Account deleted, but refreshing the user list failed: %(Error)s": {
+    "other": "Compte supprimé, mais la liste n’a pas pu être actualisée : {{.Error}}"
+  },
+  "Account no longer exists. Refresh the user list.": {
+    "other": "Ce compte n’existe plus. Actualisez la liste des utilisateurs."
+  },
+  "Account saved. Press l to view its login link.": {
+    "other": "Compte enregistré. Appuyez sur l pour afficher son lien."
+  },
+  "Active": {
+    "other": "Actif"
+  },
+  "Administrator": {
+    "other": "Administrateur"
+  },
   "Albums from": {
     "other": "Albums de"
   },
   "Are you sure ?": {
     "other": "Êtes-vous sur ?"
   },
+  "Cancel": {
+    "other": "Annuler"
+  },
+  "Close": {
+    "other": "Fermer"
+  },
+  "Confirm permanent deletion": {
+    "other": "Confirmer la suppression définitive"
+  },
   "Could not fetch video details. Enter them manually.": {
     "other": "Impossible de récupérer les informations de la vidéo. Saisissez-les manuellement."
+  },
+  "Database: %(Path)s": {
+    "other": "Base de données : {{.Path}}"
+  },
+  "Delete account": {
+    "other": "Supprimer le compte"
+  },
+  "Deleted account %(Username)s.": {
+    "other": "Compte {{.Username}} supprimé."
   },
   "Download %(title)s": {
     "other": "Télécharger {{.Title}}"
@@ -14,14 +54,26 @@
   "Download all": {
     "other": "Tout télécharger"
   },
+  "Edit %(Username)s": {
+    "other": "Modifier {{.Username}}"
+  },
+  "Email": {
+    "other": "Adresse e-mail"
+  },
   "Email label": {
     "other": "adresse e-mail :"
   },
   "Enter a valid email address.": {
     "other": "Saisissez une adresse de courriel valide."
   },
+  "First name": {
+    "other": "Prénom"
+  },
   "If an account exists for that email, an invite link has been sent.": {
     "other": "Si un compte existe pour cette adresse e-mail, un lien d'invitation a été envoyé."
+  },
+  "Inactive accounts cannot sign in; saving signs them out.": {
+    "other": "Comptes inactifs : accès bloqué, sessions déconnectées."
   },
   "Language": {
     "other": "Langue"
@@ -29,14 +81,29 @@
   "Language changes take full effect after a full page refresh.": {
     "other": "Le changement de langue prendra pleinement effet après une actualisation complète de la page."
   },
+  "Last name": {
+    "other": "Nom"
+  },
+  "Login link for %(Username)s:\n\n%(URL)s\n\nShare this link privately.": {
+    "other": "Lien de connexion de {{.Username}} :\n\n{{.URL}}\n\nPartagez ce lien en privé."
+  },
   "Looking up video details…": {
     "other": "Recherche des informations de la vidéo…"
   },
   "Music player": {
     "other": "Lecteur audio"
   },
+  "New user": {
+    "other": "Nouvel utilisateur"
+  },
   "Now playing": {
     "other": "Lecture en cours"
+  },
+  "Operation failed: %(Error)s": {
+    "other": "Échec de l’opération : {{.Error}}"
+  },
+  "Permanently delete %(Username)s?": {
+    "other": "Supprimer définitivement {{.Username}} ?"
   },
   "Play %(title)s": {
     "other": "Lire {{.Title}}"
@@ -44,8 +111,23 @@
   "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device.": {
     "other": "Reinhardt est une application de streaming audio basée sur le Web, vous permettant d'accéder à votre musique de n'importe où, en utilisant presque n'importe quel appareil connecté à Internet."
   },
+  "Reinhardt user management": {
+    "other": "Gestion des utilisateurs de Reinhardt"
+  },
   "Remove this shared link?": {
     "other": "Supprimer ce lien de partage ?"
+  },
+  "Reset link": {
+    "other": "Réinitialiser le lien"
+  },
+  "Reset the login link for %(Username)s?\n\nThe previous link will stop working and all current sessions will be signed out.": {
+    "other": "Réinitialiser le lien de connexion de {{.Username}} ?\n\nL’ancien lien ne fonctionnera plus et toutes les sessions seront déconnectées."
+  },
+  "Save": {
+    "other": "Enregistrer"
+  },
+  "Search": {
+    "other": "Rechercher"
   },
   "Search for artwork on Google Images": {
     "other": "Rechercher une pochette sur Google Images"
@@ -71,6 +153,9 @@
   "Similar artists": {
     "other": "Artistes similaires"
   },
+  "Tab/Shift-Tab move · Space toggles · Esc cancels": {
+    "other": "Tab/Shift-Tab naviguer · Espace cocher · Esc annuler"
+  },
   "Tags for": {
     "other": "Étiquettes pour"
   },
@@ -80,17 +165,35 @@
   "The image will be copied next to the track with its original filename.": {
     "other": "L’image sera copiée à côté du morceau avec son nom de fichier d’origine."
   },
+  "The previous link and all existing sessions have been revoked.": {
+    "other": "L’ancien lien et toutes les sessions ont été révoqués."
+  },
+  "This account is inactive. Enable Active before using the link.": {
+    "other": "Ce compte est inactif. Cochez Actif avant d’utiliser ce lien."
+  },
   "This field is required.": {
     "other": "Ce champ est obligatoire."
   },
   "This playlist has no tracks yet.": {
     "other": "Cette playlist ne contient encore aucun morceau."
   },
+  "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone.": {
+    "other": "Le compte, son lien, ses sessions, préférences, file d’attente, favoris et playlists seront supprimés. Cette action est irréversible."
+  },
+  "Type the exact username below to confirm.": {
+    "other": "Saisissez le nom d’utilisateur exact pour confirmer."
+  },
   "Unsupported language": {
     "other": "Langue non prise en charge"
   },
   "Use this link to log in: %(url)s": {
     "other": "Utilisez ce lien pour vous connecter : {{.URL}}"
+  },
+  "Username": {
+    "other": "Nom d’utilisateur"
+  },
+  "Users": {
+    "other": "Utilisateurs"
   },
   "You don't have any favorite... yet.": {
     "other": "Vous n'avez pas encore de favoris"
@@ -109,6 +212,9 @@
   },
   "Youtube URL": {
     "other": "URL Youtube"
+  },
+  "account has changed; refresh the user list before deleting it": {
+    "other": "le compte a changé ; actualisez la liste avant de le supprimer"
   },
   "activate autofeed": {
     "other": "activer alimentation auto"
@@ -317,6 +423,9 @@
   "next": {
     "other": "suivant"
   },
+  "no": {
+    "other": "non"
+  },
   "no failed downloads": {
     "other": "aucun téléchargement échoué"
   },
@@ -440,10 +549,25 @@
   "unknown genre": {
     "other": "genre inconnu"
   },
+  "username %(Username)s already exists": {
+    "other": "le nom d’utilisateur {{.Username}} existe déjà"
+  },
+  "username is required": {
+    "other": "le nom d’utilisateur est obligatoire"
+  },
+  "username must be at most 150 characters": {
+    "other": "le nom d’utilisateur ne doit pas dépasser 150 caractères"
+  },
   "year": {
     "other": "année"
   },
+  "yes": {
+    "other": "oui"
+  },
   "you have no tags yet": {
     "other": "vous n'avez pas encore d'étiquette"
+  },
+  "↑/↓ select  Enter/e edit  n new  l login link  r reset link": {
+    "other": "↑/↓ choisir  Enter/e modifier  n créer  l lien  r réinitialiser"
   }
 }

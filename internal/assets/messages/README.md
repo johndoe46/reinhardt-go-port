@@ -60,6 +60,14 @@ the language requires them. Go handlers obtain `app.translator(user)` and use
 Date month names, clock formatting, validation messages, and login emails use
 the same catalogues. `TIME_ZONE` continues to control time-zone conversion.
 
+The user-management TUI also uses these catalogues, choosing its language from
+`LANGUAGE_CODE` with the same regional matching and English fallback. It does
+not use the selected account's language preference. Keep keyboard shortcuts
+(`n`, `e`, `l`, `r`, `d`, `f`, `/`, `q`) unchanged when translating their help
+text. TUI messages use named data for usernames, database paths, login URLs,
+and error details, and CLDR plurals for user counts. Terminal markup is escaped
+after interpolation; do not put tview color tags in translations.
+
 The `goi18n extract` tool extracts Go `i18n.Message` declarations, rather than
 the string IDs in these HTML templates. Maintain catalogue entries alongside
 new UI strings. Tests ensure that literal template messages have an English

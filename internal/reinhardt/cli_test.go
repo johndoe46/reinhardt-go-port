@@ -1,11 +1,47 @@
 package reinhardt
 
 import (
+	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
+
+func TestTUICommandHelpAndArguments(test *testing.T) {
+	for _, scenario := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"--help"}, want: "full-screen terminal interface"},
+		{args: []string{"unexpected"}, want: "accepts 0 arg(s)"},
+		{want: "requires an interactive terminal"},
+	} {
+		if len(scenario.args) == 0 && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+			continue
+		}
+		command, closeStore := newCLI()
+		var output bytes.Buffer
+		command.SetOut(&output)
+		database := filepath.Join(test.TempDir(), "uncreated", "users.sqlite3")
+		command.SetArgs(append([]string{"--database", database, "tui"}, scenario.args...))
+		err := executeCLI(command, closeStore)
+		if len(scenario.args) == 1 && scenario.args[0] == "--help" {
+			if err != nil || !strings.Contains(output.String(), scenario.want) {
+				test.Fatalf("help=%q, err=%v", output.String(), err)
+			}
+		} else if err == nil || !strings.Contains(err.Error(), scenario.want) {
+			test.Fatalf("args=%v: err=%v", scenario.args, err)
+		}
+		if _, err := os.Stat(filepath.Dir(database)); !os.IsNotExist(err) {
+			test.Fatalf("command initialized database: %v", err)
+		}
+	}
+}
 
 func TestCLIExecutionClosesDatabase(test *testing.T) {
 	commandErr := errors.New("command failed")

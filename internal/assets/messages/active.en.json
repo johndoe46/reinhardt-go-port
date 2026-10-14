@@ -1,12 +1,52 @@
 {
+  "%(Count)d of %(Total)d users. Press n to create an account.": {
+    "one": "{{.Count}} of {{.Total}} user. Press n to create an account.",
+    "other": "{{.Count}} of {{.Total}} users. Press n to create an account."
+  },
+  "/ search  f refresh  d delete account  q/Esc quit  Ctrl-C quit": {
+    "other": "/ search  f refresh  d delete account  q/Esc quit  Ctrl-C quit"
+  },
+  "Account deleted, but refreshing the user list failed: %(Error)s": {
+    "other": "Account deleted, but refreshing the user list failed: {{.Error}}"
+  },
+  "Account no longer exists. Refresh the user list.": {
+    "other": "Account no longer exists. Refresh the user list."
+  },
+  "Account saved. Press l to view its login link.": {
+    "other": "Account saved. Press l to view its login link."
+  },
+  "Active": {
+    "other": "Active"
+  },
+  "Administrator": {
+    "other": "Administrator"
+  },
   "Albums from": {
     "other": "Albums from"
   },
   "Are you sure ?": {
     "other": "Are you sure ?"
   },
+  "Cancel": {
+    "other": "Cancel"
+  },
+  "Close": {
+    "other": "Close"
+  },
+  "Confirm permanent deletion": {
+    "other": "Confirm permanent deletion"
+  },
   "Could not fetch video details. Enter them manually.": {
     "other": "Could not fetch video details. Enter them manually."
+  },
+  "Database: %(Path)s": {
+    "other": "Database: {{.Path}}"
+  },
+  "Delete account": {
+    "other": "Delete account"
+  },
+  "Deleted account %(Username)s.": {
+    "other": "Deleted account {{.Username}}."
   },
   "Download %(title)s": {
     "other": "Download {{.Title}}"
@@ -14,14 +54,26 @@
   "Download all": {
     "other": "Download all"
   },
+  "Edit %(Username)s": {
+    "other": "Edit {{.Username}}"
+  },
+  "Email": {
+    "other": "Email"
+  },
   "Email label": {
     "other": "email:"
   },
   "Enter a valid email address.": {
     "other": "Enter a valid email address."
   },
+  "First name": {
+    "other": "First name"
+  },
   "If an account exists for that email, an invite link has been sent.": {
     "other": "If an account exists for that email, an invite link has been sent."
+  },
+  "Inactive accounts cannot sign in; saving signs them out.": {
+    "other": "Inactive accounts cannot sign in; saving signs them out."
   },
   "Language": {
     "other": "Language"
@@ -29,14 +81,29 @@
   "Language changes take full effect after a full page refresh.": {
     "other": "Language changes take full effect after a full page refresh."
   },
+  "Last name": {
+    "other": "Last name"
+  },
+  "Login link for %(Username)s:\n\n%(URL)s\n\nShare this link privately.": {
+    "other": "Login link for {{.Username}}:\n\n{{.URL}}\n\nShare this link privately."
+  },
   "Looking up video details…": {
     "other": "Looking up video details…"
   },
   "Music player": {
     "other": "Music player"
   },
+  "New user": {
+    "other": "New user"
+  },
   "Now playing": {
     "other": "Now playing"
+  },
+  "Operation failed: %(Error)s": {
+    "other": "Operation failed: {{.Error}}"
+  },
+  "Permanently delete %(Username)s?": {
+    "other": "Permanently delete {{.Username}}?"
   },
   "Play %(title)s": {
     "other": "Play {{.Title}}"
@@ -44,8 +111,23 @@
   "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device.": {
     "other": "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device."
   },
+  "Reinhardt user management": {
+    "other": "Reinhardt user management"
+  },
   "Remove this shared link?": {
     "other": "Remove this shared link?"
+  },
+  "Reset link": {
+    "other": "Reset link"
+  },
+  "Reset the login link for %(Username)s?\n\nThe previous link will stop working and all current sessions will be signed out.": {
+    "other": "Reset the login link for {{.Username}}?\n\nThe previous link will stop working and all current sessions will be signed out."
+  },
+  "Save": {
+    "other": "Save"
+  },
+  "Search": {
+    "other": "Search"
   },
   "Search for artwork on Google Images": {
     "other": "Search for artwork on Google Images"
@@ -71,6 +153,9 @@
   "Similar artists": {
     "other": "Similar artists"
   },
+  "Tab/Shift-Tab move · Space toggles · Esc cancels": {
+    "other": "Tab/Shift-Tab move · Space toggles · Esc cancels"
+  },
   "Tags for": {
     "other": "Tags for"
   },
@@ -80,11 +165,23 @@
   "The image will be copied next to the track with its original filename.": {
     "other": "The image will be copied next to the track with its original filename."
   },
+  "The previous link and all existing sessions have been revoked.": {
+    "other": "The previous link and all existing sessions have been revoked."
+  },
+  "This account is inactive. Enable Active before using the link.": {
+    "other": "This account is inactive. Enable Active before using the link."
+  },
   "This field is required.": {
     "other": "This field is required."
   },
   "This playlist has no tracks yet.": {
     "other": "This playlist has no tracks yet."
+  },
+  "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone.": {
+    "other": "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone."
+  },
+  "Type the exact username below to confirm.": {
+    "other": "Type the exact username below to confirm."
   },
   "Unsupported language": {
     "other": "Unsupported language"
@@ -94,6 +191,12 @@
   },
   "Use this link to log in: %(url)s": {
     "other": "Use this link to log in: {{.URL}}"
+  },
+  "Username": {
+    "other": "Username"
+  },
+  "Users": {
+    "other": "Users"
   },
   "You don't have any favorite... yet.": {
     "other": "You don't have any favorite... yet."
@@ -112,6 +215,9 @@
   },
   "Youtube URL": {
     "other": "Youtube URL"
+  },
+  "account has changed; refresh the user list before deleting it": {
+    "other": "account has changed; refresh the user list before deleting it"
   },
   "activate autofeed": {
     "other": "activate autofeed"
@@ -341,6 +447,9 @@
   "next": {
     "other": "next"
   },
+  "no": {
+    "other": "no"
+  },
   "no failed downloads": {
     "other": "no failed downloads"
   },
@@ -473,10 +582,25 @@
   "updated": {
     "other": "updated"
   },
+  "username %(Username)s already exists": {
+    "other": "username {{.Username}} already exists"
+  },
+  "username is required": {
+    "other": "username is required"
+  },
+  "username must be at most 150 characters": {
+    "other": "username must be at most 150 characters"
+  },
   "year": {
     "other": "year"
   },
+  "yes": {
+    "other": "yes"
+  },
   "you have no tags yet": {
     "other": "you have no tags yet"
+  },
+  "↑/↓ select  Enter/e edit  n new  l login link  r reset link": {
+    "other": "↑/↓ select  Enter/e edit  n new  l login link  r reset link"
   }
 }

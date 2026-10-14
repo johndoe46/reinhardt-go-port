@@ -464,6 +464,38 @@ printed login link privately. Add `--superuser` only for accounts that should
 have administrative access. To recover existing login links, run
 `./reinhardt listaccess` (or `.\reinhardt.exe listaccess`).
 
+For interactive account management, open the terminal interface:
+
+```sh
+./reinhardt tui
+```
+
+On Windows, run `.\reinhardt.exe tui`. Use your usual `--env-file` or
+`--database` option if needed. The database being managed appears at the top.
+Select an account with the arrow keys and press `Enter` to edit its username,
+email, name, **Active** status, or **Administrator** permissions. Press `n` to
+create an account, `/` to search by username or email, `l` to view a login link,
+or `r` to reset the selected account's link. Use `Tab` and `Shift-Tab` to move
+between form fields, `Space` to toggle checkboxes, and **Save** to apply changes.
+`Esc` cancels a form; `q` or `Esc` at the user list closes the interface.
+The interface follows `LANGUAGE_CODE` in your settings, with English as the
+fallback. Set `LANGUAGE_CODE=fr` in your `.env` for French. The selected
+account's personal language preference does not change the terminal interface;
+keyboard shortcuts remain the same in every language.
+
+Saving an account with **Active** unchecked prevents sign-in and signs out its
+current sessions. Its playlists and preferences are preserved. Enabling it
+again allows its existing login link to work. Resetting a login link asks for
+confirmation, invalidates the old link, and signs out current sessions; share
+the replacement link privately. Keep **Administrator** enabled only for people
+who should have administrative access.
+
+To permanently delete an account, select it in the user list and press `d`.
+Type its exact username, then choose **Delete account**. This removes the
+account, login link, sessions, preferences, queue, favorites, tags, and playlists.
+Music files and other accounts are preserved. Deletion cannot be undone;
+choose **Cancel** or press `Esc` to leave the account in place.
+
 Email login is optional. To let existing accounts request a link on the login
 page, set their email address using `giveaccess` and configure your mail
 provider's SMTP settings in `.env`. A typical STARTTLS configuration is:

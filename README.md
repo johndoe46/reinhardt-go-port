@@ -42,11 +42,14 @@ The direct dependencies listed in [go.mod](go.mod) serve these purposes:
 | `github.com/dhowden/tag` | Read audio metadata during indexing and extract embedded cover artwork. |
 | `github.com/emersion/go-sasl` | Provide SASL PLAIN authentication for SMTP connections using configured email credentials. |
 | `github.com/emersion/go-smtp` | Send login-link emails over SMTP, including STARTTLS and implicit TLS connections. |
+| `github.com/gdamore/tcell/v2` | Handle terminal screens and keyboard input for interactive user management. |
 | `github.com/joho/godotenv` | Parse `.env` files and `~/.reinhardt/config`. |
 | `github.com/nicksnyder/go-i18n/v2` | Load embedded message catalogues and translate messages with language fallback, named variables, and plural rules. |
+| `github.com/rivo/tview` | Build the user-management TUI's table, search field, forms, and confirmation dialogs. |
 | `github.com/spf13/cobra` | Define CLI commands, flags, aliases, and help output for the server, worker, and management tools. |
 | `github.com/tcolgate/mp3` | Scan MP3 frames to calculate track duration during indexing. |
 | `golang.org/x/image` | Resize artwork, decode WebP images, and render fallback cover labels with the embedded Go Mono font. |
+| `golang.org/x/term` | Check that the TUI is launched from an interactive terminal. |
 | `golang.org/x/text` | Match language preferences to available catalogues, normalize Unicode for slug generation, and compose combining accents before rendering cover labels. |
 | `modernc.org/sqlite` | Provide the SQLite driver for library data, sessions, settings, and durable jobs without requiring CGO. |
 
@@ -346,6 +349,7 @@ The executable includes these management commands:
 | `indexmusic` | Read MP3/M4A metadata, mark missing files, rebuild FTS |
 | `giveaccess <username>` | Create an account and print its login link |
 | `listaccess` | Print existing login links |
+| `tui` | Interactively list, search, create, edit, and delete users and manage login links |
 | `listtags` | List tags with their owners |
 | `fetchtagfiles <tag_id> <destination>` | Copy tracks in playlist order |
 | `tagsexport <csv_file_output>` | Export library metadata as CSV |
@@ -362,6 +366,30 @@ for usage.
 Additional commands are `serve` (alias `runserver`), `worker`,
 `gathermusic`, `migrate`, `check`, `jobs`, and `config`. Use `serve --no-worker`
 when running a separate `worker`. `worker --once` processes ready jobs and exits.
+
+Run `./bin/reinhardt tui` or `make cli ARGS=tui` in an interactive terminal to
+manage accounts. The TUI uses the same `--env-file` and `--database` options as
+other commands, and shows the database path at the top. Use the arrow keys to
+select a user, `Enter` to edit, `n` to create, `/` to search usernames or email
+addresses, `l` to view a login link, and `r` to reset it. Press `d` to permanently
+delete the selected account. `f` refreshes the list;
+`q`, `Esc`, or `Ctrl-C` exits. Within forms, use `Tab`/`Shift-Tab` to move,
+`Space` to toggle checkboxes, and `Esc` to cancel.
+The TUI uses `LANGUAGE_CODE` from your configuration, including regional
+matching and English fallback, just like the web app. For example, launch it
+in French with `LANGUAGE_CODE=fr ./bin/reinhardt tui`. Keyboard shortcuts stay
+the same in every language.
+
+Account edits preserve preferences and login links. Clearing **Active** blocks
+sign-in and removes existing sessions when saved; reactivating the account
+allows its existing login link to work again. **Administrator** controls both
+superuser and staff permissions. Resetting a login link requires confirmation
+and revokes the previous link and all of that account's sessions.
+
+Permanent deletion requires typing the exact username and choosing **Delete
+account**. It removes the account, login link, sessions, preferences, queue,
+favorites, tags, and playlists in one transaction. Music files and other
+accounts are preserved. This cannot be undone.
 
 With the similar-artists preference enabled, autofeed excludes artists already
 represented in your queue and prefers a new artist during random fallback.
