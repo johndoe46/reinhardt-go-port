@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,10 +23,22 @@ import (
 
 // Execute runs the integrated CLI using the process arguments.
 func Execute() error {
-	return newCLI().Execute()
+	command, closeStore := newCLI()
+	return executeCLI(command, closeStore)
 }
 
-func newCLI() *cobra.Command {
+// executeCLI owns cleanup for the entire execution, including failed commands
+// and hooks. Cobra only runs post-run hooks when the command succeeds.
+func executeCLI(command *cobra.Command, closeStore func() error) (err error) {
+	defer func() {
+		if closeErr := closeStore(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+	return command.Execute()
+}
+
+func newCLI() (*cobra.Command, func() error) {
 	var envFile, database string
 	var store *Store
 	var appConfig *Config
@@ -45,7 +58,7 @@ func newCLI() *cobra.Command {
 		store, err = openStore(cmd.Context(), appConfig)
 		return err
 	}
-	root.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
+	closeStore := func() error {
 		if store != nil {
 			return store.DB.Close()
 		}
@@ -106,8 +119,8 @@ func newCLI() *cobra.Command {
 		fmt.Fprintf(cmd.OutOrStdout(), "Reinhardt listening on %s%s\n", addr, store.Config.Path(""))
 		err = server.ListenAndServe()
 		stop()
-		// Successful CLI completion closes SQLite in the post-run hook. Wait for
-		// the worker and HTTP shutdown to stop using it before that cleanup can run.
+		// CLI execution closes SQLite on return. Wait for the worker and HTTP
+		// shutdown to stop using it before that cleanup can run.
 		<-workerDone
 		<-shutdownDone
 		if err == http.ErrServerClosed {
@@ -392,5 +405,5 @@ func newCLI() *cobra.Command {
 		}
 		return nil
 	})
-	return root
+	return root, closeStore
 }

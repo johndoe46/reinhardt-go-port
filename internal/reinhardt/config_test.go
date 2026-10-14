@@ -50,11 +50,11 @@ func TestConfigCLI(test *testing.T) {
 			if reveal {
 				args = append(args, "--show-secrets")
 			}
-			cli := newCLI()
+			cli, closeStore := newCLI()
 			var out bytes.Buffer
 			cli.SetOut(&out)
 			cli.SetArgs(args)
-			if err := cli.Execute(); err != nil {
+			if err := executeCLI(cli, closeStore); err != nil {
 				test.Fatal(err)
 			}
 			output := out.String()
@@ -222,9 +222,9 @@ func TestConfigRejectsInvalidSettingsBeforeOpeningDatabase(test *testing.T) {
 				test.Fatal(err)
 			}
 			for _, command := range []string{"config", "migrate"} {
-				cli := newCLI()
+				cli, closeStore := newCLI()
 				cli.SetArgs([]string{"--env-file", file, command})
-				if err := cli.Execute(); err == nil || !strings.Contains(err.Error(), scenario.key) {
+				if err := executeCLI(cli, closeStore); err == nil || !strings.Contains(err.Error(), scenario.key) {
 					test.Fatalf("%s did not report invalid %s: %v", command, scenario.key, err)
 				}
 			}

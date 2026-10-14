@@ -176,7 +176,7 @@ func TestModelOutputEscaping(test *testing.T) {
 }
 
 func TestCobraCommandsAndConfiguration(test *testing.T) {
-	cli := newCLI()
+	cli, closeStore := newCLI()
 	for _, name := range []string{"addmusicdir", "giveaccess", "listaccess", "listtags", "indexmusic", "dedup", "fetchtagfiles", "jamasync", "populateyears", "tagsexport", "dbxrefreshtoken", "ytrip"} {
 		if command, _, err := cli.Find([]string{name}); err != nil || command.Name() != name {
 			test.Fatal("missing command", name, err)
@@ -190,7 +190,7 @@ func TestCobraCommandsAndConfiguration(test *testing.T) {
 	var output bytes.Buffer
 	cli.SetOut(&output)
 	cli.SetArgs([]string{"--env-file", env, "giveaccess", "ADMIN", "--superuser", "--email", "admin@example.com"})
-	if err := cli.Execute(); err != nil {
+	if err := executeCLI(cli, closeStore); err != nil {
 		test.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "http://localhost:8000/invite/?q=") {
