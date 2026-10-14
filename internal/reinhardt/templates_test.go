@@ -96,7 +96,7 @@ func TestNativeTemplatesSharedJavaScriptEscaping(test *testing.T) {
 			if _, err := app.Store.DB.Exec("UPDATE reinhardt_tag SET label=?,is_shared=1 WHERE id=?", label, id); err != nil {
 				test.Fatal(err)
 			}
-			tag, err := app.Store.Tag(id, 1)
+			tag, err := app.Store.Tag(test.Context(), id, 1)
 			if err != nil {
 				test.Fatal(err)
 			}
@@ -170,7 +170,7 @@ func TestNativeTemplatesEmptyLibraryAndPermissions(test *testing.T) {
 			}
 		}
 	}
-	tag, err := app.Store.Tag(id, 1)
+	tag, err := app.Store.Tag(test.Context(), id, 1)
 	if err != nil {
 		test.Fatal(err)
 	}

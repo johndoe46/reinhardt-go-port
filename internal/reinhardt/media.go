@@ -68,7 +68,7 @@ func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track
 	return nil
 }
 func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
-	track, err := app.Store.Track(parts[1])
+	track, err := app.Store.Track(request.Context(), parts[1])
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func normalizedImage(reader io.ReadSeeker) ([]byte, string, error) {
 	return buffer.Bytes(), ".png", err
 }
 func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.Request, user *User, id string) error {
-	track, operationErr := app.Store.Track(id)
+	track, operationErr := app.Store.Track(request.Context(), id)
 	if operationErr != nil {
 		return operationErr
 	}
@@ -309,11 +309,11 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 						}
 					}
 				}
-				_, operationErr = app.Store.DB.Exec(`UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, track.Artist, track.Title, track.Album, track.Genre, track.Year, track.Comment, now(), track.ID)
+				_, operationErr = app.Store.DB.ExecContext(request.Context(), `UPDATE reinhardt_musicfile SET artist=?,title=?,album=?,genre=?,year=?,comment=?,modified_at=? WHERE id=?`, track.Artist, track.Title, track.Album, track.Genre, track.Year, track.Comment, now(), track.ID)
 				if operationErr != nil {
 					return operationErr
 				}
-				if operationErr = app.Store.enqueueSync(track.ID); operationErr != nil {
+				if operationErr = app.Store.enqueueSync(request.Context(), track.ID); operationErr != nil {
 					return operationErr
 				}
 				app.redirect(responseWriter, request, app.Store.URL("index"))
@@ -407,7 +407,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	default:
 		return bad("Invalid artwork size")
 	}
-	track, err := app.Store.Track(parts[1])
+	track, err := app.Store.Track(request.Context(), parts[1])
 	if err != nil {
 		return err
 	}
@@ -472,7 +472,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 }
 
 func (app *App) archive(responseWriter http.ResponseWriter, request *http.Request, tag *Tag) error {
-	tracks, err := app.Store.TagTracks(tag.ID)
+	tracks, err := app.Store.TagTracks(request.Context(), tag.ID)
 	if err != nil {
 		return err
 	}
@@ -538,7 +538,7 @@ func (app *App) databaseBackup(responseWriter http.ResponseWriter, request *http
 	}
 	// VACUUM INTO takes a consistent snapshot, including data in the WAL.
 	// Copying DATABASE_PATH alone can miss committed rows still in its WAL file.
-	if _, err = app.Store.DB.Exec("VACUUM INTO ?", name); err != nil {
+	if _, err = app.Store.DB.ExecContext(request.Context(), "VACUUM INTO ?", name); err != nil {
 		return err
 	}
 	file, err := os.Open(name)
@@ -715,17 +715,20 @@ func mp4Duration(file *os.File) int {
 	}
 	return walk(0, info.Size(), 0)
 }
-func (store *Store) indexFile(path string, dir *MusicDirectory) error {
+func (store *Store) indexFile(ctx context.Context, path string, dir *MusicDirectory) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	trackMetadata, err := store.Metadata(path)
 	if err != nil {
 		return err
 	}
-	return store.indexFileMetadata(path, dir, trackMetadata)
+	return store.indexFileMetadata(ctx, path, dir, trackMetadata)
 }
 
 // indexFileMetadata stores already parsed metadata and queues synchronization
 // without reopening the audio. Callers supply timestamps for the indexed file.
-func (store *Store) indexFileMetadata(path string, dir *MusicDirectory, trackMetadata *Track) error {
+func (store *Store) indexFileMetadata(ctx context.Context, path string, dir *MusicDirectory, trackMetadata *Track) error {
 	if trackMetadata.Artist == "" || trackMetadata.Title == "" {
 		return fmt.Errorf("artist and title are required")
 	}
@@ -737,11 +740,11 @@ func (store *Store) indexFileMetadata(path string, dir *MusicDirectory, trackMet
 	// directories. Update in place so rescans preserve IDs and playlist membership;
 	// INSERT OR REPLACE would delete the old row and cascade its associations.
 	var trackID int64
-	err = store.DB.QueryRow(`INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0 RETURNING id`, dir.ID, relative, trackMetadata.Artist, trackMetadata.Title, trackMetadata.Album, trackMetadata.Genre, trackMetadata.Year, trackMetadata.Comment, trackMetadata.Duration, trackMetadata.TrackNumber, trackMetadata.CreatedAt, trackMetadata.ModifiedAt).Scan(&trackID)
+	err = store.DB.QueryRowContext(ctx, `INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,year,comment,duration,track_number,created_at,modified_at,missing,hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,NULL) ON CONFLICT(relative_path) DO UPDATE SET artist=excluded.artist,title=excluded.title,album=excluded.album,genre=excluded.genre,year=excluded.year,comment=excluded.comment,duration=excluded.duration,track_number=excluded.track_number,modified_at=excluded.modified_at,missing=0 RETURNING id`, dir.ID, relative, trackMetadata.Artist, trackMetadata.Title, trackMetadata.Album, trackMetadata.Genre, trackMetadata.Year, trackMetadata.Comment, trackMetadata.Duration, trackMetadata.TrackNumber, trackMetadata.CreatedAt, trackMetadata.ModifiedAt).Scan(&trackID)
 	if err != nil {
 		return err
 	}
-	return store.enqueueSync(trackID)
+	return store.enqueueSync(ctx, trackID)
 }
 func walkMusic(root string, visit func(string) error) error {
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -760,28 +763,37 @@ func walkMusic(root string, visit func(string) error) error {
 		return nil
 	})
 }
-func (store *Store) Index(out io.Writer) error {
-	tracks, indexErr := store.Tracks("")
+func (store *Store) Index(ctx context.Context, out io.Writer) error {
+	tracks, indexErr := store.Tracks(ctx, "")
 	if indexErr != nil {
 		return indexErr
 	}
 	for _, track := range tracks {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if _, err := os.Stat(track.FullPath); os.IsNotExist(err) {
-			if _, indexErr = store.DB.Exec("UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", track.ID); indexErr != nil {
+			if _, indexErr = store.DB.ExecContext(ctx, "UPDATE reinhardt_musicfile SET missing=1 WHERE id=?", track.ID); indexErr != nil {
 				return indexErr
 			}
 		} else if err != nil {
 			return err
 		}
 	}
-	directoryRows, indexErr := store.Query("SELECT * FROM reinhardt_musicdirectory ORDER BY id")
+	directoryRows, indexErr := store.Query(ctx, "SELECT * FROM reinhardt_musicdirectory ORDER BY id")
 	if indexErr != nil {
 		return indexErr
 	}
 	for _, row := range directoryRows {
 		musicDirectory := musicDirectoryFromRow(row)
 		if indexErr = walkMusic(musicDirectory.LocalPath, func(path string) error {
-			if err := store.indexFile(path, musicDirectory); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err := store.indexFile(ctx, path, musicDirectory); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 				fmt.Fprintf(out, "Skipped %s: %v\n", path, err)
 			} else {
 				fmt.Fprintln(out, "Indexed", path)
@@ -791,7 +803,7 @@ func (store *Store) Index(out io.Writer) error {
 			return indexErr
 		}
 	}
-	return store.ReindexFTS()
+	return store.ReindexFTS(ctx)
 }
 func embedArtwork(ctx context.Context, track *Track, picture string) error {
 	ext := strings.ToLower(fileExtension(track))

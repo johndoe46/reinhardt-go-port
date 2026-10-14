@@ -14,13 +14,13 @@ func TestLatestAdditionsSelectionAndInvalidation(test *testing.T) {
 	stats := measureAppSQL(test, app)
 	check := func(reloads int64) {
 		test.Helper()
-		want, err := app.Store.Tracks(latestAdditionsClause)
+		want, err := app.Store.Tracks(test.Context(), latestAdditionsClause)
 		if err != nil {
 			test.Fatal(err)
 		}
 		before, writes := stats.homeLoads.Load(), stats.writes.Load()
 		for range 2 {
-			got, err := app.latestAdditions()
+			got, err := app.latestAdditions(test.Context())
 			if err != nil || !reflect.DeepEqual(got, want) {
 				test.Fatalf("cached home tracks differ from the original query: got %v, want %v: %v", got, want, err)
 			}
@@ -95,7 +95,7 @@ func TestLatestAdditionsRowsAreIsolatedAndURLsUseCurrentConfig(test *testing.T) 
 	if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET hash='stored hash'"); err != nil {
 		test.Fatal(err)
 	}
-	got, err := app.latestAdditions()
+	got, err := app.latestAdditions(test.Context())
 	if err != nil || len(got) == 0 {
 		test.Fatal("missing home tracks", err)
 	}
@@ -105,11 +105,11 @@ func TestLatestAdditionsRowsAreIsolatedAndURLsUseCurrentConfig(test *testing.T) 
 	got[0] = &Track{ID: -1}
 	app.Store.Config.DelegateDownloadPrefix = "https://audio.example/music/"
 	app.Store.Config.URLPrefix = "reinhardt/"
-	want, err := app.Store.Tracks(latestAdditionsClause)
+	want, err := app.Store.Tracks(test.Context(), latestAdditionsClause)
 	if err != nil {
 		test.Fatal(err)
 	}
-	got, err = app.latestAdditions()
+	got, err = app.latestAdditions(test.Context())
 	if err != nil || !reflect.DeepEqual(got, want) {
 		test.Fatal("cached rows were modified or retained outdated URLs", err)
 	}
@@ -122,7 +122,7 @@ func TestConcurrentHomeRequestsShareRefresh(test *testing.T) {
 		if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET title=?", fmt.Sprintf("Title %d", round)); err != nil {
 			test.Fatal(err)
 		}
-		want, err := app.Store.Tracks(latestAdditionsClause)
+		want, err := app.Store.Tracks(test.Context(), latestAdditionsClause)
 		if err != nil {
 			test.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestConcurrentHomeRequestsShareRefresh(test *testing.T) {
 		for range 16 {
 			go func() {
 				<-start
-				got, err := app.latestAdditions()
+				got, err := app.latestAdditions(test.Context())
 				if err == nil && !reflect.DeepEqual(got, want) {
 					err = fmt.Errorf("concurrent home lookup returned wrong tracks")
 				}
@@ -195,13 +195,13 @@ func TestWarmHomeRequestsAvoidLibraryScan(test *testing.T) {
 
 func TestHomeLookupDoesNotServeCacheAfterDatabaseError(test *testing.T) {
 	app := testApp(test)
-	if _, err := app.latestAdditions(); err != nil {
+	if _, err := app.latestAdditions(test.Context()); err != nil {
 		test.Fatal(err)
 	}
 	if _, err := app.Store.DB.Exec("DROP TABLE go_home_revision"); err != nil {
 		test.Fatal(err)
 	}
-	if _, err := app.latestAdditions(); err == nil {
+	if _, err := app.latestAdditions(test.Context()); err == nil {
 		test.Fatal("revision failure must not return cached data")
 	}
 }

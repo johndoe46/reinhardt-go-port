@@ -57,11 +57,11 @@ func artworkSearchResponse(artist, album string) *http.Response {
 
 func TestIndependentArtworkLookupsAndCacheHitsDoNotBlock(test *testing.T) {
 	app := testApp(test)
-	first, err := app.Store.Track(1)
+	first, err := app.Store.Track(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
-	other, err := app.Store.Track(3)
+	other, err := app.Store.Track(test.Context(), 3)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestConcurrentArtworkSizesAndAlbumTracksShareDiscovery(test *testing.T) {
 
 func TestArtworkLookupCancellationDoesNotCancelSharedDiscovery(test *testing.T) {
 	app := testApp(test)
-	track, err := app.Store.Track(1)
+	track, err := app.Store.Track(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestArtworkLookupCancellationDoesNotCancelSharedDiscovery(test *testing.T) 
 
 func TestArtworkMissCacheExpiryAndFlightCleanup(test *testing.T) {
 	app := testApp(test)
-	track, err := app.Store.Track(1)
+	track, err := app.Store.Track(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}

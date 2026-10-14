@@ -32,7 +32,7 @@ func testApp(testingContext testing.TB) *App {
 	testingContext.Helper()
 	root := testingContext.TempDir()
 	config := &Config{DatabasePath: filepath.Join(root, "db.sqlite3"), BaseDir: root, CoversDir: filepath.Join(root, "covers"), AllowedHosts: []string{"*"}, LanguageCode: "en-us", SanitizeTags: true, MaxUploadBytes: 1048576, SharedPlaylistDownloadMaxSeconds: 10800, SecretKey: "test-secret"}
-	store, err := openStore(config)
+	store, err := openStore(testingContext.Context(), config)
 	if err != nil {
 		testingContext.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func testApp(testingContext testing.TB) *App {
 		if err != nil {
 			testingContext.Fatal(err)
 		}
-		if _, err = store.Preferences(int64(index + 1)); err != nil {
+		if _, err = store.Preferences(testingContext.Context(), int64(index+1)); err != nil {
 			testingContext.Fatal(err)
 		}
 		_, err = store.DB.Exec("INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", fmt.Sprintf("session-%d", index+1), index+1, time.Now().Unix()+3600)
@@ -113,10 +113,10 @@ func requireCode(test *testing.T, response *httptest.ResponseRecorder, code int)
 }
 func mustTag(test *testing.T, app *App, owner int64, name string, tracks []int64) int64 {
 	test.Helper()
-	if _, err := app.Store.AddTracks(owner, name, tracks); err != nil {
+	if _, err := app.Store.AddTracks(test.Context(), owner, name, tracks); err != nil {
 		test.Fatal(err)
 	}
-	id, err := app.Store.AddTag(owner, name)
+	id, err := app.Store.AddTag(test.Context(), owner, name)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestUnpolyPreservesPlayerAndPreference(test *testing.T) {
 	if !strings.Contains(response.Body.String(), `data-player-oscilloscope="false"`) {
 		test.Fatal(response.Body.String())
 	}
-	preferences, err := app.Store.Preferences(2)
+	preferences, err := app.Store.Preferences(test.Context(), 2)
 	if err != nil || !preferences.ShowOscilloscope {
 		test.Fatal("changed another user's preferences")
 	}
@@ -235,7 +235,7 @@ func TestSharedPlaylistBoundariesAndZIP(test *testing.T) {
 	id := mustTag(test, app, 1, "My list", []int64{2, 1})
 	response := call(app, "POST", "/tags/", 1, url.Values{"action": {"share_tag"}, "tag_pk": {fmt.Sprint(id)}}, false)
 	requireCode(test, response, 200)
-	tag, err := app.Store.Tag(id, 1)
+	tag, err := app.Store.Tag(test.Context(), id, 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -283,11 +283,11 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 		values := url.Values{"artist": {"Artist"}, "sq": {"tune"}, "tag_choice": {"new"}, "new_tag": {source + " playlist"}}
 		response := call(app, "POST", "/"+source+"/add_to_tag/", 1, values, true)
 		requireCode(test, response, 200)
-		tag, err := app.Store.One("SELECT id FROM reinhardt_tag WHERE label=? AND owner_id=1", source+" playlist")
+		tag, err := app.Store.One(test.Context(), "SELECT id FROM reinhardt_tag WHERE label=? AND owner_id=1", source+" playlist")
 		if err != nil {
 			test.Fatal(err)
 		}
-		tracks, err := app.Store.TagTracks(tag.N("id"))
+		tracks, err := app.Store.TagTracks(test.Context(), tag.N("id"))
 		if err != nil {
 			test.Fatal(err)
 		}
@@ -309,14 +309,14 @@ func TestBulkActionsAndOwnership(test *testing.T) {
 		response = call(app, "POST", "/"+source+"/add_to_tag/", 1, values, true)
 		requireCode(test, response, 404)
 	}
-	if _, err := app.Store.AddTracks(1, "queue", []int64{1, 1, 2}); err != nil {
+	if _, err := app.Store.AddTracks(test.Context(), 1, "queue", []int64{1, 1, 2}); err != nil {
 		test.Fatal(err)
 	}
-	queue, err := app.Store.Queue(1)
+	queue, err := app.Store.Queue(test.Context(), 1)
 	if err != nil || len(queue) != 2 || queue[0].MusicFileID != 2 {
 		test.Fatal("duplicates or ordering changed", queue, err)
 	}
-	queueTag, err := app.Store.One("SELECT id FROM reinhardt_tag WHERE label='queue' AND owner_id=1")
+	queueTag, err := app.Store.One(test.Context(), "SELECT id FROM reinhardt_tag WHERE label='queue' AND owner_id=1")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestBulkDirectActionsAvoidTagFormData(test *testing.T) {
 			}
 			var tracks []int64
 			if scenario.target == "queue" {
-				queue, err := app.Store.Queue(1)
+				queue, err := app.Store.Queue(test.Context(), 1)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -366,7 +366,7 @@ func TestBulkDirectActionsAvoidTagFormData(test *testing.T) {
 					tracks = append(tracks, item.MusicFileID)
 				}
 			} else {
-				rows, err := app.Store.TagTracks(favorites)
+				rows, err := app.Store.TagTracks(test.Context(), favorites)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -450,7 +450,7 @@ func TestCSRFMethodsLoginAndPrefix(test *testing.T) {
 
 func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	app := testApp(test)
-	originalTrack, err := app.Store.Track(1)
+	originalTrack, err := app.Store.Track(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -494,7 +494,7 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	requireCode(test, response, 403)
 	response = send(1, []byte("invalid"))
 	requireCode(test, response, 400)
-	track, err := app.Store.Track(1)
+	track, err := app.Store.Track(test.Context(), 1)
 	if err != nil || track.Artist != "Artist" {
 		test.Fatal("invalid upload mutated database")
 	}
@@ -537,12 +537,12 @@ func TestDatabaseSnapshotAndExistingSchema(test *testing.T) {
 	}
 	config := *app.Store.Config
 	config.DatabasePath = path
-	store, err := openStore(&config)
+	store, err := openStore(test.Context(), &config)
 	if err != nil {
 		test.Fatal(err)
 	}
 	defer store.DB.Close()
-	tracks, err := store.Tracks("")
+	tracks, err := store.Tracks(test.Context(), "")
 	if err != nil || len(tracks) != 3 {
 		test.Fatal(tracks, err)
 	}
@@ -550,7 +550,7 @@ func TestDatabaseSnapshotAndExistingSchema(test *testing.T) {
 
 func TestNativeIndexAndID3(test *testing.T) {
 	app := testApp(test)
-	dir, err := app.Store.musicDirectory("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
+	dir, err := app.Store.musicDirectory(test.Context(), "SELECT * FROM reinhardt_musicdirectory WHERE id=1")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -570,10 +570,10 @@ func TestNativeIndexAndID3(test *testing.T) {
 		test.Fatal(tags.Artist())
 	}
 	tags.Close()
-	if err = app.Store.indexFile(path, dir); err != nil {
+	if err = app.Store.indexFile(test.Context(), path, dir); err != nil {
 		test.Fatal(err)
 	}
-	tracks, err := app.Store.Search("Tagged")
+	tracks, err := app.Store.Search(test.Context(), "Tagged")
 	if err != nil || len(tracks) != 1 {
 		test.Fatal(tracks, err)
 	}
@@ -583,10 +583,10 @@ func TestNativeIndexAndID3(test *testing.T) {
 	if err = os.Remove(path); err != nil {
 		test.Fatal(err)
 	}
-	if err = app.Store.Index(io.Discard); err != nil {
+	if err = app.Store.Index(test.Context(), io.Discard); err != nil {
 		test.Fatal(err)
 	}
-	track, err = app.Store.Track(tracks[0].ID)
+	track, err = app.Store.Track(test.Context(), tracks[0].ID)
 	if err != nil || !track.Missing {
 		test.Fatal(track, err)
 	}
@@ -605,20 +605,20 @@ func TestJobsFailureAndYouTubeValidation(test *testing.T) {
 		}
 	}
 	ripMetadata := Row{"url": "invalid", "artist": "Artist", "title": "Title"}
-	if err := app.Store.Enqueue("youtube", ripMetadata); err != nil {
+	if err := app.Store.Enqueue(test.Context(), "youtube", ripMetadata); err != nil {
 		test.Fatal(err)
 	}
 	if err := app.Work(context.Background(), true); err != nil {
 		test.Fatal(err)
 	}
-	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure")
+	failure, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_youtuberipfailure")
 	if err != nil {
 		test.Fatal(err)
 	}
 	if failure.S("artist") != "Artist" {
 		test.Fatal(failure)
 	}
-	job, err := app.Store.One("SELECT * FROM go_job")
+	job, err := app.Store.One(test.Context(), "SELECT * FROM go_job")
 	if err != nil || job.N("attempts") != 1 || job.N("run_at") <= time.Now().Unix() {
 		test.Fatal(job, err)
 	}

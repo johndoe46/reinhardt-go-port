@@ -1,6 +1,9 @@
 package reinhardt
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 const latestAdditionsClause = "WHERE m.missing=0 GROUP BY m.album ORDER BY m.created_at DESC LIMIT 25"
 
@@ -12,19 +15,19 @@ type homeCache struct {
 	tracks   []*Track
 }
 
-func (app *App) latestAdditions() ([]*Track, error) {
+func (app *App) latestAdditions(ctx context.Context) ([]*Track, error) {
 	cache := &app.home
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
 	var revision int64
-	if err := app.Store.DB.QueryRow("SELECT revision FROM go_home_revision WHERE id=1").Scan(&revision); err != nil {
+	if err := app.Store.DB.QueryRowContext(ctx, "SELECT revision FROM go_home_revision WHERE id=1").Scan(&revision); err != nil {
 		return nil, err
 	}
 	if !cache.loaded || cache.revision != revision {
 		// Keep the original SQLite grouping and representative-track selection:
 		// changing the query or its indexes can change the displayed rows.
-		rows, err := app.Store.Query(tracksSQL + latestAdditionsClause)
+		rows, err := app.Store.Query(ctx, tracksSQL+latestAdditionsClause)
 		tracks := tracksFromRows(rows)
 		if err != nil {
 			return nil, err

@@ -12,11 +12,11 @@ func TestInitializedPagesDoNotWriteOnGETOrHEAD(test *testing.T) {
 		mustTag(test, app, owner, "queue", []int64{owner})
 		mustTag(test, app, owner, "favorites", []int64{owner})
 	}
-	before, err := app.Store.Query("SELECT * FROM reinhardt_tag ORDER BY id")
+	before, err := app.Store.Query(test.Context(), "SELECT * FROM reinhardt_tag ORDER BY id")
 	if err != nil {
 		test.Fatal(err)
 	}
-	sequence, err := app.Store.One("SELECT seq FROM sqlite_sequence WHERE name='reinhardt_tag'")
+	sequence, err := app.Store.One(test.Context(), "SELECT seq FROM sqlite_sequence WHERE name='reinhardt_tag'")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -41,14 +41,14 @@ func TestInitializedPagesDoNotWriteOnGETOrHEAD(test *testing.T) {
 			}
 		}
 	}
-	after, err := app.Store.Query("SELECT * FROM reinhardt_tag ORDER BY id")
+	after, err := app.Store.Query(test.Context(), "SELECT * FROM reinhardt_tag ORDER BY id")
 	if err != nil {
 		test.Fatal(err)
 	}
 	if !reflect.DeepEqual(before, after) {
 		test.Fatal("page reads changed tag IDs, metadata, or timestamps")
 	}
-	afterSequence, err := app.Store.One("SELECT seq FROM sqlite_sequence WHERE name='reinhardt_tag'")
+	afterSequence, err := app.Store.One(test.Context(), "SELECT seq FROM sqlite_sequence WHERE name='reinhardt_tag'")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestTagPagesInitializeOnlyMissingTags(test *testing.T) {
 			if writes := stats.writes.Load(); writes != 1 {
 				test.Fatalf("first %s visit for owner %d made %d writes, want one tag creation", name, owner, writes)
 			}
-			tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
+			tag, err := app.Store.tag(test.Context(), "SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
 			if err != nil {
 				test.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func TestExistingTagLookupPreservesNormalizationAndOwner(test *testing.T) {
 	for _, owner := range []int64{1, 2} {
 		stats.calls.Store(0)
 		stats.writes.Store(0)
-		got, err := app.Store.AddTag(owner, "  MY\t List\n")
+		got, err := app.Store.AddTag(test.Context(), owner, "  MY\t List\n")
 		if err != nil {
 			test.Fatal(err)
 		}
@@ -106,19 +106,19 @@ func TestExistingTagLookupPreservesNormalizationAndOwner(test *testing.T) {
 			test.Fatalf("owner %d: id=%d, want %d; SQL=%d writes=%d", owner, got, want, stats.calls.Load(), stats.writes.Load())
 		}
 	}
-	tag, err := app.Store.Tag(id, 1)
+	tag, err := app.Store.Tag(test.Context(), id, 1)
 	if err != nil || !tag.IsPlaylist || !tag.IsShared {
 		test.Fatal("lookup changed existing tag flags", err)
 	}
 	stats.calls.Store(0)
-	if _, err := app.Store.AddTag(1, " \t\n"); err == nil || stats.calls.Load() != 0 {
+	if _, err := app.Store.AddTag(test.Context(), 1, " \t\n"); err == nil || stats.calls.Load() != 0 {
 		test.Fatal("empty normalized label must fail before any SQL")
 	}
 	if err := app.Store.DB.Close(); err != nil {
 		test.Fatal(err)
 	}
 	stats.writes.Store(0)
-	if _, err := app.Store.AddTag(1, "new list"); err == nil || stats.writes.Load() != 0 {
+	if _, err := app.Store.AddTag(test.Context(), 1, "new list"); err == nil || stats.writes.Load() != 0 {
 		test.Fatal("lookup errors must be returned without attempting creation")
 	}
 }
@@ -136,7 +136,7 @@ func TestConcurrentTagCreationReturnsOneID(test *testing.T) {
 	for range callers {
 		go func() {
 			<-start
-			id, err := app.Store.AddTag(1, "  Concurrent\t List  ")
+			id, err := app.Store.AddTag(test.Context(), 1, "  Concurrent\t List  ")
 			results <- result{id, err}
 		}()
 	}
@@ -155,7 +155,7 @@ func TestConcurrentTagCreationReturnsOneID(test *testing.T) {
 			test.Errorf("concurrent lookup returned %d, want %d", result.id, want)
 		}
 	}
-	tags, err := app.Store.Query("SELECT id FROM reinhardt_tag WHERE owner_id=1 AND label='concurrent list'")
+	tags, err := app.Store.Query(test.Context(), "SELECT id FROM reinhardt_tag WHERE owner_id=1 AND label='concurrent list'")
 	if err != nil || len(tags) != 1 || tags[0].N("id") != want {
 		test.Fatal("concurrent creation must leave exactly one shared tag", tags, err)
 	}

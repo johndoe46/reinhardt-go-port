@@ -31,26 +31,26 @@ func TestYouTubeMissingMusicDirectoryReportsConfiguration(test *testing.T) {
 			test.Fatalf("error omits %q: %v", detail, err)
 		}
 	}
-	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure")
+	failure, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_youtuberipfailure")
 	if err != nil {
 		test.Fatal(err)
 	}
 	if !strings.Contains(failure.S("failure_message"), "no music directory is registered") || failure.S("url") != data.S("url") {
 		test.Fatalf("failure does not preserve the useful error and submitted URL: %#v", failure)
 	}
-	if err := app.Store.Enqueue("youtube", data); err != nil {
+	if err := app.Store.Enqueue(test.Context(), "youtube", data); err != nil {
 		test.Fatal(err)
 	}
 	if err := app.Work(context.Background(), true); err != nil {
 		test.Fatal(err)
 	}
-	job, err := app.Store.One("SELECT * FROM go_job")
+	job, err := app.Store.One(test.Context(), "SELECT * FROM go_job")
 	if err != nil || job.N("attempts") != 1 || !strings.Contains(job.S("error"), "addmusicdir") {
 		test.Fatalf("job retry lost the configuration error: %#v, %v", job, err)
 	}
 	response := call(app, "POST", "/ytrip/failures/"+failure.S("id")+"/retry/", 1, url.Values{}, true)
 	requireCode(test, response, 400)
-	count, err := app.Store.One("SELECT count(*) n FROM go_job")
+	count, err := app.Store.One(test.Context(), "SELECT count(*) n FROM go_job")
 	if err != nil || count.N("n") != 1 {
 		test.Fatalf("retry queued another job without a destination: %#v, %v", count, err)
 	}
@@ -65,7 +65,7 @@ func TestYouTubeSubmissionNeedsDestinationBeforeEnqueuing(test *testing.T) {
 	if !strings.Contains(response.Body.String(), "No music directory is configured.") {
 		test.Fatal("the download form does not explain the missing destination")
 	}
-	count, err := app.Store.One("SELECT count(*) n FROM go_job")
+	count, err := app.Store.One(test.Context(), "SELECT count(*) n FROM go_job")
 	if err != nil || count.N("n") != 0 {
 		test.Fatalf("queued a download without a destination: %#v, %v", count, err)
 	}
@@ -75,7 +75,7 @@ func TestYouTubeSubmissionNeedsDestinationBeforeEnqueuing(test *testing.T) {
 	}
 	response = call(app, "POST", "/ytrip/", 1, form, true)
 	requireCode(test, response, 200)
-	job, err := app.Store.One("SELECT * FROM go_job")
+	job, err := app.Store.One(test.Context(), "SELECT * FROM go_job")
 	if err != nil || job.S("kind") != "youtube" {
 		test.Fatalf("registering a destination did not unblock submission: %#v, %v", job, err)
 	}

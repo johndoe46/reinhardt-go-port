@@ -16,7 +16,7 @@ func TestSuggestedDataOrderAndInvalidation(test *testing.T) {
 		test.Helper()
 		before, writes := stats.suggestions.Load(), stats.writes.Load()
 		for range 2 {
-			got, err := app.suggestedData()
+			got, err := app.suggestedData(test.Context())
 			if err != nil || !reflect.DeepEqual(got, want) {
 				test.Fatalf("suggestions: got %v, want %v: %v", got, want, err)
 			}
@@ -93,7 +93,7 @@ func TestSuggestedDataConcurrentRequests(test *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				words, err := app.suggestedData()
+				words, err := app.suggestedData(test.Context())
 				if err != nil {
 					errors <- err
 				} else if !reflect.DeepEqual(words, []string{"Another", "Artist", artist, "Album", "Other"}) {

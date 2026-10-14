@@ -78,7 +78,7 @@ func (app *App) sessionUser(request *http.Request) *User {
 	if err != nil {
 		return &User{}
 	}
-	user, err := app.Store.user(`SELECT u.*,p.language_code FROM auth_user u JOIN go_session s ON s.owner_id=u.id LEFT JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
+	user, err := app.Store.user(request.Context(), `SELECT u.*,p.language_code FROM auth_user u JOIN go_session s ON s.owner_id=u.id LEFT JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE s.token=? AND s.expires>? AND u.is_active=1`, sessionCookie.Value, time.Now().Unix())
 	if err != nil {
 		return &User{}
 	}
@@ -264,7 +264,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	// Raw fetch() partials have no X-Up-Target header. Only templates using the
 	// page layout need preferences, the player footer, or library suggestions.
 	if user.IsAuthenticated && pageTemplate.UsesLayout {
-		prefs, err := app.Store.Preferences(user.ID)
+		prefs, err := app.Store.Preferences(request.Context(), user.ID)
 		if err != nil {
 			return err
 		}
@@ -289,12 +289,12 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 							}
 						}
 					} else {
-						current, err = app.Store.queueItem(user.ID, "a.id=?", position)
+						current, err = app.Store.queueItem(request.Context(), user.ID, "a.id=?", position)
 						if err != nil && err != sql.ErrNoRows {
 							return err
 						}
 						if current != nil {
-							current.MusicFile, err = app.Store.Track(current.MusicFileID)
+							current.MusicFile, err = app.Store.Track(request.Context(), current.MusicFileID)
 							if err != nil {
 								return err
 							}
@@ -306,7 +306,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 					}
 				}
 			}
-			words, err := app.suggestedData()
+			words, err := app.suggestedData(request.Context())
 			if err != nil {
 				return err
 			}

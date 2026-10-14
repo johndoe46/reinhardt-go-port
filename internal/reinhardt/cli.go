@@ -42,7 +42,7 @@ func newCLI() *cobra.Command {
 			return err
 		}
 		var err error
-		store, err = openStore(appConfig)
+		store, err = openStore(cmd.Context(), appConfig)
 		return err
 	}
 	root.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
@@ -129,12 +129,12 @@ func newCLI() *cobra.Command {
 		return app.Work(ctx, once)
 	})
 	worker.Flags().BoolVar(&once, "once", false, "process ready jobs and exit")
-	add("migrate", "Initialize SQLite schema and rebuild the search index", 0, func(cmd *cobra.Command, args []string) error { return store.ReindexFTS() })
+	add("migrate", "Initialize SQLite schema and rebuild the search index", 0, func(cmd *cobra.Command, args []string) error { return store.ReindexFTS(cmd.Context()) })
 	add("check", "Check the database and compile all embedded templates", 0, func(cmd *cobra.Command, args []string) error {
 		if _, err := newTemplates(); err != nil {
 			return err
 		}
-		integrityResult, err := store.One("PRAGMA integrity_check")
+		integrityResult, err := store.One(cmd.Context(), "PRAGMA integrity_check")
 		if err != nil {
 			return err
 		}
@@ -156,10 +156,10 @@ func newCLI() *cobra.Command {
 		if !info.IsDir() {
 			return fmt.Errorf("music_dir must be a directory")
 		}
-		_, err = store.DB.Exec("INSERT OR IGNORE INTO reinhardt_musicdirectory(local_path,created_at,modified_at) VALUES(?,?,?)", path, now(), now())
+		_, err = store.DB.ExecContext(cmd.Context(), "INSERT OR IGNORE INTO reinhardt_musicdirectory(local_path,created_at,modified_at) VALUES(?,?,?)", path, now(), now())
 		return err
 	})
-	add("indexmusic", "Index MP3/M4A metadata and mark missing files", 0, func(cmd *cobra.Command, args []string) error { return store.Index(cmd.OutOrStdout()) })
+	add("indexmusic", "Index MP3/M4A metadata and mark missing files", 0, func(cmd *cobra.Command, args []string) error { return store.Index(cmd.Context(), cmd.OutOrStdout()) })
 	add("gathermusic", "Import files and ZIP archives from MUSIC_IMPORT_DIR", 0, func(cmd *cobra.Command, args []string) error { return store.Gather(cmd.Context()) })
 	var email string
 	var superuser bool
@@ -171,32 +171,32 @@ func newCLI() *cobra.Command {
 		if len(username) > 150 {
 			return fmt.Errorf("username must be at most 150 characters")
 		}
-		_, err := store.DB.Exec(`INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
+		_, err := store.DB.ExecContext(cmd.Context(), `INSERT OR IGNORE INTO auth_user(password,last_login,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES('!',NULL,?,?, '','',?, ?,1,?)`, superuser, username, email, superuser, now())
 		if err != nil {
 			return err
 		}
-		user, err := store.user("SELECT * FROM auth_user WHERE username=?", username)
+		user, err := store.user(cmd.Context(), "SELECT * FROM auth_user WHERE username=?", username)
 		if err != nil {
 			return err
 		}
 		if superuser {
-			if _, err = store.DB.Exec("UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", user.ID); err != nil {
+			if _, err = store.DB.ExecContext(cmd.Context(), "UPDATE auth_user SET is_superuser=1,is_staff=1 WHERE id=?", user.ID); err != nil {
 				return err
 			}
 		}
 		if email != "" {
-			if _, err = store.DB.Exec("UPDATE auth_user SET email=? WHERE id=?", email, user.ID); err != nil {
+			if _, err = store.DB.ExecContext(cmd.Context(), "UPDATE auth_user SET email=? WHERE id=?", email, user.ID); err != nil {
 				return err
 			}
 		}
-		prefs, err := store.Preferences(user.ID)
+		prefs, err := store.Preferences(cmd.Context(), user.ID)
 		if err != nil {
 			return err
 		}
 		access := prefs.AccessToken
 		if access == "" {
 			access = token()
-			if _, err = store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
+			if _, err = store.DB.ExecContext(cmd.Context(), "UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
 				return err
 			}
 		}
@@ -206,7 +206,7 @@ func newCLI() *cobra.Command {
 	access.Flags().StringVar(&email, "email", "", "account email address")
 	access.Flags().BoolVar(&superuser, "superuser", false, "grant administrative permissions")
 	add("listaccess", "Print existing account login links", 0, func(cmd *cobra.Command, args []string) error {
-		rows, err := store.Query("SELECT u.username,p.access_token FROM reinhardt_preferences p JOIN auth_user u ON u.id=p.owner_id ORDER BY u.username")
+		rows, err := store.Query(cmd.Context(), "SELECT u.username,p.access_token FROM reinhardt_preferences p JOIN auth_user u ON u.id=p.owner_id ORDER BY u.username")
 		if err != nil {
 			return err
 		}
@@ -216,7 +216,7 @@ func newCLI() *cobra.Command {
 		return nil
 	})
 	add("listtags", "List tags and their owners", 0, func(cmd *cobra.Command, args []string) error {
-		rows, err := store.Query("SELECT t.*,u.username FROM reinhardt_tag t JOIN auth_user u ON u.id=t.owner_id ORDER BY u.username,t.label")
+		rows, err := store.Query(cmd.Context(), "SELECT t.*,u.username FROM reinhardt_tag t JOIN auth_user u ON u.id=t.owner_id ORDER BY u.username,t.label")
 		if err != nil {
 			return err
 		}
@@ -233,10 +233,10 @@ func newCLI() *cobra.Command {
 		if !info.IsDir() {
 			return fmt.Errorf("destination must be a directory")
 		}
-		if _, err = store.One("SELECT id FROM reinhardt_tag WHERE id=?", args[0]); err != nil {
+		if _, err = store.One(cmd.Context(), "SELECT id FROM reinhardt_tag WHERE id=?", args[0]); err != nil {
 			return err
 		}
-		tracks, err := store.TagTracks(args[0])
+		tracks, err := store.TagTracks(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
@@ -256,7 +256,7 @@ func newCLI() *cobra.Command {
 		return nil
 	})
 	add("tagsexport <csv_file_output>", "Export indexed metadata as CSV", 1, func(cmd *cobra.Command, args []string) error {
-		tracks, err := store.Tracks("ORDER BY m.artist,m.album,m.title,m.track_number")
+		tracks, err := store.Tracks(cmd.Context(), "ORDER BY m.artist,m.album,m.title,m.track_number")
 		if err != nil {
 			return err
 		}
@@ -274,7 +274,7 @@ func newCLI() *cobra.Command {
 		return writer.Error()
 	})
 	add("populateyears", "Populate only the year column from audio metadata", 0, func(cmd *cobra.Command, args []string) error {
-		tracks, err := store.Tracks("")
+		tracks, err := store.Tracks(cmd.Context(), "")
 		if err != nil {
 			return err
 		}
@@ -285,7 +285,7 @@ func newCLI() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Skipped %s: %v\n", track.FullPath, err)
 				continue
 			}
-			if _, err = store.DB.Exec("UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.Year, track.ID); err != nil {
+			if _, err = store.DB.ExecContext(cmd.Context(), "UPDATE reinhardt_musicfile SET year=? WHERE id=?", metadata.Year, track.ID); err != nil {
 				return err
 			}
 			count++
@@ -294,7 +294,7 @@ func newCLI() *cobra.Command {
 		return nil
 	})
 	add("dedup", "Print duplicate music paths by content without deleting files", 0, func(cmd *cobra.Command, args []string) error {
-		dirs, err := store.Query("SELECT local_path FROM reinhardt_musicdirectory ORDER BY id")
+		dirs, err := store.Query(cmd.Context(), "SELECT local_path FROM reinhardt_musicdirectory ORDER BY id")
 		if err != nil {
 			return err
 		}
@@ -329,7 +329,7 @@ func newCLI() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		rows, err := store.Query("SELECT id FROM reinhardt_musicfile ORDER BY id DESC")
+		rows, err := store.Query(cmd.Context(), "SELECT id FROM reinhardt_musicfile ORDER BY id DESC")
 		if err != nil {
 			return err
 		}
@@ -383,7 +383,7 @@ func newCLI() *cobra.Command {
 	ytrip.Flags().StringVarP(&year, "year", "y", "", "release year")
 	ytrip.Flags().StringVar(&comment, "comment", "", "comment")
 	add("jobs", "List queued and failed background jobs", 0, func(cmd *cobra.Command, args []string) error {
-		rows, err := store.Query("SELECT * FROM go_job ORDER BY id")
+		rows, err := store.Query(cmd.Context(), "SELECT * FROM go_job ORDER BY id")
 		if err != nil {
 			return err
 		}

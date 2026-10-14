@@ -43,7 +43,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		case "track_details_modal":
 			return app.trackDetails(responseWriter, request, user, parts[1])
 		case "rename_tag":
-			tag, err := store.Tag(parts[1], owner)
+			tag, err := store.Tag(request.Context(), parts[1], owner)
 			if err != nil {
 				return err
 			}
@@ -52,7 +52,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if name == "" {
 					ctx["error_message"] = "tag name is empty"
 				} else {
-					_, err = store.DB.Exec("UPDATE reinhardt_tag SET label=?,modified_at=? WHERE id=? AND owner_id=?", name, now(), tag.ID, owner)
+					_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_tag SET label=?,modified_at=? WHERE id=? AND owner_id=?", name, now(), tag.ID, owner)
 					if err == nil {
 						app.redirect(responseWriter, request, store.URL("tags"))
 						return nil
@@ -72,7 +72,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		if cookie, err := request.Cookie("sessionid"); err == nil {
-			if _, err = store.DB.Exec("DELETE FROM go_session WHERE token=?", cookie.Value); err != nil {
+			if _, err = store.DB.ExecContext(request.Context(), "DELETE FROM go_session WHERE token=?", cookie.Value); err != nil {
 				return err
 			}
 		}
@@ -83,15 +83,15 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		user, err := store.One(`SELECT u.id FROM auth_user u JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE p.access_token=? AND u.is_active=1`, query)
+		user, err := store.One(request.Context(), `SELECT u.id FROM auth_user u JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE p.access_token=? AND u.is_active=1`, query)
 		if err != nil {
 			return err
 		}
 		sess := token()
-		if _, err = store.DB.Exec("INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", sess, user.N("id"), time.Now().Unix()+31556952); err != nil {
+		if _, err = store.DB.ExecContext(request.Context(), "INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", sess, user.N("id"), time.Now().Unix()+31556952); err != nil {
 			return err
 		}
-		if _, err = store.DB.Exec("UPDATE auth_user SET last_login=? WHERE id=?", now(), user.N("id")); err != nil {
+		if _, err = store.DB.ExecContext(request.Context(), "UPDATE auth_user SET last_login=? WHERE id=?", now(), user.N("id")); err != nil {
 			return err
 		}
 		app.cookie(responseWriter, request, "sessionid", sess, true, 31556952)
@@ -108,7 +108,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		tracks, err := app.latestAdditions()
+		tracks, err := app.latestAdditions(request.Context())
 		if err != nil {
 			return err
 		}
@@ -118,7 +118,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		letters, err := store.Query("SELECT DISTINCT upper(substr(artist,1,1)) letter FROM reinhardt_musicfile ORDER BY letter")
+		letters, err := store.Query(request.Context(), "SELECT DISTINCT upper(substr(artist,1,1)) letter FROM reinhardt_musicfile ORDER BY letter")
 		if err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		ctx["letters"] = ls
 		template = "artists"
 		if query != "" {
-			artists, err := store.Query("SELECT DISTINCT artist FROM reinhardt_musicfile WHERE artist LIKE ? AND missing=0 ORDER BY lower(artist)", query+"%")
+			artists, err := store.Query(request.Context(), "SELECT DISTINCT artist FROM reinhardt_musicfile WHERE artist LIKE ? AND missing=0 ORDER BY lower(artist)", query+"%")
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := safeOnly(request); err != nil {
 			return err
 		}
-		genres, err := store.Query("SELECT DISTINCT genre FROM reinhardt_musicfile WHERE missing=0 AND genre!='' ORDER BY lower(genre)")
+		genres, err := store.Query(request.Context(), "SELECT DISTINCT genre FROM reinhardt_musicfile WHERE missing=0 AND genre!='' ORDER BY lower(genre)")
 		if err != nil {
 			return err
 		}
@@ -162,7 +162,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if field == "album" {
 			order = "m.track_number"
 		}
-		tracks, err := store.Tracks("WHERE m."+field+"=? AND m.missing=0 ORDER BY "+order, query)
+		tracks, err := store.Tracks(request.Context(), "WHERE m."+field+"=? AND m.missing=0 ORDER BY "+order, query)
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		sq := strings.TrimSpace(request.URL.Query().Get("sq"))
-		tracks, err := store.Search(sq)
+		tracks, err := store.Search(request.Context(), sq)
 		if err != nil {
 			return err
 		}
@@ -183,7 +183,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		ctx["music_files"] = tracks
 		count := len(tracks)
 		if sq != "" {
-			total, err := store.One("SELECT COUNT(*) n FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0", ftsEscape(sq))
+			total, err := store.One(request.Context(), "SELECT COUNT(*) n FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0", ftsEscape(sq))
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		for _, field := range []string{"artist", "album", "genre"} {
 			values := []string{}
 			if sq != "" {
-				rows, err := store.Query("SELECT DISTINCT m."+field+" value FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE f."+field+" MATCH ? ORDER BY m."+field, ftsEscape(sq))
+				rows, err := store.Query(request.Context(), "SELECT DISTINCT m."+field+" value FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE f."+field+" MATCH ? ORDER BY m."+field, ftsEscape(sq))
 				if err != nil {
 					return err
 				}
@@ -218,11 +218,11 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if request.Method == "POST" {
 			action := request.FormValue("action")
 			if action == "add_tag" {
-				if _, err := store.AddTag(owner, request.FormValue("tag_label")); err != nil {
+				if _, err := store.AddTag(request.Context(), owner, request.FormValue("tag_label")); err != nil {
 					return bad(err.Error())
 				}
 			} else {
-				tag, err := store.Tag(request.FormValue("tag_pk"), owner)
+				tag, err := store.Tag(request.Context(), request.FormValue("tag_pk"), owner)
 				if err != nil {
 					return err
 				}
@@ -231,12 +231,12 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				}
 				switch action {
 				case "remove_tag":
-					_, err = store.DB.Exec("DELETE FROM reinhardt_musicfiletag WHERE tag_id=?", tag.ID)
+					_, err = store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE tag_id=?", tag.ID)
 					if err == nil {
-						_, err = store.DB.Exec("DELETE FROM reinhardt_tag WHERE id=?", tag.ID)
+						_, err = store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_tag WHERE id=?", tag.ID)
 					}
 				case "share_tag", "unshare_tag":
-					_, err = store.DB.Exec("UPDATE reinhardt_tag SET is_shared=?,modified_at=? WHERE id=?", action == "share_tag", now(), tag.ID)
+					_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_tag SET is_shared=?,modified_at=? WHERE id=?", action == "share_tag", now(), tag.ID)
 				default:
 					return bad("Invalid action")
 				}
@@ -245,7 +245,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				}
 			}
 		}
-		tags, err := store.Tags(owner, false)
+		tags, err := store.Tags(request.Context(), owner, false)
 		if err != nil {
 			return err
 		}
@@ -261,18 +261,18 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		var tag *Tag
 		var tagErr error
 		if path == "favorites/" {
-			id, err := store.AddTag(owner, "favorites")
+			id, err := store.AddTag(request.Context(), owner, "favorites")
 			if err != nil {
 				return err
 			}
-			tag, tagErr = store.Tag(id, owner)
+			tag, tagErr = store.Tag(request.Context(), id, owner)
 		} else {
-			tag, tagErr = store.Tag(query, owner)
+			tag, tagErr = store.Tag(request.Context(), query, owner)
 		}
 		if tagErr != nil {
 			return tagErr
 		}
-		tracks, tagErr := store.TagTracks(tag.ID)
+		tracks, tagErr := store.TagTracks(request.Context(), tag.ID)
 		if tagErr != nil {
 			return tagErr
 		}
@@ -287,7 +287,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			if err := postOnly(request); err != nil {
 				return err
 			}
-			if err := store.ShuffleQueue(owner); err != nil {
+			if err := store.ShuffleQueue(request.Context(), owner); err != nil {
 				return err
 			}
 		}
@@ -295,20 +295,20 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			if err := postOnly(request); err != nil {
 				return err
 			}
-			_, err := store.DB.Exec("DELETE FROM reinhardt_musicfiletag WHERE tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", owner)
+			_, err := store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", owner)
 			if err != nil {
 				return err
 			}
 		}
-		queue, err := store.Queue(owner)
+		queue, err := store.Queue(request.Context(), owner)
 		if err != nil {
 			return err
 		}
-		id, err := store.AddTag(owner, "queue")
+		id, err := store.AddTag(request.Context(), owner, "queue")
 		if err != nil {
 			return err
 		}
-		tag, err := store.Tag(id, owner)
+		tag, err := store.Tag(request.Context(), id, owner)
 		if err != nil {
 			return err
 		}
@@ -319,7 +319,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		tag.Duration = total
 		ctx["queue"] = queue
 		ctx["music_tag"] = tag
-		preferences, err := store.Preferences(owner)
+		preferences, err := store.Preferences(request.Context(), owner)
 		if err != nil {
 			return err
 		}
@@ -332,7 +332,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if code != "" && !app.Translations.supports(code) {
 					return bad(app.translator(user).Text("Unsupported language"))
 				}
-				if err := store.SetUserLanguage(owner, code); err != nil {
+				if err := store.SetUserLanguage(request.Context(), owner, code); err != nil {
 					return err
 				}
 				// Render the updated language in the main fragment while Unpoly
@@ -340,11 +340,11 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				user.LanguageCode = code
 				return app.render(responseWriter, request, user, "reinhardt/preferences.html", ctx, 200)
 			}
-			_, err := store.Preferences(owner)
+			_, err := store.Preferences(request.Context(), owner)
 			if err != nil {
 				return err
 			}
-			_, err = store.DB.Exec("UPDATE reinhardt_preferences SET autofeed_queue=?,autofeed_similar=?,show_oscilloscope=? WHERE owner_id=?", request.FormValue("autofeed_queue") == "on", request.FormValue("autofeed_similar") == "on", request.FormValue("show_oscilloscope") == "on", owner)
+			_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=?,autofeed_similar=?,show_oscilloscope=? WHERE owner_id=?", request.FormValue("autofeed_queue") == "on", request.FormValue("autofeed_similar") == "on", request.FormValue("show_oscilloscope") == "on", owner)
 			if err != nil {
 				return err
 			}
@@ -354,11 +354,11 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := postOnly(request); err != nil {
 			return err
 		}
-		if _, err := store.Preferences(owner); err != nil {
+		if _, err := store.Preferences(request.Context(), owner); err != nil {
 			return err
 		}
 		active := path == "activate_autofeed/"
-		if _, err := store.DB.Exec("UPDATE reinhardt_preferences SET autofeed_queue=? WHERE owner_id=?", active, owner); err != nil {
+		if _, err := store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=? WHERE owner_id=?", active, owner); err != nil {
 			return err
 		}
 		message := "autofeed deactivated"
@@ -397,7 +397,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err := postOnly(request); err != nil {
 			return err
 		}
-		res, err := store.DB.Exec("DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", request.FormValue("remove_item"), owner)
+		res, err := store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", request.FormValue("remove_item"), owner)
 		if err != nil {
 			return err
 		}
@@ -419,26 +419,26 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		if err != nil {
 			return bad("Invalid music file ID.")
 		}
-		track, err := store.Track(id)
+		track, err := store.Track(request.Context(), id)
 		if err != nil {
 			return err
 		}
 		ctx["music_file"] = track
 		if path == "music_file_tagger/" {
-			tags, err := store.Tags(owner, false)
+			tags, err := store.Tags(request.Context(), owner, false)
 			if err != nil {
 				return err
 			}
 			ctx["tags"] = tags
 			ctx["next_url"] = request.URL.Query().Get("next")
-			assigned, err := store.Query(`SELECT t.id FROM reinhardt_tag t JOIN reinhardt_musicfiletag a ON a.tag_id=t.id WHERE t.owner_id=? AND a.music_file_id=? AND t.label NOT IN ('queue','favorites')`, owner, id)
+			assigned, err := store.Query(request.Context(), `SELECT t.id FROM reinhardt_tag t JOIN reinhardt_musicfiletag a ON a.tag_id=t.id WHERE t.owner_id=? AND a.music_file_id=? AND t.label NOT IN ('queue','favorites')`, owner, id)
 			if err != nil {
 				return err
 			}
 			ctx["assigned_tags_pks"] = rowIDs(assigned)
 			template = "music_file_tagger"
 		} else {
-			fav, err := store.One(`SELECT COUNT(*) n FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id WHERE t.owner_id=? AND t.label='favorites' AND a.music_file_id=?`, owner, id)
+			fav, err := store.One(request.Context(), `SELECT COUNT(*) n FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id WHERE t.owner_id=? AND t.label='favorites' AND a.music_file_id=?`, owner, id)
 			if err != nil {
 				return err
 			}
@@ -449,7 +449,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 				if _, err := strconv.Atoi(id); err != nil {
 					return bad("Invalid tag ID.")
 				}
-				tag, err := store.Tag(id, owner)
+				tag, err := store.Tag(request.Context(), id, owner)
 				if err != nil {
 					return err
 				}
@@ -458,14 +458,14 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			template = "_track_dropdown_menu_items"
 		}
 	case "friends/":
-		friendRows, err := store.Query("SELECT * FROM auth_user WHERE id!=? ORDER BY username", owner)
+		friendRows, err := store.Query(request.Context(), "SELECT * FROM auth_user WHERE id!=? ORDER BY username", owner)
 		if err != nil {
 			return err
 		}
 		visible := []Row{}
 		for _, row := range friendRows {
 			friend := userFromRow(row)
-			tags, err := store.Tags(friend.ID, true)
+			tags, err := store.Tags(request.Context(), friend.ID, true)
 			if err != nil {
 				return err
 			}
@@ -482,15 +482,15 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		ctx["friends"] = visible
 		template = "friends"
 	case "friend_tag/":
-		tag, err := store.tag("SELECT * FROM reinhardt_tag WHERE id=?", request.URL.Query().Get("tag"))
+		tag, err := store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE id=?", request.URL.Query().Get("tag"))
 		if err != nil {
 			return err
 		}
-		friend, err := store.user("SELECT * FROM auth_user WHERE id=?", tag.OwnerID)
+		friend, err := store.user(request.Context(), "SELECT * FROM auth_user WHERE id=?", tag.OwnerID)
 		if err != nil {
 			return err
 		}
-		tracks, err := store.TagTracks(tag.ID)
+		tracks, err := store.TagTracks(request.Context(), tag.ID)
 		if err != nil {
 			return err
 		}
@@ -503,13 +503,13 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		if query == "" {
-			tag, err := store.One("SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue'", owner)
+			tag, err := store.One(request.Context(), "SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue'", owner)
 			if err != nil {
 				return err
 			}
 			query = tag.S("id")
 		}
-		tag, err := store.Tag(query, owner)
+		tag, err := store.Tag(request.Context(), query, owner)
 		if err != nil {
 			return err
 		}
@@ -553,7 +553,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 	if len(parts) < 3 {
 		return sql.ErrNoRows
 	}
-	tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", parts[1])
+	tag, err := app.Store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", parts[1])
 	if err != nil {
 		return err
 	}
@@ -561,7 +561,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 	if subtle.ConstantTimeCompare([]byte(parts[2]), []byte(tag.ShareHash)) != 1 {
 		return sql.ErrNoRows
 	}
-	tracks, err := app.Store.TagTracks(tag.ID)
+	tracks, err := app.Store.TagTracks(request.Context(), tag.ID)
 	if err != nil {
 		return err
 	}
@@ -607,7 +607,7 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 	var operationErr error
 	if path == "toggle_tag/" {
 		query = request.FormValue("music_file_pk")
-		tag, err := app.Store.Tag(request.FormValue("tag_pk"), owner)
+		tag, err := app.Store.Tag(request.Context(), request.FormValue("tag_pk"), owner)
 		if err != nil {
 			return err
 		}
@@ -626,26 +626,26 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 	}
 	switch kind {
 	case "music_file":
-		track, err := app.Store.Track(query)
+		track, err := app.Store.Track(request.Context(), query)
 		if err != nil {
 			return err
 		}
 		tracks = []*Track{track}
 		object = "track"
 	case "artist", "genre", "album":
-		tracks, operationErr = app.Store.Tracks("WHERE m."+kind+"=? AND m.missing=0 ORDER BY m.artist,m.album,m.track_number", query)
+		tracks, operationErr = app.Store.Tracks(request.Context(), "WHERE m."+kind+"=? AND m.missing=0 ORDER BY m.artist,m.album,m.track_number", query)
 	case "tag", "favorites":
 		source := query
 		if kind == "favorites" {
 			source = "favorites"
 		}
-		tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, source)
+		tag, err := app.Store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, source)
 		if err != nil {
 			return err
 		}
-		tracks, operationErr = app.Store.TagTracks(tag.ID)
+		tracks, operationErr = app.Store.TagTracks(request.Context(), tag.ID)
 	case "friend_tag":
-		tracks, operationErr = app.Store.TagTracks(query)
+		tracks, operationErr = app.Store.TagTracks(request.Context(), query)
 	default:
 		return bad("Invalid action type")
 	}
@@ -654,21 +654,21 @@ func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Requ
 	}
 	if action == "added" {
 		if kind == "music_file" {
-			_, operationErr = app.Store.AddTrack(owner, name, tracks[0].ID)
+			_, operationErr = app.Store.AddTrack(request.Context(), owner, name, tracks[0].ID)
 		} else {
-			_, operationErr = app.Store.AddTracks(owner, name, ids(tracks))
+			_, operationErr = app.Store.AddTracks(request.Context(), owner, name, ids(tracks))
 		}
 		if operationErr != nil {
 			return operationErr
 		}
 	} else {
-		tx, err := app.Store.DB.Begin()
+		tx, err := app.Store.DB.BeginTx(request.Context(), nil)
 		if err != nil {
 			return err
 		}
 		defer tx.Rollback()
 		for _, track := range tracks {
-			if _, operationErr = tx.Exec("DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?)", track.ID, owner, name); operationErr != nil {
+			if _, operationErr = tx.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?)", track.ID, owner, name); operationErr != nil {
 				return operationErr
 			}
 		}
@@ -697,7 +697,7 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 		// Only the tag-selection form needs the user's available tags.
 		ctx["artist"] = value
 		ctx["q"] = value
-		tags, err := app.Store.Tags(user.ID, false)
+		tags, err := app.Store.Tags(request.Context(), user.ID, false)
 		if err != nil {
 			return err
 		}
@@ -717,7 +717,7 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 					return bad("Invalid tag name.")
 				}
 			} else {
-				tag, tagErr := app.Store.Tag(request.FormValue("tag_pk"), user.ID)
+				tag, tagErr := app.Store.Tag(request.Context(), request.FormValue("tag_pk"), user.ID)
 				if tagErr != nil {
 					return tagErr
 				}
@@ -731,11 +731,11 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 		var operationErr error
 		switch source {
 		case "artist":
-			tracks, operationErr = app.Store.Tracks("WHERE m.artist=? AND m.missing=0 ORDER BY m.album,m.track_number", value)
+			tracks, operationErr = app.Store.Tracks(request.Context(), "WHERE m.artist=? AND m.missing=0 ORDER BY m.album,m.track_number", value)
 		case "search":
-			tracks, operationErr = app.Store.Search(value)
+			tracks, operationErr = app.Store.Search(request.Context(), value)
 		case "queue":
-			queue, err := app.Store.Queue(user.ID)
+			queue, err := app.Store.Queue(request.Context(), user.ID)
 			operationErr = err
 			for _, queueItem := range queue {
 				tracks = append(tracks, queueItem.MusicFile)
@@ -744,14 +744,14 @@ func (app *App) bulkAddTracks(responseWriter http.ResponseWriter, request *http.
 		if operationErr != nil {
 			return operationErr
 		}
-		count, err := app.Store.AddTracks(user.ID, target, ids(tracks))
+		count, err := app.Store.AddTracks(request.Context(), user.ID, target, ids(tracks))
 		if err != nil {
 			return err
 		}
 		if action == "add_to_tag" {
 			// Redisplay the form with the destination and number of newly added tracks.
 			ctx["added_count"] = count
-			tag, err := app.Store.tag("SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.ID, target)
+			tag, err := app.Store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE owner_id=? AND label=?", user.ID, target)
 			if err != nil {
 				return err
 			}
@@ -772,7 +772,7 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 	if err := postOnly(request); err != nil {
 		return err
 	}
-	tag, err := app.Store.Tag(request.FormValue("list_pk"), user.ID)
+	tag, err := app.Store.Tag(request.Context(), request.FormValue("list_pk"), user.ID)
 	if err != nil {
 		return err
 	}
@@ -783,7 +783,7 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 	if err = json.Unmarshal([]byte(request.FormValue("new_order")), &order); err != nil {
 		return bad("Invalid order")
 	}
-	tx, err := app.Store.DB.Begin()
+	tx, err := app.Store.DB.BeginTx(request.Context(), nil)
 	if err != nil {
 		return err
 	}
@@ -794,7 +794,7 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 			return bad("Invalid order")
 		}
 		seen[item.Item] = true
-		res, err := tx.Exec("UPDATE reinhardt_musicfiletag SET rank=? WHERE music_file_id=? AND tag_id=?", item.Rank, item.Item, tag.ID)
+		res, err := tx.ExecContext(request.Context(), "UPDATE reinhardt_musicfiletag SET rank=? WHERE music_file_id=? AND tag_id=?", item.Rank, item.Item, tag.ID)
 		if err != nil {
 			return err
 		}
@@ -815,7 +815,7 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, error) {
 	store := app.Store
 	owner := user.ID
-	prefs, operationErr := store.Preferences(owner)
+	prefs, operationErr := store.Preferences(request.Context(), owner)
 	if operationErr != nil {
 		return nil, 0, operationErr
 	}
@@ -824,7 +824,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 	// The persisted position is an association id, while advancement compares
 	// ranks. Reordering the queue changes rank without changing the saved position.
 	if position := prefs.CurrentPosition; position != 0 {
-		currentItem, operationErr = store.queueItem(owner, "a.id=?", position)
+		currentItem, operationErr = store.queueItem(request.Context(), owner, "a.id=?", position)
 		if operationErr != nil && operationErr != sql.ErrNoRows {
 			return nil, 0, operationErr
 		}
@@ -838,7 +838,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 		// list_item comes from the player's track controls, so it identifies a
 		// music file, not the association id stored in preferences.
 		if id, err := strconv.ParseInt(item, 10, 64); err == nil && strconv.FormatInt(id, 10) == item {
-			chosen, operationErr = store.queueItem(owner, "a.music_file_id=?", id)
+			chosen, operationErr = store.queueItem(request.Context(), owner, "a.music_file_id=?", id)
 			if operationErr != nil && operationErr != sql.ErrNoRows {
 				return nil, 0, operationErr
 			}
@@ -846,16 +846,16 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 	}
 	if chosen == nil {
 		if next := request.FormValue("next_track"); next != "" {
-			track, operationErr = store.Track(next)
+			track, operationErr = store.Track(request.Context(), next)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
-			chosen, operationErr = store.AddTrack(owner, "queue", track.ID)
+			chosen, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		} else {
-			chosen, operationErr = store.queueItem(owner, "a.rank>?", current)
+			chosen, operationErr = store.queueItem(request.Context(), owner, "a.rank>?", current)
 			if operationErr != nil && operationErr != sql.ErrNoRows {
 				return nil, 0, operationErr
 			}
@@ -865,7 +865,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 		// Keep Last.fm behind both the preference and queue-exhaustion checks.
 		// Normal advancement and disabled similarity must never contact Last.fm.
 		if prefs.AutofeedSimilar && currentItem != nil {
-			last, err := store.Track(currentItem.MusicFileID)
+			last, err := store.Track(request.Context(), currentItem.MusicFileID)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -895,7 +895,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 			}
 		}
 		if track != nil {
-			chosen, operationErr = store.AddTrack(owner, "queue", track.ID)
+			chosen, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
@@ -906,14 +906,14 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 	if chosen != nil {
 		position = chosen.ID
 		if track == nil {
-			track, operationErr = store.Track(chosen.MusicFileID)
+			track, operationErr = store.Track(request.Context(), chosen.MusicFileID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		}
 		rank = chosen.Rank
 	}
-	_, operationErr = store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", position, owner)
+	_, operationErr = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", position, owner)
 	return track, rank, operationErr
 }
 
@@ -1019,12 +1019,12 @@ func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Requ
 	if len(clauses) > 0 {
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
-	count, err := app.Store.One("SELECT COUNT(*) n FROM reinhardt_musicfile m"+join+where, args...)
+	count, err := app.Store.One(request.Context(), "SELECT COUNT(*) n FROM reinhardt_musicfile m"+join+where, args...)
 	if err != nil {
 		return err
 	}
 	args = append(args, limit, offset)
-	tracks, err := app.Store.Tracks(join+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...)
+	tracks, err := app.Store.Tracks(request.Context(), join+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return err
 	}
@@ -1036,14 +1036,14 @@ func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Requ
 }
 
 func (app *App) playlists(responseWriter http.ResponseWriter, request *http.Request, username string) error {
-	user, err := app.Store.One("SELECT id FROM auth_user WHERE username=?", username)
+	user, err := app.Store.One(request.Context(), "SELECT id FROM auth_user WHERE username=?", username)
 	if err == sql.ErrNoRows {
 		return jsonResponse(responseWriter, []Row{})
 	}
 	if err != nil {
 		return err
 	}
-	tags, err := app.Store.Tags(user.N("id"), true)
+	tags, err := app.Store.Tags(request.Context(), user.N("id"), true)
 	if err != nil {
 		return err
 	}
@@ -1052,7 +1052,7 @@ func (app *App) playlists(responseWriter http.ResponseWriter, request *http.Requ
 		if tag.Label == "queue" || tag.Label == "blacklist" || tag.Label == "corrompus" {
 			continue
 		}
-		tracks, err := app.Store.TagTracks(tag.ID)
+		tracks, err := app.Store.TagTracks(request.Context(), tag.ID)
 		if err != nil {
 			return err
 		}

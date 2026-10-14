@@ -34,7 +34,7 @@ SELECT 1,printf('%d.mp3',id),'Artist',printf('Tune %d',id),'Album','jazz','','20
 					benchmark.Fatal(err)
 				}
 			}
-			tag, err := app.Store.AddTag(1, "queue")
+			tag, err := app.Store.AddTag(benchmark.Context(), 1, "queue")
 			if err != nil {
 				benchmark.Fatal(err)
 			}
@@ -171,7 +171,7 @@ func dropdownRequest(app *App, fragment, gzip bool) *httptest.ResponseRecorder {
 
 func TestDropdownAvoidsLayoutQueriesAndWrites(test *testing.T) {
 	app := testApp(test)
-	before, err := app.Store.One("SELECT seq FROM sqlite_sequence WHERE name='reinhardt_preferences'")
+	before, err := app.Store.One(test.Context(), "SELECT seq FROM sqlite_sequence WHERE name='reinhardt_preferences'")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestDropdownAvoidsLayoutQueriesAndWrites(test *testing.T) {
 			test.Fatal("dropdown controls missing")
 		}
 	}
-	after, err := app.Store.One("SELECT seq FROM sqlite_sequence WHERE name='reinhardt_preferences'")
+	after, err := app.Store.One(test.Context(), "SELECT seq FROM sqlite_sequence WHERE name='reinhardt_preferences'")
 	if err != nil || before.N("seq") != after.N("seq") {
 		test.Fatal("dropdown advanced the preferences AUTOINCREMENT sequence", err)
 	}
@@ -204,7 +204,7 @@ SELECT 1,printf('%d.mp3',id),'Artist',printf('Tune %d',id),'Album','jazz','','20
 	if err != nil {
 		test.Fatal(err)
 	}
-	tag, err := app.Store.AddTag(1, "queue")
+	tag, err := app.Store.AddTag(test.Context(), 1, "queue")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -236,7 +236,7 @@ SELECT ?,id,id,'2026-01-01','2026-01-01' FROM reinhardt_musicfile`, tag); err !=
 func TestPreferencesLookupAvoidsWriteForExistingUser(test *testing.T) {
 	app := testApp(test)
 	stats := measureAppSQL(test, app)
-	prefs, err := app.Store.Preferences(1)
+	prefs, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || prefs.OwnerID != 1 {
 		test.Fatal("preferences lookup failed", err)
 	}
@@ -247,7 +247,7 @@ func TestPreferencesLookupAvoidsWriteForExistingUser(test *testing.T) {
 		test.Fatal(err)
 	}
 	stats.writes.Store(0)
-	prefs, err = app.Store.Preferences(2)
+	prefs, err = app.Store.Preferences(test.Context(), 2)
 	if err != nil || prefs.OwnerID != 2 || !prefs.AutofeedQueue || !prefs.ShowOscilloscope {
 		test.Fatal("missing preferences were not initialized", err)
 	}

@@ -41,9 +41,9 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			ctx["form"] = template.HTML(`<div class="alert alert-danger">` + html.EscapeString(translator.Text(message)) + `</div>` + string(formHTML(next, translator.Text("Email label"))))
 			return app.render(responseWriter, request, user, "registration/login.html", ctx, 200)
 		}
-		user, err := app.Store.user(`SELECT * FROM auth_user WHERE lower(email)=lower(?) OR lower(username)=lower(?) LIMIT 1`, email, email)
+		user, err := app.Store.user(request.Context(), `SELECT * FROM auth_user WHERE lower(email)=lower(?) OR lower(username)=lower(?) LIMIT 1`, email, email)
 		if err == nil {
-			prefs, err := app.Store.Preferences(user.ID)
+			prefs, err := app.Store.Preferences(request.Context(), user.ID)
 			if err != nil {
 				return err
 			}
@@ -51,7 +51,7 @@ func (app *App) login(responseWriter http.ResponseWriter, request *http.Request,
 			access := prefs.AccessToken
 			if access == "" {
 				access = token()
-				if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
+				if _, err = app.Store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET access_token=? WHERE id=?", access, prefs.ID); err != nil {
 					return err
 				}
 			}
@@ -175,7 +175,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 	if config.JamaEndpoint == "" || config.JamaKey == "" || config.JamaProject == 0 {
 		return fmt.Errorf("JAMA_ENDPOINT, JAMA_KEY and JAMA_PROJECT are required")
 	}
-	track, err := app.Store.Track(id)
+	track, err := app.Store.Track(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func (app *App) syncJama(ctx context.Context, id int64) error {
 			}
 		}
 	}
-	_, err = app.Store.DB.Exec("UPDATE reinhardt_musicfile SET hash=? WHERE id=?", hash, id)
+	_, err = app.Store.DB.ExecContext(ctx, "UPDATE reinhardt_musicfile SET hash=? WHERE id=?", hash, id)
 	return err
 }
 
@@ -265,7 +265,7 @@ func (app *App) dropboxToken(ctx context.Context, grant, code string) (map[strin
 	return data, err
 }
 func (app *App) syncDropbox(ctx context.Context, id int64) error {
-	track, err := app.Store.Track(id)
+	track, err := app.Store.Track(ctx, id)
 	if err != nil {
 		return err
 	}

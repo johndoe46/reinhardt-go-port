@@ -22,22 +22,22 @@ import (
 	"time"
 )
 
-func (store *Store) Enqueue(kind string, payload any) error {
+func (store *Store) Enqueue(ctx context.Context, kind string, payload any) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = store.DB.Exec("INSERT INTO go_job(kind,payload,run_at) VALUES(?,?,?)", kind, string(payloadJSON), time.Now().Unix())
+	_, err = store.DB.ExecContext(ctx, "INSERT INTO go_job(kind,payload,run_at) VALUES(?,?,?)", kind, string(payloadJSON), time.Now().Unix())
 	return err
 }
-func (store *Store) enqueueSync(id int64) error {
+func (store *Store) enqueueSync(ctx context.Context, id int64) error {
 	if store.Config.JamaEndpoint != "" && store.Config.JamaKey != "" && store.Config.JamaProject != 0 {
-		if err := store.Enqueue("jama", id); err != nil {
+		if err := store.Enqueue(ctx, "jama", id); err != nil {
 			return err
 		}
 	}
 	if store.Config.DropboxToken != "" {
-		return store.Enqueue("dropbox", id)
+		return store.Enqueue(ctx, "dropbox", id)
 	}
 	return nil
 }
@@ -59,8 +59,11 @@ func (app *App) Work(ctx context.Context, once bool) error {
 		// ready job. Locks become reclaimable after an hour, longer than the
 		// 30-minute job deadline. Handlers must tolerate reruns if a worker dies
 		// after external side effects but before deleting the job.
-		job, storeErr := app.Store.One(`UPDATE go_job SET locked_at=? WHERE id=(SELECT id FROM go_job WHERE run_at<=? AND attempts<3 AND (locked_at IS NULL OR locked_at<?) ORDER BY id LIMIT 1) RETURNING *`, time.Now().Unix(), time.Now().Unix(), time.Now().Unix()-3600)
+		job, storeErr := app.Store.One(ctx, `UPDATE go_job SET locked_at=? WHERE id=(SELECT id FROM go_job WHERE run_at<=? AND attempts<3 AND (locked_at IS NULL OR locked_at<?) ORDER BY id LIMIT 1) RETURNING *`, time.Now().Unix(), time.Now().Unix(), time.Now().Unix()-3600)
 		if storeErr != nil && storeErr != sql.ErrNoRows {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return storeErr
 		}
 		if storeErr == nil {
@@ -87,12 +90,20 @@ func (app *App) Work(ctx context.Context, once bool) error {
 				err = fmt.Errorf("unknown job kind %q", job.S("kind"))
 			}
 			cancel()
+			// Record the result even when shutdown cancelled the job. Bound
+			// bookkeeping separately so shutdown cannot wait indefinitely.
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			if err == nil {
-				_, storeErr = app.Store.DB.Exec("DELETE FROM go_job WHERE id=?", job.N("id"))
+				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "DELETE FROM go_job WHERE id=?", job.N("id"))
+			} else if ctx.Err() != nil {
+				// Interrupted work remains ready for another worker without
+				// consuming a retry attempt during an orderly shutdown.
+				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET locked_at=NULL WHERE id=?", job.N("id"))
 			} else {
 				log.Printf("job %d (%s): %v", job.N("id"), job.S("kind"), err)
-				_, storeErr = app.Store.DB.Exec("UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
+				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
 			}
+			cleanupCancel()
 			if storeErr != nil {
 				return storeErr
 			}
@@ -121,7 +132,10 @@ func libraryPath(track *Track, ext string) (string, error) {
 	}
 	return filepath.Join(artist[:1], artist, album, fmt.Sprintf("%02d-%s%s", track.TrackNumber, title, strings.ToLower(ext))), nil
 }
-func (store *Store) importFile(path string, dir *MusicDirectory) (string, error) {
+func (store *Store) importFile(ctx context.Context, path string, dir *MusicDirectory) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	trackMetadata, err := store.Metadata(path)
 	if err != nil {
 		return "", err
@@ -149,7 +163,7 @@ func (store *Store) importFile(path string, dir *MusicDirectory) (string, error)
 	modifiedAt := info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")
 	trackMetadata.CreatedAt = modifiedAt
 	trackMetadata.ModifiedAt = modifiedAt
-	if err = store.indexFileMetadata(dest, dir, trackMetadata); err != nil {
+	if err = store.indexFileMetadata(ctx, dest, dir, trackMetadata); err != nil {
 		return "", err
 	}
 	// Keep the import source until both publication and indexing succeed. Those
@@ -164,12 +178,15 @@ func (store *Store) Gather(ctx context.Context) error {
 	if root == "" {
 		return fmt.Errorf("MUSIC_IMPORT_DIR is not configured")
 	}
-	dir, err := store.DefaultMusicDirectory()
+	dir, err := store.DefaultMusicDirectory(ctx)
 	if err != nil {
 		return err
 	}
 	var archives []string
 	if err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return err
 		}
@@ -196,7 +213,10 @@ func (store *Store) Gather(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if _, err := store.importFile(path, dir); err != nil {
+		if _, err := store.importFile(ctx, path, dir); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			log.Printf("import %s: %v", path, err)
 		}
 		return nil
@@ -341,13 +361,16 @@ func fingerprint(ripMetadata Row) string {
 }
 func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	defer func() {
+		// Failure records must survive the download's deadline or cancellation.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
 		if err != nil {
-			_, err := app.Store.DB.Exec(`INSERT INTO reinhardt_youtuberipfailure(url,artist,title,album,genre,year,comment,form_fingerprint,failure_message,retry_count,last_retried_at,created_at,modified_at) VALUES(?,?,?,?,?,?,?,?,?,0,NULL,?,?) ON CONFLICT(form_fingerprint) DO UPDATE SET failure_message=excluded.failure_message,modified_at=excluded.modified_at`, ripMetadata.S("url"), ripMetadata.S("artist"), ripMetadata.S("title"), ripMetadata.S("album"), ripMetadata.S("genre"), ripMetadata.S("year"), ripMetadata.S("comment"), fingerprint(ripMetadata), err.Error(), now(), now())
+			_, err := app.Store.DB.ExecContext(cleanupCtx, `INSERT INTO reinhardt_youtuberipfailure(url,artist,title,album,genre,year,comment,form_fingerprint,failure_message,retry_count,last_retried_at,created_at,modified_at) VALUES(?,?,?,?,?,?,?,?,?,0,NULL,?,?) ON CONFLICT(form_fingerprint) DO UPDATE SET failure_message=excluded.failure_message,modified_at=excluded.modified_at`, ripMetadata.S("url"), ripMetadata.S("artist"), ripMetadata.S("title"), ripMetadata.S("album"), ripMetadata.S("genre"), ripMetadata.S("year"), ripMetadata.S("comment"), fingerprint(ripMetadata), err.Error(), now(), now())
 			if err != nil {
 				log.Printf("record YouTube failure: %v", err)
 			}
 		} else {
-			_, err := app.Store.DB.Exec("DELETE FROM reinhardt_youtuberipfailure WHERE form_fingerprint=?", fingerprint(ripMetadata))
+			_, err := app.Store.DB.ExecContext(cleanupCtx, "DELETE FROM reinhardt_youtuberipfailure WHERE form_fingerprint=?", fingerprint(ripMetadata))
 			if err != nil {
 				log.Printf("clear YouTube failure: %v", err)
 			}
@@ -360,7 +383,7 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	if ripMetadata.S("artist") == "" || ripMetadata.S("title") == "" {
 		return fmt.Errorf("artist and title are required")
 	}
-	dir, operationErr := app.Store.DefaultMusicDirectory()
+	dir, operationErr := app.Store.DefaultMusicDirectory(ctx)
 	if operationErr != nil {
 		return operationErr
 	}
@@ -403,7 +426,7 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	if operationErr = writeID3(trackFromRow(ripMetadata), pic, pictureType); operationErr != nil {
 		return operationErr
 	}
-	dest, operationErr := app.Store.importFile(path, dir)
+	dest, operationErr := app.Store.importFile(ctx, path, dir)
 	if operationErr != nil {
 		return fmt.Errorf("import downloaded audio into %q: %w", dir.LocalPath, operationErr)
 	}
@@ -462,7 +485,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		if !user.IsSuperuser {
 			return forbidden()
 		}
-		failures, err := app.Store.Query("SELECT * FROM reinhardt_youtuberipfailure ORDER BY modified_at DESC")
+		failures, err := app.Store.Query(request.Context(), "SELECT * FROM reinhardt_youtuberipfailure ORDER BY modified_at DESC")
 		if err != nil {
 			return err
 		}
@@ -481,7 +504,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		if ripMetadata.S("artist") == "" || ripMetadata.S("title") == "" {
 			return bad("Artist and title are required")
 		}
-		if _, err := app.Store.DefaultMusicDirectory(); err != nil {
+		if _, err := app.Store.DefaultMusicDirectory(request.Context()); err != nil {
 			if !errors.Is(err, errNoMusicDirectory) {
 				return err
 			}
@@ -489,7 +512,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 			ctx["message"] = "No music directory is configured. Ask an administrator to register a music directory before downloading tracks."
 			return app.render(responseWriter, request, user, "reinhardt/ytrip.html", ctx, http.StatusBadRequest)
 		}
-		if err := app.Store.Enqueue("youtube", ripMetadata); err != nil {
+		if err := app.Store.Enqueue(request.Context(), "youtube", ripMetadata); err != nil {
 			return err
 		}
 		ctx["message"] = "added"
@@ -503,20 +526,20 @@ func (app *App) retryYouTube(responseWriter http.ResponseWriter, request *http.R
 	if !user.IsSuperuser {
 		return forbidden()
 	}
-	failure, err := app.Store.One("SELECT * FROM reinhardt_youtuberipfailure WHERE id=?", id)
+	failure, err := app.Store.One(request.Context(), "SELECT * FROM reinhardt_youtuberipfailure WHERE id=?", id)
 	if err != nil {
 		return err
 	}
-	if _, err := app.Store.DefaultMusicDirectory(); err != nil {
+	if _, err := app.Store.DefaultMusicDirectory(request.Context()); err != nil {
 		if errors.Is(err, errNoMusicDirectory) {
 			return bad(err.Error())
 		}
 		return err
 	}
-	if _, err = app.Store.DB.Exec("UPDATE reinhardt_youtuberipfailure SET retry_count=retry_count+1,last_retried_at=?,modified_at=? WHERE id=?", now(), now(), id); err != nil {
+	if _, err = app.Store.DB.ExecContext(request.Context(), "UPDATE reinhardt_youtuberipfailure SET retry_count=retry_count+1,last_retried_at=?,modified_at=? WHERE id=?", now(), now(), id); err != nil {
 		return err
 	}
-	if err = app.Store.Enqueue("youtube", failure); err != nil {
+	if err = app.Store.Enqueue(request.Context(), "youtube", failure); err != nil {
 		return err
 	}
 	app.redirect(responseWriter, request, app.Store.URL("ytrip_failures"))

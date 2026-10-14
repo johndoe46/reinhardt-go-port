@@ -16,7 +16,7 @@ import (
 
 func TestUserLanguageSettings(test *testing.T) {
 	app := testApp(test)
-	before, err := app.Store.Preferences(1)
+	before, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestUserLanguageSettings(test *testing.T) {
 			test.Fatalf("saved language fragment missing %q", text)
 		}
 	}
-	after, err := app.Store.Preferences(1)
+	after, err := app.Store.Preferences(test.Context(), 1)
 	before.LanguageCode = nullableString("fr")
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("changing language changed playback preferences", err)
@@ -55,7 +55,7 @@ func TestUserLanguageSettings(test *testing.T) {
 	}
 	// Another app instance must see the saved preference, without global locale
 	// state or dependence on the submitting browser's session.
-	store, err := openStore(app.Store.Config)
+	store, err := openStore(test.Context(), app.Store.Config)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestUserLanguageSettings(test *testing.T) {
 	}
 	// Older playback-only submissions preserve the saved language.
 	requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"autofeed_queue": {"on"}}, true), 200)
-	saved, err := store.Preferences(1)
+	saved, err := store.Preferences(test.Context(), 1)
 	if err != nil || stringValue(saved.LanguageCode) != "fr" {
 		test.Fatal("playback submission discarded saved language", err)
 	}
@@ -91,7 +91,7 @@ func TestUserLanguageSettings(test *testing.T) {
 	if !strings.Contains(response.Body.String(), `<html lang="fr"`) {
 		test.Fatal("clearing preference did not restore server default")
 	}
-	saved, err = store.Preferences(1)
+	saved, err = store.Preferences(test.Context(), 1)
 	if err != nil || saved.LanguageCode != nil {
 		test.Fatal("server default must be an unset preference", err)
 	}
@@ -100,7 +100,7 @@ func TestUserLanguageSettings(test *testing.T) {
 func TestLanguageSettingsValidationAndCSRF(test *testing.T) {
 	app := testApp(test)
 	requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"language_code": {"fr"}}, false), 200)
-	before, err := app.Store.Preferences(1)
+	before, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -114,11 +114,11 @@ func TestLanguageSettingsValidationAndCSRF(test *testing.T) {
 	app.ServeHTTP(response, request)
 	requireCode(test, response, 403)
 	requireCode(test, call(app, "POST", "/preferences/", 0, url.Values{"language_code": {"en"}}, false), 302)
-	saved, err := app.Store.Preferences(1)
+	saved, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || stringValue(saved.LanguageCode) != "fr" {
 		test.Fatal("rejected submission changed language", err)
 	}
-	after, err := app.Store.Preferences(1)
+	after, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("rejected submission changed playback preferences", err)
 	}
@@ -126,7 +126,7 @@ func TestLanguageSettingsValidationAndCSRF(test *testing.T) {
 
 func TestLanguageSchemaUpgradePreservesExistingPreferences(test *testing.T) {
 	app := testApp(test)
-	before, err := app.Store.Preferences(1)
+	before, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -134,26 +134,26 @@ func TestLanguageSchemaUpgradePreservesExistingPreferences(test *testing.T) {
 	if _, err := app.Store.DB.Exec("ALTER TABLE reinhardt_preferences DROP COLUMN language_code"); err != nil {
 		test.Fatal(err)
 	}
-	store, err := openStore(app.Store.Config)
+	store, err := openStore(test.Context(), app.Store.Config)
 	if err != nil {
 		test.Fatal(err)
 	}
 	defer store.DB.Close()
-	after, err := store.Preferences(1)
+	after, err := store.Preferences(test.Context(), 1)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("schema upgrade changed existing preferences", err)
 	}
-	if err := store.SetUserLanguage(1, "fr"); err != nil {
+	if err := store.SetUserLanguage(test.Context(), 1, "fr"); err != nil {
 		test.Fatal("upgraded database cannot save language", err)
 	}
 	if _, err := store.DB.Exec("DELETE FROM auth_user WHERE id=1"); err != nil {
 		test.Fatal(err)
 	}
-	rows, err := store.Query("SELECT * FROM reinhardt_preferences WHERE owner_id=1")
+	rows, err := store.Query(test.Context(), "SELECT * FROM reinhardt_preferences WHERE owner_id=1")
 	if err != nil || len(rows) != 0 {
 		test.Fatal("deleted account left a language preference behind", err)
 	}
-	legacy, err := store.Query("SELECT name FROM sqlite_master WHERE name='go_user_language'")
+	legacy, err := store.Query(test.Context(), "SELECT name FROM sqlite_master WHERE name='go_user_language'")
 	if err != nil || len(legacy) != 0 {
 		test.Fatal("schema upgrade created a separate language table", err)
 	}
@@ -166,12 +166,12 @@ func TestLegacyLanguageTableMigration(test *testing.T) {
 			if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET autofeed_queue=0,autofeed_similar=0,repeat_queue=0,show_oscilloscope=0,current_position=7,access_token='preserved-token' WHERE owner_id=1"); err != nil {
 				test.Fatal(err)
 			}
-			before, err := app.Store.Preferences(1)
+			before, err := app.Store.Preferences(test.Context(), 1)
 			if err != nil {
 				test.Fatal(err)
 			}
 			if existingColumn {
-				if err := app.Store.SetUserLanguage(2, "en"); err != nil {
+				if err := app.Store.SetUserLanguage(test.Context(), 2, "en"); err != nil {
 					test.Fatal(err)
 				}
 			} else if _, err := app.Store.DB.Exec("ALTER TABLE reinhardt_preferences DROP COLUMN language_code"); err != nil {
@@ -186,12 +186,12 @@ func TestLegacyLanguageTableMigration(test *testing.T) {
 INSERT INTO go_user_language(owner_id,language_code) VALUES(1,'fr'),(2,'fr'),(3,'en')`); err != nil {
 				test.Fatal(err)
 			}
-			store, err := openStore(app.Store.Config)
+			store, err := openStore(test.Context(), app.Store.Config)
 			if err != nil {
 				test.Fatal(err)
 			}
 			defer store.DB.Close()
-			after, err := store.Preferences(1)
+			after, err := store.Preferences(test.Context(), 1)
 			before.LanguageCode = nullableString("fr")
 			if err != nil || !reflect.DeepEqual(before, after) {
 				test.Fatal("migration lost language or changed existing preference data", err)
@@ -200,19 +200,19 @@ INSERT INTO go_user_language(owner_id,language_code) VALUES(1,'fr'),(2,'fr'),(3,
 				if owner == 2 && existingColumn {
 					expected = "en"
 				}
-				prefs, err := store.Preferences(owner)
+				prefs, err := store.Preferences(test.Context(), owner)
 				if err != nil || stringValue(prefs.LanguageCode) != expected {
 					test.Fatalf("owner %d: language was not preserved: %v %v", owner, prefs, err)
 				}
 			}
-			legacy, err := store.Query("SELECT name FROM sqlite_master WHERE name='go_user_language'")
+			legacy, err := store.Query(test.Context(), "SELECT name FROM sqlite_master WHERE name='go_user_language'")
 			if err != nil || len(legacy) != 0 {
 				test.Fatal("obsolete language table was not removed", err)
 			}
-			if err := migrateLanguagePreference(store.DB); err != nil {
+			if err := migrateLanguagePreference(test.Context(), store.DB); err != nil {
 				test.Fatal("migration cannot be repeated", err)
 			}
-			repeated, err := store.Preferences(1)
+			repeated, err := store.Preferences(test.Context(), 1)
 			if err != nil || !reflect.DeepEqual(after, repeated) {
 				test.Fatal("repeat migration changed preferences", err)
 			}
@@ -229,24 +229,24 @@ INSERT INTO go_user_language VALUES(1,'fr'),(999,'en')`); err != nil {
 	}
 	// An orphaned legacy row must cause the whole migration to roll back,
 	// including the column addition and any copied choices.
-	if err := migrateLanguagePreference(app.Store.DB); err == nil {
+	if err := migrateLanguagePreference(test.Context(), app.Store.DB); err == nil {
 		test.Fatal("migration accepted an invalid account reference")
 	}
-	columns, err := app.Store.Query("SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'")
+	columns, err := app.Store.Query(test.Context(), "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'")
 	if err != nil || len(columns) != 0 {
 		test.Fatal("failed migration left a partial schema upgrade", err)
 	}
-	legacy, err := app.Store.Query("SELECT * FROM go_user_language ORDER BY owner_id")
+	legacy, err := app.Store.Query(test.Context(), "SELECT * FROM go_user_language ORDER BY owner_id")
 	if err != nil || len(legacy) != 2 || legacy[0].S("language_code") != "fr" {
 		test.Fatal("failed migration lost legacy language choices", err)
 	}
 	if _, err := app.Store.DB.Exec("DELETE FROM go_user_language WHERE owner_id=999"); err != nil {
 		test.Fatal(err)
 	}
-	if err := migrateLanguagePreference(app.Store.DB); err != nil {
+	if err := migrateLanguagePreference(test.Context(), app.Store.DB); err != nil {
 		test.Fatal("migration could not be retried after rollback", err)
 	}
-	prefs, err := app.Store.Preferences(1)
+	prefs, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || stringValue(prefs.LanguageCode) != "fr" {
 		test.Fatal("retried migration lost the saved language", err)
 	}
@@ -262,7 +262,7 @@ INSERT INTO go_user_language VALUES(1,'fr')`); err != nil {
 	results := make(chan error, 2)
 	for index := 0; index < 2; index++ {
 		go func() {
-			store, err := openStore(app.Store.Config)
+			store, err := openStore(test.Context(), app.Store.Config)
 			if err == nil {
 				err = store.DB.Close()
 			}
@@ -274,7 +274,7 @@ INSERT INTO go_user_language VALUES(1,'fr')`); err != nil {
 			test.Errorf("concurrent startup failed: %v", err)
 		}
 	}
-	prefs, err := app.Store.Preferences(1)
+	prefs, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || stringValue(prefs.LanguageCode) != "fr" {
 		test.Fatal("concurrent upgrade lost saved language", err)
 	}
@@ -282,14 +282,14 @@ INSERT INTO go_user_language VALUES(1,'fr')`); err != nil {
 
 func TestLanguageForDocumentsFragmentsAndConcurrentUsers(test *testing.T) {
 	app := testApp(test)
-	if err := app.Store.SetUserLanguage(1, "fr"); err != nil {
+	if err := app.Store.SetUserLanguage(test.Context(), 1, "fr"); err != nil {
 		test.Fatal(err)
 	}
 	id := mustTag(test, app, 1, "shared", []int64{1})
 	if _, err := app.Store.DB.Exec("UPDATE reinhardt_tag SET is_shared=1 WHERE id=?", id); err != nil {
 		test.Fatal(err)
 	}
-	tag, err := app.Store.Tag(id, 1)
+	tag, err := app.Store.Tag(test.Context(), id, 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestLoginCatalogueMessages(test *testing.T) {
 	if !strings.Contains(response.Body.String(), "Ce champ est obligatoire.") || !strings.Contains(response.Body.String(), `<html lang="fr"`) {
 		test.Fatal("anonymous validation did not use the server's catalogue")
 	}
-	if err := app.Store.SetUserLanguage(1, "en"); err != nil {
+	if err := app.Store.SetUserLanguage(test.Context(), 1, "en"); err != nil {
 		test.Fatal(err)
 	}
 	response = call(app, "POST", "/accounts/login/", 1, url.Values{"email": {"invalid"}}, false)

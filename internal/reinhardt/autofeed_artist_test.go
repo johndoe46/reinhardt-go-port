@@ -117,7 +117,7 @@ VALUES(4,1,'4.mp3','Fresh','New song','New album','','','2026-01-01','2026-01-01
 				}
 				// Another user's queue must not exclude the only eligible artist.
 				mustTag(test, app, 2, "queue", []int64{4})
-				last, err := app.Store.queueItem(1, "a.music_file_id=?", queue[len(queue)-1])
+				last, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=?", queue[len(queue)-1])
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -140,11 +140,11 @@ VALUES(4,1,'4.mp3','Fresh','New song','New album','','','2026-01-01','2026-01-01
 				})
 				response := call(app, "POST", mode.path, 1, url.Values{}, mode.fragment)
 				requireCode(test, response, 200)
-				prefs, err := app.Store.Preferences(1)
+				prefs, err := app.Store.Preferences(test.Context(), 1)
 				if err != nil {
 					test.Fatal(err)
 				}
-				items, err := app.Store.Queue(1)
+				items, err := app.Store.Queue(test.Context(), 1)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -154,7 +154,7 @@ VALUES(4,1,'4.mp3','Fresh','New song','New album','','','2026-01-01','2026-01-01
 					}
 					return
 				}
-				selected, err := app.Store.queueItem(1, "a.id=?", prefs.CurrentPosition)
+				selected, err := app.Store.queueItem(test.Context(), 1, "a.id=?", prefs.CurrentPosition)
 				if err != nil || selected.MusicFileID != wantTrack || len(items) != wantLength || selected.Rank <= last.Rank {
 					test.Fatal("autofeed did not append the expected similar or random song", selected, err)
 				}

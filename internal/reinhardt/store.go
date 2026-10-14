@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -129,8 +130,8 @@ type Store struct {
 
 var errNoMusicDirectory = errors.New("no music directory is registered")
 
-func (store *Store) DefaultMusicDirectory() (*MusicDirectory, error) {
-	dir, err := store.musicDirectory("SELECT * FROM reinhardt_musicdirectory ORDER BY id LIMIT 1")
+func (store *Store) DefaultMusicDirectory(ctx context.Context) (*MusicDirectory, error) {
+	dir, err := store.musicDirectory(ctx, "SELECT * FROM reinhardt_musicdirectory ORDER BY id LIMIT 1")
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w in database %q; run 'reinhardt addmusicdir /path/to/music' using this database", errNoMusicDirectory, store.Config.DatabasePath)
 	}
@@ -140,7 +141,7 @@ func (store *Store) DefaultMusicDirectory() (*MusicDirectory, error) {
 	return dir, nil
 }
 
-func openStore(config *Config) (*Store, error) {
+func openStore(ctx context.Context, config *Config) (*Store, error) {
 	path := config.DatabasePath
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -169,11 +170,11 @@ func openStore(config *Config) (*Store, error) {
 	// The bootstrap is additive: existing tables and rows stay in place;
 	// missing tables, indexes, and cache revisions are added automatically.
 	schema, _ := assets.ReadFile("schema.sql")
-	if _, err = db.Exec(string(schema)); err != nil {
+	if _, err = db.ExecContext(ctx, string(schema)); err != nil {
 		db.Close()
 		return nil, err
 	}
-	if err = migrateLanguagePreference(db); err != nil {
+	if err = migrateLanguagePreference(ctx, db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate language preference: %w", err)
 	}
@@ -182,9 +183,9 @@ func openStore(config *Config) (*Store, error) {
 		// Persist the fallback key so shared-playlist hashes survive restarts.
 		// INSERT OR IGNORE lets simultaneous startup processes agree on one key.
 		var cSecret string
-		_, err = db.Exec("INSERT OR IGNORE INTO go_settings(key,value) VALUES('secret_key',?)", token())
+		_, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO go_settings(key,value) VALUES('secret_key',?)", token())
 		if err == nil {
-			err = db.QueryRow("SELECT value FROM go_settings WHERE key='secret_key'").Scan(&cSecret)
+			err = db.QueryRowContext(ctx, "SELECT value FROM go_settings WHERE key='secret_key'").Scan(&cSecret)
 		}
 		if err != nil {
 			db.Close()
@@ -197,8 +198,7 @@ func openStore(config *Config) (*Store, error) {
 
 // Upgrade existing preferences and move language choices from the initial Go
 // implementation. The write lock serializes upgrades by server/worker processes.
-func migrateLanguagePreference(db *sql.DB) error {
-	ctx := context.Background()
+func migrateLanguagePreference(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -207,7 +207,19 @@ func migrateLanguagePreference(db *sql.DB) error {
 	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return err
 	}
-	defer conn.ExecContext(ctx, "ROLLBACK")
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		// A cancelled migration must still roll back before returning its
+		// connection to the pool. Discard it if cleanup cannot complete.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if _, err := conn.ExecContext(cleanupCtx, "ROLLBACK"); err != nil {
+			conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+	}()
 	var name string
 	err = conn.QueryRowContext(ctx, "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'").Scan(&name)
 	if err == sql.ErrNoRows {
@@ -234,6 +246,7 @@ WHERE reinhardt_preferences.language_code IS NULL OR reinhardt_preferences.langu
 		}
 	}
 	_, err = conn.ExecContext(ctx, "COMMIT")
+	committed = err == nil
 	return err
 }
 
@@ -272,15 +285,15 @@ func scanRows(rows *sql.Rows) ([]Row, error) {
 	}
 	return result, rows.Err()
 }
-func (store *Store) Query(query string, args ...any) ([]Row, error) {
-	rows, err := store.DB.Query(query, args...)
+func (store *Store) Query(ctx context.Context, query string, args ...any) ([]Row, error) {
+	rows, err := store.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	return scanRows(rows)
 }
-func (store *Store) One(query string, args ...any) (Row, error) {
-	rows, err := store.Query(query, args...)
+func (store *Store) One(ctx context.Context, query string, args ...any) (Row, error) {
+	rows, err := store.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -289,37 +302,37 @@ func (store *Store) One(query string, args ...any) (Row, error) {
 	}
 	return rows[0], nil
 }
-func (store *Store) Preferences(owner int64) (*Preferences, error) {
+func (store *Store) Preferences(ctx context.Context, owner int64) (*Preferences, error) {
 	// Even ignored AUTOINCREMENT inserts can write SQLite's sequence. Read first
 	// so rendering an initialized account does not acquire a write transaction.
-	prefs, err := store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
+	prefs, err := store.One(ctx, "SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
 	if err != sql.ErrNoRows {
 		return preferencesFromRow(prefs), err
 	}
-	_, err = store.DB.Exec(`INSERT OR IGNORE INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,NULL)`, owner)
+	_, err = store.DB.ExecContext(ctx, `INSERT OR IGNORE INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,NULL)`, owner)
 	if err != nil {
 		return nil, err
 	}
-	row, err := store.One("SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
+	row, err := store.One(ctx, "SELECT * FROM reinhardt_preferences WHERE owner_id=?", owner)
 	return preferencesFromRow(row), err
 }
 
-func (store *Store) SetUserLanguage(owner int64, code string) error {
-	if _, err := store.Preferences(owner); err != nil {
+func (store *Store) SetUserLanguage(ctx context.Context, owner int64, code string) error {
+	if _, err := store.Preferences(ctx, owner); err != nil {
 		return err
 	}
 	var preference any
 	if code != "" {
 		preference = code
 	}
-	_, err := store.DB.Exec("UPDATE reinhardt_preferences SET language_code=? WHERE owner_id=?", preference, owner)
+	_, err := store.DB.ExecContext(ctx, "UPDATE reinhardt_preferences SET language_code=? WHERE owner_id=?", preference, owner)
 	return err
 }
 
 const tracksSQL = `SELECT m.*,d.local_path FROM reinhardt_musicfile m JOIN reinhardt_musicdirectory d ON d.id=m.music_directory_id `
 
-func (store *Store) Tracks(clause string, args ...any) ([]*Track, error) {
-	rows, err := store.Query(tracksSQL+clause, args...)
+func (store *Store) Tracks(ctx context.Context, clause string, args ...any) ([]*Track, error) {
+	rows, err := store.Query(ctx, tracksSQL+clause, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,8 +342,8 @@ func (store *Store) Tracks(clause string, args ...any) ([]*Track, error) {
 	}
 	return tracks, nil
 }
-func (store *Store) Track(id any) (*Track, error) {
-	rs, err := store.Tracks("WHERE m.id=?", id)
+func (store *Store) Track(ctx context.Context, id any) (*Track, error) {
+	rs, err := store.Tracks(ctx, "WHERE m.id=?", id)
 	if err != nil {
 		return nil, err
 	}
@@ -352,12 +365,12 @@ func (store *Store) decorateTrack(track *Track) {
 	}
 	track.PlaybackURL = store.Config.Path("stream/" + fmt.Sprint(track.ID) + "/")
 }
-func (store *Store) Tags(owner int64, reserved bool) ([]*Tag, error) {
+func (store *Store) Tags(ctx context.Context, owner int64, reserved bool) ([]*Tag, error) {
 	clause := ""
 	if !reserved {
 		clause = " AND t.label NOT IN ('queue','favorites')"
 	}
-	rs, err := store.Query(`SELECT t.*,COUNT(a.id) track_count,COALESCE(SUM(m.duration),0) total_duration FROM reinhardt_tag t LEFT JOIN reinhardt_musicfiletag a ON a.tag_id=t.id LEFT JOIN reinhardt_musicfile m ON m.id=a.music_file_id WHERE t.owner_id=?`+clause+` GROUP BY t.id ORDER BY t.label`, owner)
+	rs, err := store.Query(ctx, `SELECT t.*,COUNT(a.id) track_count,COALESCE(SUM(m.duration),0) total_duration FROM reinhardt_tag t LEFT JOIN reinhardt_musicfiletag a ON a.tag_id=t.id LEFT JOIN reinhardt_musicfile m ON m.id=a.music_file_id WHERE t.owner_id=?`+clause+` GROUP BY t.id ORDER BY t.label`, owner)
 	tags := make([]*Tag, 0, len(rs))
 	for _, row := range rs {
 		tag := tagFromRow(row)
@@ -372,18 +385,18 @@ func (store *Store) decorateTag(tag *Tag) {
 	tag.ShareURL = store.Config.Path("shared/" + fmt.Sprint(tag.ID) + "/" + tag.ShareHash + "/")
 	tag.Duration = tag.TotalDuration
 }
-func (store *Store) Tag(id any, owner int64) (*Tag, error) {
-	tag, err := store.tag("SELECT * FROM reinhardt_tag WHERE id=? AND owner_id=?", id, owner)
+func (store *Store) Tag(ctx context.Context, id any, owner int64) (*Tag, error) {
+	tag, err := store.tag(ctx, "SELECT * FROM reinhardt_tag WHERE id=? AND owner_id=?", id, owner)
 	if err == nil {
 		store.decorateTag(tag)
 	}
 	return tag, err
 }
-func (store *Store) TagTracks(id any) ([]*Track, error) {
-	return store.Tracks("JOIN reinhardt_musicfiletag a ON a.music_file_id=m.id WHERE a.tag_id=? AND m.missing=0 ORDER BY a.rank,a.id", id)
+func (store *Store) TagTracks(ctx context.Context, id any) ([]*Track, error) {
+	return store.Tracks(ctx, "JOIN reinhardt_musicfiletag a ON a.music_file_id=m.id WHERE a.tag_id=? AND m.missing=0 ORDER BY a.rank,a.id", id)
 }
-func (store *Store) Queue(owner int64) ([]*QueueItem, error) {
-	tracks, err := store.Query(`SELECT m.*,d.local_path,
+func (store *Store) Queue(ctx context.Context, owner int64) ([]*QueueItem, error) {
+	tracks, err := store.Query(ctx, `SELECT m.*,d.local_path,
 a.id AS queue_id,a.tag_id AS queue_tag_id,a.rank AS queue_rank,
 a.created_at AS queue_created_at,a.modified_at AS queue_modified_at
 FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id
@@ -408,13 +421,13 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY a.rank,a.id`, owner)
 }
 
 // ShuffleQueue changes ranks in place so the saved playback association stays valid.
-func (store *Store) ShuffleQueue(owner int64) error {
-	tx, err := store.DB.Begin()
+func (store *Store) ShuffleQueue(ctx context.Context, owner int64) error {
+	tx, err := store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.Query(`SELECT a.id FROM reinhardt_musicfiletag a
+	rows, err := tx.QueryContext(ctx, `SELECT a.id FROM reinhardt_musicfiletag a
 JOIN reinhardt_tag t ON t.id=a.tag_id
 WHERE t.owner_id=? AND t.label='queue' ORDER BY random()`, owner)
 	if err != nil {
@@ -438,7 +451,7 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY random()`, owner)
 		return closeErr
 	}
 	for index, id := range items {
-		if _, err = tx.Exec("UPDATE reinhardt_musicfiletag SET rank=? WHERE id=?", index+1, id); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE reinhardt_musicfiletag SET rank=? WHERE id=?", index+1, id); err != nil {
 			return err
 		}
 	}
@@ -447,49 +460,49 @@ WHERE t.owner_id=? AND t.label='queue' ORDER BY random()`, owner)
 
 // Playback needs at most the current item and one selected item. Keep these
 // lookups separate from Queue, which decorates every track for queue pages.
-func (store *Store) queueItem(owner int64, predicate string, args ...any) (*QueueItem, error) {
+func (store *Store) queueItem(ctx context.Context, owner int64, predicate string, args ...any) (*QueueItem, error) {
 	params := append([]any{owner}, args...)
-	return store.queueAssociation(`SELECT a.* FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id
+	return store.queueAssociation(ctx, `SELECT a.* FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id
 WHERE t.owner_id=? AND t.label='queue' AND `+predicate+` ORDER BY a.rank,a.id LIMIT 1`, params...)
 }
-func (store *Store) AddTag(owner int64, name string) (int64, error) {
+func (store *Store) AddTag(ctx context.Context, owner int64, name string) (int64, error) {
 	name = label(name)
 	if name == "" {
 		return 0, fmt.Errorf("invalid tag name")
 	}
 	// Existing tags need no write transaction (even an ignored insert advances
 	// SQLite's AUTOINCREMENT sequence). Preserve first-use creation below.
-	tag, err := store.One("SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
+	tag, err := store.One(ctx, "SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
 	if err != sql.ErrNoRows {
 		return tag.N("id"), err
 	}
 	// Another caller may have created the tag since the lookup.
-	_, err = store.DB.Exec(`INSERT OR IGNORE INTO reinhardt_tag(owner_id,label,created_at,modified_at,is_playlist,is_shared) VALUES(?,?,?,?,0,0)`, owner, name, now(), now())
+	_, err = store.DB.ExecContext(ctx, `INSERT OR IGNORE INTO reinhardt_tag(owner_id,label,created_at,modified_at,is_playlist,is_shared) VALUES(?,?,?,?,0,0)`, owner, name, now(), now())
 	if err != nil {
 		return 0, err
 	}
-	tag, err = store.One("SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
+	tag, err = store.One(ctx, "SELECT id FROM reinhardt_tag WHERE owner_id=? AND label=?", owner, name)
 	return tag.N("id"), err
 }
-func (store *Store) AddTracks(owner int64, name string, ids []int64) (int, error) {
-	id, err := store.AddTag(owner, name)
+func (store *Store) AddTracks(ctx context.Context, owner int64, name string, ids []int64) (int, error) {
+	id, err := store.AddTag(ctx, owner, name)
 	if err != nil {
 		return 0, err
 	}
-	tx, err := store.DB.Begin()
+	tx, err := store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
 	var rank int64
-	if err = tx.QueryRow("SELECT COALESCE(MAX(rank),0) FROM reinhardt_musicfiletag WHERE tag_id=?", id).Scan(&rank); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(rank),0) FROM reinhardt_musicfiletag WHERE tag_id=?", id).Scan(&rank); err != nil {
 		return 0, err
 	}
 	count := 0
 	for _, track := range ids {
 		// Bulk additions retain existing memberships in place. Advancing rank
 		// only on insertion also avoids gaps caused by duplicates in the input.
-		res, err := tx.Exec(`INSERT OR IGNORE INTO reinhardt_musicfiletag(tag_id,music_file_id,rank,created_at,modified_at) VALUES(?,?,?,?,?)`, id, track, rank+1, now(), now())
+		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO reinhardt_musicfiletag(tag_id,music_file_id,rank,created_at,modified_at) VALUES(?,?,?,?,?)`, id, track, rank+1, now(), now())
 		if err != nil {
 			return 0, err
 		}
@@ -502,18 +515,18 @@ func (store *Store) AddTracks(owner int64, name string, ids []int64) (int, error
 	return count, tx.Commit()
 }
 
-func (store *Store) AddTrack(owner int64, name string, track int64) (*QueueItem, error) {
-	tag, err := store.AddTag(owner, name)
+func (store *Store) AddTrack(ctx context.Context, owner int64, name string, track int64) (*QueueItem, error) {
+	tag, err := store.AddTag(ctx, owner, name)
 	if err != nil {
 		return nil, err
 	}
-	tx, err := store.DB.Begin()
+	tx, err := store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 	var rank sql.NullInt64
-	if err = tx.QueryRow("SELECT MAX(rank) FROM reinhardt_musicfiletag WHERE tag_id=?", tag).Scan(&rank); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT MAX(rank) FROM reinhardt_musicfiletag WHERE tag_id=?", tag).Scan(&rank); err != nil {
 		return nil, err
 	}
 	next := int64(0)
@@ -522,14 +535,14 @@ func (store *Store) AddTrack(owner int64, name string, track int64) (*QueueItem,
 	}
 	// Single-track additions intentionally move an existing membership to the
 	// end while preserving its id; autofeed relies on this to replay queued songs.
-	_, err = tx.Exec(`INSERT INTO reinhardt_musicfiletag(tag_id,music_file_id,rank,created_at,modified_at) VALUES(?,?,?,?,?) ON CONFLICT(tag_id,music_file_id) DO UPDATE SET rank=excluded.rank,modified_at=excluded.modified_at`, tag, track, next, now(), now())
+	_, err = tx.ExecContext(ctx, `INSERT INTO reinhardt_musicfiletag(tag_id,music_file_id,rank,created_at,modified_at) VALUES(?,?,?,?,?) ON CONFLICT(tag_id,music_file_id) DO UPDATE SET rank=excluded.rank,modified_at=excluded.modified_at`, tag, track, next, now(), now())
 	if err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	return store.queueAssociation("SELECT * FROM reinhardt_musicfiletag WHERE tag_id=? AND music_file_id=?", tag, track)
+	return store.queueAssociation(ctx, "SELECT * FROM reinhardt_musicfiletag WHERE tag_id=? AND music_file_id=?", tag, track)
 }
 func rowIDs(rows []Row) []int64 {
 	out := []int64{}
@@ -547,14 +560,14 @@ func ftsEscape(query string) string {
 	}
 	return strings.Join(words, " ")
 }
-func (store *Store) Search(query string) ([]*Track, error) {
+func (store *Store) Search(ctx context.Context, query string) ([]*Track, error) {
 	if strings.TrimSpace(query) == "" {
 		return []*Track{}, nil
 	}
-	return store.Tracks("JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0 ORDER BY f.rank LIMIT 1000", ftsEscape(query))
+	return store.Tracks(ctx, "JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0 ORDER BY f.rank LIMIT 1000", ftsEscape(query))
 }
-func (store *Store) ReindexFTS() error {
-	_, err := store.DB.Exec(`DELETE FROM music_index; INSERT INTO music_index(id,data,artist,title,album,genre,comment) SELECT id,trim(artist||' '||title||' '||album||' '||genre||' '||comment),artist,title,album,genre,comment FROM reinhardt_musicfile WHERE missing=0;`)
+func (store *Store) ReindexFTS(ctx context.Context) error {
+	_, err := store.DB.ExecContext(ctx, `DELETE FROM music_index; INSERT INTO music_index(id,data,artist,title,album,genre,comment) SELECT id,trim(artist||' '||title||' '||album||' '||genre||' '||comment),artist,title,album,genre,comment FROM reinhardt_musicfile WHERE missing=0;`)
 	return err
 }
 
@@ -572,20 +585,20 @@ func ids(tracks []*Track) []int64 {
 	}
 	return result
 }
-func (store *Store) musicDirectory(query string, args ...any) (*MusicDirectory, error) {
-	row, err := store.One(query, args...)
+func (store *Store) musicDirectory(ctx context.Context, query string, args ...any) (*MusicDirectory, error) {
+	row, err := store.One(ctx, query, args...)
 	return musicDirectoryFromRow(row), err
 }
-func (store *Store) user(query string, args ...any) (*User, error) {
-	row, err := store.One(query, args...)
+func (store *Store) user(ctx context.Context, query string, args ...any) (*User, error) {
+	row, err := store.One(ctx, query, args...)
 	return userFromRow(row), err
 }
-func (store *Store) tag(query string, args ...any) (*Tag, error) {
-	row, err := store.One(query, args...)
+func (store *Store) tag(ctx context.Context, query string, args ...any) (*Tag, error) {
+	row, err := store.One(ctx, query, args...)
 	return tagFromRow(row), err
 }
-func (store *Store) queueAssociation(query string, args ...any) (*QueueItem, error) {
-	row, err := store.One(query, args...)
+func (store *Store) queueAssociation(ctx context.Context, query string, args ...any) (*QueueItem, error) {
+	row, err := store.One(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

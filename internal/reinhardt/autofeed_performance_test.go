@@ -11,7 +11,7 @@ import (
 func TestNextSongAutofeedDoesNotRescanLibrary(test *testing.T) {
 	app := testApp(test)
 	populateQueue(test, app, 1000)
-	last, err := app.Store.queueItem(1, "a.music_file_id=?", 1000)
+	last, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=?", 1000)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -55,7 +55,7 @@ SELECT 1,printf('%d.mp3',id),'Artist',printf('Tune %d',id),'Album','jazz','','20
 					benchmark.Fatal(err)
 				}
 			}
-			if _, err := app.Store.AddTracks(1, "queue", []int64{1}); err != nil {
+			if _, err := app.Store.AddTracks(benchmark.Context(), 1, "queue", []int64{1}); err != nil {
 				benchmark.Fatal(err)
 			}
 			if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET autofeed_queue=1,autofeed_similar=0 WHERE owner_id=1"); err != nil {

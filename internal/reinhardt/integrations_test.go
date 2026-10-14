@@ -55,7 +55,7 @@ func TestJamaAndDropboxProtocols(test *testing.T) {
 	if calls != 2 {
 		test.Fatal(calls)
 	}
-	track, err := app.Store.Track(1)
+	track, err := app.Store.Track(test.Context(), 1)
 	if err != nil || len(stringValue(track.Hash)) != 64 {
 		test.Fatal("hash not saved", err)
 	}
@@ -114,7 +114,7 @@ func TestJamaAndDropboxProtocols(test *testing.T) {
 
 func TestArtworkDiscoveryAndMissCache(test *testing.T) {
 	app := testApp(test)
-	track, err := app.Store.Track(1)
+	track, err := app.Store.Track(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -200,12 +200,12 @@ func TestCobraCommandsAndConfiguration(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	store, err := openStore(config)
+	store, err := openStore(test.Context(), config)
 	if err != nil {
 		test.Fatal(err)
 	}
 	defer store.DB.Close()
-	user, err := store.user("SELECT * FROM auth_user WHERE username='admin'")
+	user, err := store.user(test.Context(), "SELECT * FROM auth_user WHERE username='admin'")
 	if err != nil || !user.IsSuperuser || user.Email != "admin@example.com" {
 		test.Fatal(user, err)
 	}
@@ -217,7 +217,7 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 		test.Skip("optional ffmpeg test fixture generator unavailable")
 	}
 	app := testApp(test)
-	dir, err := app.Store.musicDirectory("SELECT * FROM reinhardt_musicdirectory WHERE id=1")
+	dir, err := app.Store.musicDirectory(test.Context(), "SELECT * FROM reinhardt_musicdirectory WHERE id=1")
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 		if err = os.Chtimes(path, sourceTime, sourceTime); err != nil {
 			test.Fatal(err)
 		}
-		destination, err := app.Store.importFile(path, dir)
+		destination, err := app.Store.importFile(test.Context(), path, dir)
 		if err != nil {
 			test.Fatal(err)
 		}
@@ -265,7 +265,7 @@ func TestRealMP3AndM4AMetadata(test *testing.T) {
 		if err != nil {
 			test.Fatal(err)
 		}
-		imported, err := app.Store.One("SELECT * FROM reinhardt_musicfile WHERE relative_path=?", filepath.Join("a", "artist", "generated-album", "03-generated-track"+ext))
+		imported, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_musicfile WHERE relative_path=?", filepath.Join("a", "artist", "generated-album", "03-generated-track"+ext))
 		if err != nil {
 			test.Fatal(err)
 		}

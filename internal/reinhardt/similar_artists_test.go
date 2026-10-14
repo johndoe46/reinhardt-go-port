@@ -284,7 +284,7 @@ func TestSimilarArtistsSharedByPageAndAutofeed(test *testing.T) {
 		test.Fatal("similar artist response is missing")
 	}
 	mustTag(test, app, 1, "queue", []int64{1, 2})
-	last, err := app.Store.queueItem(1, "a.music_file_id=2")
+	last, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=2")
 	if err != nil {
 		test.Fatal(err)
 	}

@@ -23,7 +23,7 @@ func TestNextSongAPIPosition(test *testing.T) {
 				if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfiletag SET rank=17 WHERE tag_id=?", queueID); err != nil {
 					test.Fatal(err)
 				}
-				items, err := app.Store.Queue(1)
+				items, err := app.Store.Queue(test.Context(), 1)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -51,7 +51,7 @@ func TestNextSongAPIPosition(test *testing.T) {
 			} else if data.MusicFile != nil || string(data.CurrentPosition) != `""` {
 				test.Fatalf("wrong empty playback response: %s", response.Body.String())
 			}
-			prefs, err := app.Store.Preferences(1)
+			prefs, err := app.Store.Preferences(test.Context(), 1)
 			if err != nil || prefs.CurrentPosition != wantPosition {
 				test.Fatal("wrong saved queue item ID", prefs, err)
 			}
@@ -74,7 +74,7 @@ func TestNextSongLastFMPreference(test *testing.T) {
 					if scenario == "queued" || scenario == "queued-disabled" {
 						trackID = 1
 					}
-					item, err := app.Store.queueItem(1, "a.music_file_id=?", trackID)
+					item, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=?", trackID)
 					if err != nil {
 						test.Fatal(err)
 					}
@@ -96,7 +96,7 @@ func TestNextSongLastFMPreference(test *testing.T) {
 				}
 				response := call(app, "POST", "/preferences/", 1, form, true)
 				requireCode(test, response, 200)
-				prefs, err := app.Store.Preferences(1)
+				prefs, err := app.Store.Preferences(test.Context(), 1)
 				if err != nil || prefs.AutofeedSimilar != similar || prefs.AutofeedQueue != autofeed {
 					test.Fatal("checkbox preferences were not saved correctly", prefs, err)
 				}
@@ -122,7 +122,7 @@ func TestNextSongLastFMPreference(test *testing.T) {
 				if calls != wantCalls {
 					test.Fatalf("Last.fm calls=%d, want %d (similar=%v, autofeed=%v)", calls, wantCalls, similar, autofeed)
 				}
-				prefs, err = app.Store.Preferences(1)
+				prefs, err = app.Store.Preferences(test.Context(), 1)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -131,7 +131,7 @@ func TestNextSongLastFMPreference(test *testing.T) {
 						test.Fatal("disabled autofeed selected a song")
 					}
 				} else {
-					item, err := app.Store.queueItem(1, "a.id=?", prefs.CurrentPosition)
+					item, err := app.Store.queueItem(test.Context(), 1, "a.id=?", prefs.CurrentPosition)
 					if err != nil {
 						test.Fatal("no selected queue item", err)
 					}
@@ -150,7 +150,7 @@ func TestNextSongSelectionAndOwnership(test *testing.T) {
 			app := testApp(test)
 			mustTag(test, app, 2, "queue", []int64{3})
 			queueID := mustTag(test, app, 1, "queue", []int64{1, 2})
-			items, err := app.Store.Queue(1)
+			items, err := app.Store.Queue(test.Context(), 1)
 			if err != nil {
 				test.Fatal(err)
 			}
@@ -162,7 +162,7 @@ func TestNextSongSelectionAndOwnership(test *testing.T) {
 				position = items[0].ID
 				wantTrack, wantRank, wantPosition = 2, 2, items[1].ID
 			case "foreign-current":
-				foreign, err := app.Store.Queue(2)
+				foreign, err := app.Store.Queue(test.Context(), 2)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -196,7 +196,7 @@ func TestNextSongSelectionAndOwnership(test *testing.T) {
 			}
 			response := call(app, "POST", "/next_song/", 1, form, true)
 			requireCode(test, response, 200)
-			prefs, err := app.Store.Preferences(1)
+			prefs, err := app.Store.Preferences(test.Context(), 1)
 			if err != nil || prefs.CurrentPosition != wantPosition {
 				test.Fatal("wrong saved playback position", prefs, err)
 			}
@@ -205,19 +205,19 @@ func TestNextSongSelectionAndOwnership(test *testing.T) {
 					test.Fatal("empty playback state incorrect")
 				}
 			} else {
-				track, err := app.Store.Track(wantTrack)
+				track, err := app.Store.Track(test.Context(), wantTrack)
 				if err != nil {
 					test.Fatal(err)
 				}
 				if !strings.Contains(response.Body.String(), `data-url="`+track.PlaybackURL+`"`) {
 					test.Fatal("wrong track selected")
 				}
-				selected, err := app.Store.queueItem(1, "a.id=?", wantPosition)
+				selected, err := app.Store.queueItem(test.Context(), 1, "a.id=?", wantPosition)
 				if err != nil || selected.Rank != wantRank {
 					test.Fatal("wrong queue rank", selected, err)
 				}
 			}
-			foreign, err := app.Store.Queue(2)
+			foreign, err := app.Store.Queue(test.Context(), 2)
 			if err != nil {
 				test.Fatal(err)
 			}

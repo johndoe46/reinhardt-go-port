@@ -13,11 +13,11 @@ func TestShuffleQueue(test *testing.T) {
 	populateQueue(test, app, 20)
 	mustTag(test, app, 2, "queue", []int64{3, 2, 1})
 	mustTag(test, app, 1, "favorites", []int64{2, 1})
-	before, err := app.Store.Queue(1)
+	before, err := app.Store.Queue(test.Context(), 1)
 	if err != nil {
 		test.Fatal(err)
 	}
-	otherTags, err := app.Store.Query("SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0].TagID)
+	otherTags, err := app.Store.Query(test.Context(), "SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0].TagID)
 	if err != nil {
 		test.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestShuffleQueue(test *testing.T) {
 	requireCode(test, call(app, "GET", "/shuffle_queue/", 1, nil, true), 405)
 	requireCode(test, call(app, "POST", "/shuffle_queue/", 1, nil, true), 403)
 	requireCode(test, call(app, "POST", "/shuffle_queue/", 0, url.Values{}, true), 302)
-	unchanged, err := app.Store.Queue(1)
+	unchanged, err := app.Store.Queue(test.Context(), 1)
 	if err != nil || !reflect.DeepEqual(before, unchanged) {
 		test.Fatal("rejected shuffle changed the queue", err)
 	}
@@ -43,7 +43,7 @@ func TestShuffleQueue(test *testing.T) {
 	if !strings.Contains(response.Body.String(), `value="queue"`) || strings.Contains(response.Body.String(), `<m-audio`) {
 		test.Fatal("shuffle must refresh the queue without replacing the player")
 	}
-	after, err := app.Store.Queue(1)
+	after, err := app.Store.Queue(test.Context(), 1)
 	if err != nil || len(after) != len(before) {
 		test.Fatal("shuffle changed the queue size", err)
 	}
@@ -71,11 +71,11 @@ func TestShuffleQueue(test *testing.T) {
 	if !changed {
 		test.Fatal("queue order did not change")
 	}
-	unchangedTags, err := app.Store.Query("SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0].TagID)
+	unchangedTags, err := app.Store.Query(test.Context(), "SELECT * FROM reinhardt_musicfiletag WHERE tag_id != ? ORDER BY id", before[0].TagID)
 	if err != nil || !reflect.DeepEqual(otherTags, unchangedTags) {
 		test.Fatal("shuffle changed another user's queue or favorites", err)
 	}
-	prefs, err := app.Store.Preferences(1)
+	prefs, err := app.Store.Preferences(test.Context(), 1)
 	if err != nil || prefs.CurrentPosition != position {
 		test.Fatal("shuffle changed the playing track", err)
 	}
@@ -99,7 +99,7 @@ func TestShuffleSmallQueue(test *testing.T) {
 				mustTag(test, app, 1, "queue", []int64{1})
 			}
 			requireCode(test, call(app, "POST", "/shuffle_queue/", 1, url.Values{}, true), 200)
-			queue, err := app.Store.Queue(1)
+			queue, err := app.Store.Queue(test.Context(), 1)
 			if err != nil || len(queue) != count {
 				test.Fatal("shuffle changed small queue contents", queue, err)
 			}
@@ -117,7 +117,7 @@ SELECT 1,printf('%d.mp3',id),'Artist',printf('Tune %d',id),'Album','jazz','','20
 			testingContext.Fatal(err)
 		}
 	}
-	tag, err := app.Store.AddTag(1, "queue")
+	tag, err := app.Store.AddTag(testingContext.Context(), 1, "queue")
 	if err != nil {
 		testingContext.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestQueueLoadsTracksInOneQuery(test *testing.T) {
 		test.Fatal(err)
 	}
 	stats := measureAppSQL(test, app)
-	items, err := app.Store.Queue(1)
+	items, err := app.Store.Queue(test.Context(), 1)
 	if err != nil || len(items) != 3 {
 		test.Fatal("wrong queue contents", items, err)
 	}
@@ -150,7 +150,7 @@ func TestQueueLoadsTracksInOneQuery(test *testing.T) {
 		if item.MusicFileID != int64(index+1) || item.ID <= 0 {
 			test.Fatal("queue ordering or association ID changed", item)
 		}
-		association, err := app.Store.One("SELECT * FROM reinhardt_musicfiletag WHERE id=?", item.ID)
+		association, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_musicfiletag WHERE id=?", item.ID)
 		if err != nil {
 			test.Fatal(err)
 		}
@@ -159,13 +159,13 @@ func TestQueueLoadsTracksInOneQuery(test *testing.T) {
 				test.Fatalf("association field %s changed: got %v, want %v", key, item.templateRow()[key], value)
 			}
 		}
-		track, err := app.Store.Track(item.MusicFileID)
+		track, err := app.Store.Track(test.Context(), item.MusicFileID)
 		if err != nil || !reflect.DeepEqual(item.MusicFile, track) {
 			test.Fatal("joined track differs from individual lookup", item.MusicFile, track, err)
 		}
 	}
 	stats.calls.Store(0)
-	empty, err := app.Store.Queue(99)
+	empty, err := app.Store.Queue(test.Context(), 99)
 	if err != nil || len(empty) != 0 || stats.calls.Load() != 1 {
 		test.Fatal("empty queue lookup failed", empty, err)
 	}
@@ -176,14 +176,14 @@ func TestFullPagesAvoidQueueQueryGrowth(test *testing.T) {
 		test.Run(fmt.Sprintf("queue=%d", count), func(test *testing.T) {
 			app := testApp(test)
 			populateQueue(test, app, count)
-			item, err := app.Store.queueItem(1, "a.music_file_id=?", count)
+			item, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=?", count)
 			if err != nil {
 				test.Fatal(err)
 			}
 			if _, err = app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=1", item.ID); err != nil {
 				test.Fatal(err)
 			}
-			if _, err = app.suggestedData(); err != nil {
+			if _, err = app.suggestedData(test.Context()); err != nil {
 				test.Fatal(err)
 			}
 			stats := measureAppSQL(test, app)
@@ -228,7 +228,7 @@ func TestFullPageFooterQueueOwnershipAndStalePosition(test *testing.T) {
 				position = 999
 			case "foreign", "other-tag", "missing-track":
 				trackID := map[string]int{"foreign": 2, "other-tag": 3, "missing-track": 1}[scenario]
-				item, err := app.Store.One("SELECT id FROM reinhardt_musicfiletag WHERE music_file_id=?", trackID)
+				item, err := app.Store.One(test.Context(), "SELECT id FROM reinhardt_musicfiletag WHERE music_file_id=?", trackID)
 				if err != nil {
 					test.Fatal(err)
 				}
@@ -256,7 +256,7 @@ func TestFullPageFooterQueueOwnershipAndStalePosition(test *testing.T) {
 					test.Fatal("footer exposed another user's queue or a non-queue tag")
 				}
 			}
-			prefs, err := app.Store.Preferences(1)
+			prefs, err := app.Store.Preferences(test.Context(), 1)
 			if err != nil || prefs.CurrentPosition != position {
 				test.Fatal("rendering changed the saved playback position", prefs, err)
 			}
@@ -269,7 +269,7 @@ func BenchmarkFullPageQueue(benchmark *testing.B) {
 		benchmark.Run(fmt.Sprintf("queue=%d", count), func(benchmark *testing.B) {
 			app := testApp(benchmark)
 			populateQueue(benchmark, app, count)
-			item, err := app.Store.queueItem(1, "a.music_file_id=?", count)
+			item, err := app.Store.queueItem(benchmark.Context(), 1, "a.music_file_id=?", count)
 			if err != nil {
 				benchmark.Fatal(err)
 			}
