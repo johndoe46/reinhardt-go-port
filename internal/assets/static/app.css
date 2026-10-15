@@ -131,6 +131,23 @@ body.player-overlay-open {
     color: var(--player-signal);
 }
 
+.fullscreen-player__close,
+.fullscreen-player__bottom {
+    transition: opacity 180ms ease, visibility 0s;
+}
+
+.fullscreen-player[data-controls-hidden] {
+    cursor: none;
+}
+
+.fullscreen-player[data-controls-hidden] .fullscreen-player__close,
+.fullscreen-player[data-controls-hidden] .fullscreen-player__bottom {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, 180ms;
+}
+
 .fullscreen-player button {
     color: inherit;
     font: inherit;
@@ -351,6 +368,8 @@ body.player-overlay-open {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .fullscreen-player__close,
+    .fullscreen-player__bottom,
     .fullscreen-player__next {
         transition: none;
     }

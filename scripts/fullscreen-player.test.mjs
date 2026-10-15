@@ -11,11 +11,13 @@ class Element extends EventTarget {
     value = "waveform";
     textContent = "";
     open = false;
+    focus() { document.activeElement = this; }
     showModal() { this.open = true; }
     close() { this.open = false; this.dispatchEvent(new Event("close")); }
 }
 
 function fixture(context) {
+    context.mock.timers.enable({apis: ["setTimeout"]});
     const previousDocument = globalThis.document;
     const elements = Object.fromEntries([
         "canvas", "#fullscreen-visualization", ".fullscreen-player__effect", ".fullscreen-player__status",
@@ -28,7 +30,10 @@ function fixture(context) {
     document.getElementById = id => id === "fullscreen-player" ? dialog : null;
     document.body = {classList: {add() {}, remove() {}}};
     globalThis.document = document;
-    context.after(() => { globalThis.document = previousDocument; });
+    context.after(() => {
+        fullscreen.disconnect();
+        globalThis.document = previousDocument;
+    });
     const overlays = [];
     const player = {oscilloscope: {setOverlay: (...args) => overlays.push(args)}};
     const fullscreen = new FullscreenPlayer(player);
@@ -75,8 +80,8 @@ test("switching back or closing releases the effect and restores the waveform", 
     assert.equal(fullscreen.visualizationSelect.value, "butterchurn");
 });
 
-test("a late download cannot reopen an effect after closing or changing selection", async context => {
-    for (const close of [true, false]) {
+for (const close of [true, false]) {
+    test(`a late download cannot reopen an effect after ${close ? "closing" : "changing selection"}`, async context => {
         const {fullscreen, dialog, overlays} = fixture(context);
         let resolve;
         context.mock.method(fullscreen, "loadVisualization", () => new Promise(done => { resolve = done; }));
@@ -95,8 +100,8 @@ test("a late download cannot reopen an effect after closing or changing selectio
         assert.equal(instance.disposed, true);
         assert.equal(fullscreen.visualization, null);
         assert.equal(overlays.at(-1).length, 1);
-    }
-});
+    });
+}
 
 test("load and render failures fall back without interrupting playback", async context => {
     const {fullscreen, overlays} = fixture(context);
@@ -147,4 +152,112 @@ test("track changes randomize Butterchurn while repeated metadata updates keep t
     notify({url: "/stream/3/", position: "4"});
     assert.equal(selections, 3);
     assert.equal(instance.disposed, true);
+});
+
+test("fullscreen controls hide only after ten seconds of inactivity", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    context.mock.timers.tick(9999);
+    assert.equal(dialog.dataset.controlsHidden, undefined);
+    context.mock.timers.tick(1);
+    assert.equal(dialog.dataset.controlsHidden, "true");
+    assert.equal(dialog.open, true);
+});
+
+test("pointer, touch, scrolling, focus, and keyboard activity reveal controls and reset the delay", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    for (const type of ["pointermove", "pointerdown", "wheel", "scroll", "focusin", "keydown"]) {
+        context.mock.timers.tick(10000);
+        assert.equal(dialog.dataset.controlsHidden, "true");
+        const target = type === "keydown" ? document : dialog;
+        target.dispatchEvent(new Event(type));
+        assert.equal(dialog.dataset.controlsHidden, undefined, type);
+        context.mock.timers.tick(9999);
+        assert.equal(dialog.dataset.controlsHidden, undefined, type);
+        target.dispatchEvent(new Event(type));
+        context.mock.timers.tick(1);
+        assert.equal(dialog.dataset.controlsHidden, undefined, type);
+    }
+});
+
+test("track updates do not count as user activity", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    context.mock.timers.tick(10000);
+    fullscreen.onTrack({detail: {url: "/stream/2/", position: "2"}});
+    assert.equal(dialog.dataset.controlsHidden, "true");
+});
+
+test("a tap on hidden controls only wakes them and the next tap can activate them", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    context.mock.timers.tick(10000);
+    dialog.dispatchEvent(new Event("pointerdown"));
+    const wakeClick = new Event("click", {cancelable: true});
+    dialog.dispatchEvent(wakeClick);
+    assert.equal(dialog.dataset.controlsHidden, undefined);
+    assert.equal(wakeClick.defaultPrevented, true);
+    dialog.dispatchEvent(new Event("pointerdown"));
+    const nextClick = new Event("click", {cancelable: true});
+    dialog.dispatchEvent(nextClick);
+    assert.equal(nextClick.defaultPrevented, false);
+});
+
+test("a wake gesture without a click does not consume later keyboard or pointer activation", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    for (const type of ["keydown", "pointerdown"]) {
+        context.mock.timers.tick(10000);
+        dialog.dispatchEvent(new Event("pointerdown"));
+        (type === "keydown" ? document : dialog).dispatchEvent(new Event(type));
+        const click = new Event("click", {cancelable: true});
+        dialog.dispatchEvent(click);
+        assert.equal(click.defaultPrevented, false, type);
+    }
+});
+
+test("Tab restores focus to the first or last control after they hide", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    for (const shiftKey of [false, true]) {
+        context.mock.timers.tick(10000);
+        const event = new Event("keydown", {cancelable: true});
+        event.key = "Tab";
+        event.shiftKey = shiftKey;
+        document.dispatchEvent(event);
+        const selector = shiftKey ? ".fullscreen-player__next" : ".fullscreen-player__close";
+        assert.equal(document.activeElement, dialog.querySelector(selector));
+        assert.equal(event.defaultPrevented, true);
+        assert.equal(dialog.dataset.controlsHidden, undefined);
+    }
+});
+
+test("closing clears the inactivity timer and reopening starts with visible controls", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    context.mock.timers.tick(9000);
+    dialog.close();
+    assert.equal(fullscreen.controlsTimer, null);
+    context.mock.timers.tick(10000);
+    assert.equal(dialog.dataset.controlsHidden, undefined);
+    fullscreen.toggle();
+    context.mock.timers.tick(9999);
+    assert.equal(dialog.dataset.controlsHidden, undefined);
+    context.mock.timers.tick(1);
+    assert.equal(dialog.dataset.controlsHidden, "true");
+});
+
+test("disconnect removes activity listeners and cancels delayed hiding", context => {
+    const {fullscreen, dialog} = fixture(context);
+    fullscreen.toggle();
+    fullscreen.disconnect();
+    assert.equal(fullscreen.controlsTimer, null);
+    context.mock.timers.tick(10000);
+    assert.equal(dialog.dataset.controlsHidden, undefined);
+    dialog.open = true;
+    dialog.dataset.controlsHidden = "true";
+    dialog.dispatchEvent(new Event("pointermove"));
+    document.dispatchEvent(new Event("keydown"));
+    assert.equal(dialog.dataset.controlsHidden, "true");
 });

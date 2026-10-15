@@ -224,6 +224,10 @@ current track's artwork, artist, title, album, and a live waveform inspired by
 the close button to return to browsing. Use **Next track** or **N** to advance
 the queue. Letter shortcuts are inactive while typing in a form.
 
+Full screen controls and the pointer hide after 10 seconds of inactivity.
+Move the pointer, tap the screen, scroll, or press a key to show the controls again.
+The artwork, track details, and visualization stay visible.
+
 Use **Visualization** in the full screen view to choose **Butterchurn**, an
 alternative with MilkDrop-style effects. It starts with a random preset and
 randomly selects a different effect on each track change, with a smooth transition.

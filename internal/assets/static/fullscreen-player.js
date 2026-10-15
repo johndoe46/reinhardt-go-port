@@ -3,6 +3,8 @@ export class FullscreenPlayer {
         this.player = player;
         this.dialog = document.getElementById("fullscreen-player");
         this.openButton = document.getElementById("player-expand");
+        this.controlsTimer = null;
+        this.ignoreControlClick = false;
         this.visualizationRequest = 0;
         this.loadVisualization = async (onError) => {
             const {createButterchurn} = await import("./butterchurn-visualization.js");
@@ -15,6 +17,9 @@ export class FullscreenPlayer {
                 return;
             }
             document.body.classList.remove("player-overlay-open");
+            this.clearControlsTimer();
+            this.ignoreControlClick = false;
+            delete this.dialog.dataset.controlsHidden;
             this.visualizationRequest += 1;
             this.player.oscilloscope.setOverlay(null);
             this.disposeVisualization();
@@ -34,6 +39,29 @@ export class FullscreenPlayer {
         };
         this.onVisualization = () => this.updateVisualization();
         this.onEffect = () => this.visualization?.nextPreset();
+        this.onActivity = (event) => {
+            const hidden = this.dialog.dataset.controlsHidden;
+            if (event.type === "pointerdown") {
+                this.ignoreControlClick = Boolean(hidden);
+            } else if (event.type === "keydown") {
+                this.ignoreControlClick = false;
+            }
+            this.showControls();
+            if (hidden && event.type === "keydown" && event.key === "Tab") {
+                event.preventDefault();
+                const selector = event.shiftKey ? ".fullscreen-player__next" : ".fullscreen-player__close";
+                this.dialog.querySelector(selector).focus({preventScroll: true});
+            }
+        };
+        this.onControlsClick = (event) => {
+            // Touch browsers can target the synthetic click after controls reappear.
+            // The gesture that wakes them should never activate a hidden button.
+            if (this.ignoreControlClick) {
+                this.ignoreControlClick = false;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        };
     }
 
     connect() {
@@ -49,6 +77,11 @@ export class FullscreenPlayer {
         this.visualizationSelect.addEventListener("change", this.onVisualization);
         this.effectButton.addEventListener("click", this.onEffect);
         this.dialog.addEventListener("close", this.onClosed);
+        this.dialog.addEventListener("click", this.onControlsClick, {capture: true});
+        for (const type of ["pointermove", "pointerdown", "wheel", "scroll", "focusin"]) {
+            this.dialog.addEventListener(type, this.onActivity, {passive: true});
+        }
+        document.addEventListener("keydown", this.onActivity, {capture: true});
         document.addEventListener("reinhardt:track", this.onTrack);
         const track = document.getElementById("now_playing")?.dataset || {};
         this.trackURL = track.url;
@@ -64,12 +97,18 @@ export class FullscreenPlayer {
             this.dialog.close();
             this.onClosed();
         }
+        this.clearControlsTimer();
         this.openButton?.removeEventListener("click", this.onOpen);
         this.dialog.querySelector(".fullscreen-player__close").removeEventListener("click", this.onClose);
         this.dialog.querySelector(".fullscreen-player__next").removeEventListener("click", this.onNext);
         this.visualizationSelect.removeEventListener("change", this.onVisualization);
         this.effectButton.removeEventListener("click", this.onEffect);
         this.dialog.removeEventListener("close", this.onClosed);
+        this.dialog.removeEventListener("click", this.onControlsClick, {capture: true});
+        for (const type of ["pointermove", "pointerdown", "wheel", "scroll", "focusin"]) {
+            this.dialog.removeEventListener(type, this.onActivity);
+        }
+        document.removeEventListener("keydown", this.onActivity, {capture: true});
         document.removeEventListener("reinhardt:track", this.onTrack);
     }
 
@@ -84,7 +123,25 @@ export class FullscreenPlayer {
         this.previousFocus = document.activeElement;
         this.dialog.showModal();
         document.body.classList.add("player-overlay-open");
+        this.showControls();
         this.updateVisualization();
+    }
+
+    clearControlsTimer() {
+        clearTimeout(this.controlsTimer);
+        this.controlsTimer = null;
+    }
+
+    showControls() {
+        if (!this.dialog.open) {
+            return;
+        }
+        this.clearControlsTimer();
+        delete this.dialog.dataset.controlsHidden;
+        this.controlsTimer = setTimeout(() => {
+            this.controlsTimer = null;
+            this.dialog.dataset.controlsHidden = "true";
+        }, 10000);
     }
 
     disposeVisualization() {
