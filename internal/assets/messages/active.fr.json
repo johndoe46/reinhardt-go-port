@@ -27,6 +27,9 @@
   "Are you sure ?": {
     "other": "Êtes-vous sur ?"
   },
+  "Butterchurn is unavailable. Showing waveform.": {
+    "other": "Butterchurn est indisponible. Affichage de la forme d’onde."
+  },
   "Cancel": {
     "other": "Annuler"
   },
@@ -90,6 +93,9 @@
   "Last name": {
     "other": "Nom"
   },
+  "Loading visualization…": {
+    "other": "Chargement de la visualisation…"
+  },
   "Login link for %(Username)s:\n\n%(URL)s\n\nShare this link privately.": {
     "other": "Lien de connexion de {{.Username}} :\n\n{{.URL}}\n\nPartagez ce lien en privé."
   },
@@ -101,6 +107,9 @@
   },
   "New user": {
     "other": "Nouvel utilisateur"
+  },
+  "Next effect": {
+    "other": "Effet suivant"
   },
   "Next track": {
     "other": "Piste suivante"
@@ -209,6 +218,12 @@
   },
   "Users": {
     "other": "Utilisateurs"
+  },
+  "Visualization": {
+    "other": "Visualisation"
+  },
+  "Waveform": {
+    "other": "Forme d’onde"
   },
   "You don't have any favorite... yet.": {
     "other": "Vous n'avez pas encore de favoris"

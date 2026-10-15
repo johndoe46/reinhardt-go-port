@@ -20,7 +20,20 @@
         </div>
     </section>
     <div class="fullscreen-player__bottom">
-        <span class="fullscreen-player__hint"><kbd>F</kbd> {{ call .translate_literal "Toggle full screen" }}</span>
+        <div class="fullscreen-player__options">
+            <span class="fullscreen-player__hint"><kbd>F</kbd> {{ call .translate_literal "Toggle full screen" }}</span>
+            <div class="fullscreen-player__visualization">
+                <label for="fullscreen-visualization">{{ call .translate_literal "Visualization" }}</label>
+                <select id="fullscreen-visualization">
+                    <option value="waveform" selected>{{ call .translate_literal "Waveform" }}</option>
+                    <option value="butterchurn">Butterchurn</option>
+                </select>
+                <button type="button" class="fullscreen-player__effect" hidden>{{ call .translate_literal "Next effect" }}</button>
+            </div>
+            <span class="fullscreen-player__status" role="status"
+                  data-loading="{{ call .translate_literal "Loading visualization…" }}"
+                  data-unavailable="{{ call .translate_literal "Butterchurn is unavailable. Showing waveform." }}"></span>
+        </div>
         <button type="button" class="fullscreen-player__next" aria-keyshortcuts="n">
             <span>{{ call .translate_literal "Next track" }} <kbd>N</kbd></span>
             <svg viewBox="0 0 64 32" aria-hidden="true"><path d="M2 16h57M46 3l13 13-13 13"/></svg>

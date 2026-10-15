@@ -3,6 +3,11 @@ export class FullscreenPlayer {
         this.player = player;
         this.dialog = document.getElementById("fullscreen-player");
         this.openButton = document.getElementById("player-expand");
+        this.visualizationRequest = 0;
+        this.loadVisualization = async (onError) => {
+            const {createButterchurn} = await import("./butterchurn-visualization.js");
+            return createButterchurn(onError);
+        };
         this.onOpen = () => this.toggle();
         this.onClose = () => this.dialog.close();
         this.onClosed = () => {
@@ -10,13 +15,25 @@ export class FullscreenPlayer {
                 return;
             }
             document.body.classList.remove("player-overlay-open");
+            this.visualizationRequest += 1;
             this.player.oscilloscope.setOverlay(null);
+            this.disposeVisualization();
             if (this.previousFocus?.isConnected) {
                 this.previousFocus.focus({preventScroll: true});
             }
         };
         this.onNext = () => this.player.onNextButtonClick();
-        this.onTrack = (event) => this.updateTrack(event.detail);
+        this.onTrack = (event) => {
+            const track = event.detail;
+            if (track.url && (track.url !== this.trackURL || track.position !== this.trackPosition)) {
+                this.visualization?.randomPreset();
+            }
+            this.trackURL = track.url;
+            this.trackPosition = track.position;
+            this.updateTrack(track);
+        };
+        this.onVisualization = () => this.updateVisualization();
+        this.onEffect = () => this.visualization?.nextPreset();
     }
 
     connect() {
@@ -26,9 +43,17 @@ export class FullscreenPlayer {
         this.openButton?.addEventListener("click", this.onOpen);
         this.dialog.querySelector(".fullscreen-player__close").addEventListener("click", this.onClose);
         this.dialog.querySelector(".fullscreen-player__next").addEventListener("click", this.onNext);
+        this.visualizationSelect = this.dialog.querySelector("#fullscreen-visualization");
+        this.effectButton = this.dialog.querySelector(".fullscreen-player__effect");
+        this.visualizationStatus = this.dialog.querySelector(".fullscreen-player__status");
+        this.visualizationSelect.addEventListener("change", this.onVisualization);
+        this.effectButton.addEventListener("click", this.onEffect);
         this.dialog.addEventListener("close", this.onClosed);
         document.addEventListener("reinhardt:track", this.onTrack);
-        this.updateTrack(document.getElementById("now_playing")?.dataset || {});
+        const track = document.getElementById("now_playing")?.dataset || {};
+        this.trackURL = track.url;
+        this.trackPosition = track.position;
+        this.updateTrack(track);
     }
 
     disconnect() {
@@ -42,6 +67,8 @@ export class FullscreenPlayer {
         this.openButton?.removeEventListener("click", this.onOpen);
         this.dialog.querySelector(".fullscreen-player__close").removeEventListener("click", this.onClose);
         this.dialog.querySelector(".fullscreen-player__next").removeEventListener("click", this.onNext);
+        this.visualizationSelect.removeEventListener("change", this.onVisualization);
+        this.effectButton.removeEventListener("click", this.onEffect);
         this.dialog.removeEventListener("close", this.onClosed);
         document.removeEventListener("reinhardt:track", this.onTrack);
     }
@@ -57,7 +84,49 @@ export class FullscreenPlayer {
         this.previousFocus = document.activeElement;
         this.dialog.showModal();
         document.body.classList.add("player-overlay-open");
-        this.player.oscilloscope.setOverlay(this.dialog.querySelector("canvas"));
+        this.updateVisualization();
+    }
+
+    disposeVisualization() {
+        this.visualization?.dispose();
+        this.visualization = null;
+        this.effectButton.hidden = true;
+        this.visualizationStatus.textContent = "";
+        delete this.dialog.dataset.visualization;
+    }
+
+    async updateVisualization() {
+        const request = ++this.visualizationRequest;
+        const canvas = this.dialog.querySelector("canvas");
+        this.player.oscilloscope.setOverlay(this.dialog.open ? canvas : null);
+        this.disposeVisualization();
+        if (!this.dialog.open || this.visualizationSelect.value !== "butterchurn") {
+            return;
+        }
+        const isCurrent = () => request === this.visualizationRequest && this.dialog.open;
+        const onError = () => {
+            if (isCurrent()) {
+                this.visualizationSelect.value = "waveform";
+                this.updateVisualization();
+                this.visualizationStatus.textContent = this.visualizationStatus.dataset.unavailable;
+            }
+        };
+        this.visualizationStatus.textContent = this.visualizationStatus.dataset.loading;
+        try {
+            const visualization = await this.loadVisualization(onError);
+            // A close or a newer selection can overtake the lazy module download.
+            if (!isCurrent()) {
+                visualization.dispose();
+                return;
+            }
+            this.visualization = visualization;
+            this.dialog.dataset.visualization = "butterchurn";
+            this.player.oscilloscope.setOverlay(canvas, visualization);
+            this.effectButton.hidden = false;
+            this.visualizationStatus.textContent = "";
+        } catch {
+            onError();
+        }
     }
 
     updateTrack(track) {

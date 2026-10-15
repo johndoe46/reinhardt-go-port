@@ -27,6 +27,9 @@
   "Are you sure ?": {
     "other": "Are you sure ?"
   },
+  "Butterchurn is unavailable. Showing waveform.": {
+    "other": "Butterchurn is unavailable. Showing waveform."
+  },
   "Cancel": {
     "other": "Cancel"
   },
@@ -90,6 +93,9 @@
   "Last name": {
     "other": "Last name"
   },
+  "Loading visualization…": {
+    "other": "Loading visualization…"
+  },
   "Login link for %(Username)s:\n\n%(URL)s\n\nShare this link privately.": {
     "other": "Login link for {{.Username}}:\n\n{{.URL}}\n\nShare this link privately."
   },
@@ -101,6 +107,9 @@
   },
   "New user": {
     "other": "New user"
+  },
+  "Next effect": {
+    "other": "Next effect"
   },
   "Next track": {
     "other": "Next track"
@@ -212,6 +221,12 @@
   },
   "Users": {
     "other": "Users"
+  },
+  "Visualization": {
+    "other": "Visualization"
+  },
+  "Waveform": {
+    "other": "Waveform"
   },
   "You don't have any favorite... yet.": {
     "other": "You don't have any favorite... yet."

@@ -8,6 +8,7 @@ export class FooterOscilloscope {
         this.samples = new Uint8Array(2048);
         this.canvas = null;
         this.overlay = null;
+        this.overlayRenderer = null;
         this.frame = null;
         this.lastDraw = 0;
         this.preparing = null;
@@ -38,9 +39,10 @@ export class FooterOscilloscope {
         return this.player.playbackRequested || Boolean(audio && !audio.paused && !audio.ended);
     }
 
-    setOverlay(canvas) {
+    setOverlay(canvas, renderer = null) {
         this.stop();
         this.overlay = canvas;
+        this.overlayRenderer = renderer;
         this.resizeCanvas(canvas);
         if (this.playbackActive) {
             this.prepare();
@@ -243,6 +245,10 @@ export class FooterOscilloscope {
     drawOverlay() {
         const context = this.overlay.getContext("2d");
         if (!context) {
+            return;
+        }
+        if (this.overlayRenderer) {
+            this.overlayRenderer.draw(this.audioContext, this.source, this.overlay);
             return;
         }
         const {width, height} = this.overlay;

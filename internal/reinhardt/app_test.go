@@ -185,7 +185,7 @@ func TestFullscreenPlayerPersistsOutsideFragments(test *testing.T) {
 		response := call(app, "GET", "/", 1, nil, false)
 		requireCode(test, response, 200)
 		body := response.Body.String()
-		for _, markup := range []string{`id="fullscreen-player"`, `aria-labelledby="fullscreen-title"`, `aria-keyshortcuts="f"`, `class="fullscreen-player__artwork"`, `class="fullscreen-player__scope"`, `class="fullscreen-player__next"`} {
+		for _, markup := range []string{`id="fullscreen-player"`, `aria-labelledby="fullscreen-title"`, `aria-keyshortcuts="f"`, `class="fullscreen-player__artwork"`, `class="fullscreen-player__scope"`, `class="fullscreen-player__next"`, `id="fullscreen-visualization"`, `value="waveform" selected`, `value="butterchurn"`, `class="fullscreen-player__effect" hidden`} {
 			if !strings.Contains(body, markup) {
 				test.Fatalf("%s page missing %s", language, markup)
 			}

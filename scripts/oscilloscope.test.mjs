@@ -73,3 +73,28 @@ test("drawing the overlay uses the same motion decision as starting it", context
     scope.draw();
     assert.equal(scope.drawOverlay.mock.callCount(), 1);
 });
+
+test("the alternative renderer shares analysis without changing the footer drawing path", context => {
+    const {scope, canvas} = fixture(context, {enabled: "false"});
+    const calls = [];
+    const renderer = {draw: (...args) => calls.push(args)};
+    scope.canvas = canvas;
+    scope.audioContext = {state: "running"};
+    scope.source = {};
+    scope.analyser = {getByteTimeDomainData() {}};
+    scope.setOverlay(canvas, renderer);
+    scope.draw();
+    assert.deepEqual(calls, [[scope.audioContext, scope.source, canvas]]);
+    scope.setOverlay(canvas);
+    assert.equal(scope.overlayRenderer, null);
+});
+
+test("reduced motion also suppresses the alternative visualization", context => {
+    const {scope, canvas} = fixture(context, {enabled: "false", reducedMotion: true});
+    let draws = 0;
+    scope.canvas = canvas;
+    scope.analyser = {getByteTimeDomainData() {}};
+    scope.setOverlay(canvas, {draw: () => { draws += 1; }});
+    scope.draw();
+    assert.equal(draws, 0);
+});

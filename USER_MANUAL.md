@@ -224,9 +224,21 @@ current track's artwork, artist, title, album, and a live waveform inspired by
 the close button to return to browsing. Use **Next track** or **N** to advance
 the queue. Letter shortcuts are inactive while typing in a form.
 
-The full screen waveform also works with the footer oscilloscope disabled.
+Use **Visualization** in the full screen view to choose **Butterchurn**, an
+alternative with MilkDrop-style effects. It starts with a random preset and
+randomly selects a different effect on each track change, with a smooth transition.
+**Next effect** cycles through the 30 bundled presets. The original **Waveform**
+remains the default on each page load; your selection stays in place when closing
+and reopening full screen on that page.
+Butterchurn is bundled with the application and needs no external service.
+If it cannot run in your browser, the player returns to the waveform.
+This selector does not change the bottom player's visualization.
+
+![Full screen player with the optional Butterchurn visualization and effect controls](docs/images/user-manual/fullscreen-butterchurn.png)
+
+Both full screen visualizations work with the footer oscilloscope disabled.
 With system reduced motion enabled, turn on **Show oscilloscope in player** in
-Preferences to allow waveform animation in both views. Delegated streams without
+Preferences to allow visualization animation in both views. Delegated streams without
 same-origin audio analysis still play normally, with a static background.
 
 ![Full screen player with album artwork, track details, a lime waveform, and the Next track button](docs/images/user-manual/fullscreen-player.png)
