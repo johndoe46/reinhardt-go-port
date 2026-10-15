@@ -113,6 +113,7 @@ up.compiler('.music_file_removed_from_tag', function (element) {
 
 // when new track loaded in now_playing, start player
 up.compiler("#now_playing", function (element) {
+    document.dispatchEvent(new CustomEvent("reinhardt:track", {detail: {...element.dataset}}));
     if (element.dataset.url) {
         let player = getPlayer();
         if (element.dataset.url !== player.src) {
@@ -329,28 +330,19 @@ up.compiler("#ytrip-form", function (form) {
 });
 
 up.compiler("body", function (element) {
-    element.addEventListener("keypress", function (evt) {
-        if (!evt.target.classList.contains("form-control")) {
-            let playa = getPlayer();
-            if (evt.key === "n") {
-                evt.preventDefault();
-                playNext()
-            }
-            /*
-            if (evt.key === "p") {
-                // TODO: change player icon, stop blinking
-                evt.preventDefault();
-                unblinkPlayer();
-                playa.pause();
-            }
-            if (evt.key === "s") {
-                // TODO: change player icon, stop blinking
-                evt.preventDefault();
-                unblinkPlayer();
-                playa.pause();
-                playa.fastSeek(0);
-            }
-            */
+    const onShortcut = (evt) => {
+        if (evt.defaultPrevented || evt.repeat || evt.isComposing || evt.ctrlKey || evt.metaKey || evt.altKey
+            || evt.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) {
+            return;
         }
-    });
+        if (evt.key.toLowerCase() === "f") {
+            evt.preventDefault();
+            getPlayer()?.fullscreen?.toggle();
+        } else if (evt.key.toLowerCase() === "n" && getPlayer()) {
+            evt.preventDefault();
+            playNext();
+        }
+    };
+    element.addEventListener("keydown", onShortcut);
+    return () => element.removeEventListener("keydown", onShortcut);
 });

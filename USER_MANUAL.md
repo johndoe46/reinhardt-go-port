@@ -218,6 +218,19 @@ save it for later. The player stays at the bottom of the page as you browse.
 Use its playback controls to pause, seek within a track, or move to the next one.
 You may need to press Play once if your browser prevents automatic playback.
 
+Press **F** or the player's expand button to open a full screen view with the
+current track's artwork, artist, title, album, and a live waveform inspired by
+[Desfrênes Radio](https://acasa.bontards.com/radio/). Press **F** again, **Esc**, or
+the close button to return to browsing. Use **Next track** or **N** to advance
+the queue. Letter shortcuts are inactive while typing in a form.
+
+The full screen waveform also works with the footer oscilloscope disabled.
+With system reduced motion enabled, turn on **Show oscilloscope in player** in
+Preferences to allow waveform animation in both views. Delegated streams without
+same-origin audio analysis still play normally, with a static background.
+
+![Full screen player with album artwork, track details, a lime waveform, and the Next track button](docs/images/user-manual/fullscreen-player.png)
+
 ![Track menu with Play now, Add to queue, Manage tags, and Add to favorites](docs/images/user-manual/track-menu.png)
 
 *Open a track's menu to play it, queue it, download it, or add it to favorites.*

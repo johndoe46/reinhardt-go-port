@@ -128,6 +128,12 @@
             <footer class="g-0">
                 <canvas class="footer-oscilloscope" aria-hidden="true"></canvas>
                 {{ template "reinhardt/_now_playing.html" . }}
+                <button type="button" class="player-expand btn" id="player-expand"
+                        title="{{ call .translate_literal "Full screen player (F)" }}"
+                        aria-label="{{ call .translate_literal "Full screen player (F)" }}"
+                        aria-keyshortcuts="f" aria-haspopup="dialog" aria-controls="fullscreen-player">
+                    <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                </button>
                 <div style="padding:0;margin:0;padding-left:1em;padding-right:1em;padding-bottom:0.5em;">
                     <m-audio up-keep id="player" data-oscilloscope="{{ yesno .preferences.show_oscilloscope "true,false" }}"></m-audio>
                 </div>
@@ -149,6 +155,7 @@
                     <input type="hidden" name="remove_item" id="queue_remove_item" value="">
                 </form>
             </footer>
+            {{ template "reinhardt/_fullscreen_player.html" . }}
         {{ end }}
     {{ end }}
 {{ end }}

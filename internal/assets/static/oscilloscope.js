@@ -7,22 +7,44 @@ export class FooterOscilloscope {
         this.analyser = null;
         this.samples = new Uint8Array(2048);
         this.canvas = null;
+        this.overlay = null;
         this.frame = null;
         this.lastDraw = 0;
         this.preparing = null;
         this.motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
         this.onEnvironmentChange = () => {
             this.stop();
-            if (document.visibilityState !== "hidden" && this.player.playbackRequested) {
+            if (document.visibilityState !== "hidden" && this.playbackActive) {
                 this.prepare();
             }
         };
         this.onGesture = () => {
-            if (this.player.playbackRequested) {
+            if (this.playbackActive) {
                 this.prepare();
             }
         };
-        this.onResize = () => this.resize();
+        this.onResize = () => {
+            this.resize();
+            this.resizeCanvas(this.overlay);
+        };
+    }
+
+    get visualizing() {
+        return Boolean(this.overlay || this.enabled) && !this.reducedMotion;
+    }
+
+    get playbackActive() {
+        const audio = this.player.audioEl;
+        return this.player.playbackRequested || Boolean(audio && !audio.paused && !audio.ended);
+    }
+
+    setOverlay(canvas) {
+        this.stop();
+        this.overlay = canvas;
+        this.resizeCanvas(canvas);
+        if (this.playbackActive) {
+            this.prepare();
+        }
     }
 
     setEnabled(enabled) {
@@ -32,7 +54,7 @@ export class FooterOscilloscope {
         if (canvas) {
             canvas.hidden = !enabled;
         }
-        if (enabled && this.player.playbackRequested) {
+        if (this.visualizing && this.playbackActive) {
             this.prepare();
         }
     }
@@ -69,7 +91,7 @@ export class FooterOscilloscope {
 
     prepare() {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextClass || ((!this.enabled || this.reducedMotion) && !this.source) || !this.canAnalyse(this.player.src)) {
+        if (!AudioContextClass || (!this.visualizing && !this.source) || !this.canAnalyse(this.player.src)) {
             return;
         }
         if (this.preparing) {
@@ -82,7 +104,7 @@ export class FooterOscilloscope {
             // once it succeeds. A blocked context must not silence playback.
             this.preparing = context.resume().then(() => {
                 if (context !== this.audioContext || context.state !== "running" || !this.player.isConnected
-                    || (!this.enabled && !this.source) || !this.canAnalyse(this.player.src)) {
+                    || (!this.visualizing && !this.source) || !this.canAnalyse(this.player.src)) {
                     return;
                 }
                 if (!this.source) {
@@ -119,19 +141,23 @@ export class FooterOscilloscope {
     }
 
     resize() {
-        if (!this.canvas) {
+        this.resizeCanvas(this.canvas);
+    }
+
+    resizeCanvas(canvas) {
+        if (!canvas) {
             return;
         }
-        const bounds = this.canvas.getBoundingClientRect();
+        const bounds = canvas.getBoundingClientRect();
         const scale = Math.min(window.devicePixelRatio || 1, 2);
-        this.canvas.width = Math.round(bounds.width * scale);
-        this.canvas.height = Math.round(bounds.height * scale);
+        canvas.width = Math.round(bounds.width * scale);
+        canvas.height = Math.round(bounds.height * scale);
     }
 
     start() {
-        if (!this.enabled || this.frame !== null || !this.analyser || this.audioContext.state !== "running"
+        if (!this.visualizing || this.frame !== null || !this.analyser || this.audioContext.state !== "running"
             || this.player.audioEl.paused || this.player.audioEl.ended || !this.player.isConnected
-            || document.visibilityState === "hidden" || this.reducedMotion) {
+            || document.visibilityState === "hidden") {
             return;
         }
         const canvas = this.player.closest("footer")?.querySelector(".footer-oscilloscope");
@@ -141,9 +167,18 @@ export class FooterOscilloscope {
         this.resizeObserver?.disconnect();
         this.canvas = canvas;
         this.resize();
+        this.resizeCanvas(this.overlay);
         this.resizeObserver = new ResizeObserver(this.onResize);
         this.resizeObserver.observe(canvas);
+        if (this.overlay) {
+            this.resizeObserver.observe(this.overlay);
+        }
         const draw = (time) => {
+            if (!this.visualizing || document.visibilityState === "hidden" || this.player.audioEl.paused
+                || this.player.audioEl.ended || this.audioContext?.state !== "running") {
+                this.stop();
+                return;
+            }
             this.frame = window.requestAnimationFrame(draw);
             if (time - this.lastDraw < 1000 / 30) {
                 return;
@@ -155,12 +190,15 @@ export class FooterOscilloscope {
     }
 
     stop() {
+        this.resizeObserver?.disconnect();
         if (this.frame !== null) {
             window.cancelAnimationFrame(this.frame);
             this.frame = null;
         }
         const context = this.canvas?.getContext("2d");
         context?.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const overlayContext = this.overlay?.getContext("2d");
+        overlayContext?.clearRect(0, 0, this.overlay.width, this.overlay.height);
     }
 
     draw() {
@@ -168,6 +206,12 @@ export class FooterOscilloscope {
         const {width, height} = this.canvas;
         this.analyser.getByteTimeDomainData(this.samples);
         context.clearRect(0, 0, width, height);
+        if (this.overlay && !this.reducedMotion) {
+            this.drawOverlay();
+        }
+        if (!this.enabled || this.reducedMotion || this.overlay) {
+            return;
+        }
         // Trigger on a rising zero crossing to keep periodic signals steady.
         let start = 0;
         for (let i = 1; i < 512; i += 1) {
@@ -194,5 +238,42 @@ export class FooterOscilloscope {
         context.lineWidth = 1.5 * Math.min(window.devicePixelRatio || 1, 2);
         context.globalAlpha = 0.8;
         context.stroke();
+    }
+
+    drawOverlay() {
+        const context = this.overlay.getContext("2d");
+        if (!context) {
+            return;
+        }
+        const {width, height} = this.overlay;
+        // A translucent wash leaves a short phosphor trail from the real signal.
+        context.fillStyle = "rgba(5, 5, 5, 0.22)";
+        context.fillRect(0, 0, width, height);
+        let start = 0;
+        for (let index = 1; index < 512; index += 1) {
+            if (this.samples[index - 1] < 128 && this.samples[index] >= 128) {
+                start = index;
+                break;
+            }
+        }
+        context.beginPath();
+        for (let index = 0; index < 768; index += 1) {
+            const x = index * width / 767;
+            const y = height * 0.52 + (this.samples[start + index * 2] - 128) / 128 * height * 0.43;
+            if (index === 0) {
+                context.moveTo(x, y);
+            } else {
+                context.lineTo(x, y);
+            }
+        }
+        context.strokeStyle = "#c8ff3d";
+        context.lineJoin = "round";
+        context.lineWidth = 10;
+        context.globalAlpha = 0.07;
+        context.stroke();
+        context.lineWidth = 2 * Math.min(window.devicePixelRatio || 1, 2);
+        context.globalAlpha = 0.65;
+        context.stroke();
+        context.globalAlpha = 1;
     }
 }

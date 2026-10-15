@@ -33,6 +33,9 @@
   "Close": {
     "other": "Fermer"
   },
+  "Close full screen player": {
+    "other": "Fermer le lecteur plein écran"
+  },
   "Confirm permanent deletion": {
     "other": "Confirmer la suppression définitive"
   },
@@ -69,6 +72,9 @@
   "First name": {
     "other": "Prénom"
   },
+  "Full screen player (F)": {
+    "other": "Lecteur plein écran (F)"
+  },
   "If an account exists for that email, an invite link has been sent.": {
     "other": "Si un compte existe pour cette adresse e-mail, un lien d'invitation a été envoyé."
   },
@@ -95,6 +101,12 @@
   },
   "New user": {
     "other": "Nouvel utilisateur"
+  },
+  "Next track": {
+    "other": "Piste suivante"
+  },
+  "Nothing playing": {
+    "other": "Aucune lecture en cours"
   },
   "Now playing": {
     "other": "Lecture en cours"
@@ -179,6 +191,9 @@
   },
   "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone.": {
     "other": "Le compte, son lien, ses sessions, préférences, file d’attente, favoris et playlists seront supprimés. Cette action est irréversible."
+  },
+  "Toggle full screen": {
+    "other": "Basculer le plein écran"
   },
   "Type the exact username below to confirm.": {
     "other": "Saisissez le nom d’utilisateur exact pour confirmer."

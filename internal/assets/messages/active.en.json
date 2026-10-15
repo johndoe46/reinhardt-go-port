@@ -33,6 +33,9 @@
   "Close": {
     "other": "Close"
   },
+  "Close full screen player": {
+    "other": "Close full screen player"
+  },
   "Confirm permanent deletion": {
     "other": "Confirm permanent deletion"
   },
@@ -69,6 +72,9 @@
   "First name": {
     "other": "First name"
   },
+  "Full screen player (F)": {
+    "other": "Full screen player (F)"
+  },
   "If an account exists for that email, an invite link has been sent.": {
     "other": "If an account exists for that email, an invite link has been sent."
   },
@@ -95,6 +101,12 @@
   },
   "New user": {
     "other": "New user"
+  },
+  "Next track": {
+    "other": "Next track"
+  },
+  "Nothing playing": {
+    "other": "Nothing playing"
   },
   "Now playing": {
     "other": "Now playing"
@@ -179,6 +191,9 @@
   },
   "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone.": {
     "other": "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone."
+  },
+  "Toggle full screen": {
+    "other": "Toggle full screen"
   },
   "Type the exact username below to confirm.": {
     "other": "Type the exact username below to confirm."

@@ -178,6 +178,33 @@ func TestUnpolyPreservesPlayerAndPreference(test *testing.T) {
 	}
 }
 
+func TestFullscreenPlayerPersistsOutsideFragments(test *testing.T) {
+	app := testApp(test)
+	for _, language := range []string{"en", "fr"} {
+		requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"language_code": {language}}, true), 200)
+		response := call(app, "GET", "/", 1, nil, false)
+		requireCode(test, response, 200)
+		body := response.Body.String()
+		for _, markup := range []string{`id="fullscreen-player"`, `aria-labelledby="fullscreen-title"`, `aria-keyshortcuts="f"`, `class="fullscreen-player__artwork"`, `class="fullscreen-player__scope"`, `class="fullscreen-player__next"`} {
+			if !strings.Contains(body, markup) {
+				test.Fatalf("%s page missing %s", language, markup)
+			}
+		}
+		label := "Full screen player (F)"
+		if language == "fr" {
+			label = "Lecteur plein écran (F)"
+		}
+		if !strings.Contains(body, label) {
+			test.Fatalf("missing translated player label %q", label)
+		}
+		response = call(app, "GET", "/", 1, nil, true)
+		requireCode(test, response, 200)
+		if strings.Contains(response.Body.String(), `id="fullscreen-player"`) {
+			test.Fatal("main fragment must not replace the full screen dialog")
+		}
+	}
+}
+
 func TestStreamingAndDelegate(test *testing.T) {
 	app := testApp(test)
 	request := httptest.NewRequest("GET", "/stream/1/", nil)

@@ -1,4 +1,5 @@
 import {FooterOscilloscope} from "./oscilloscope.js";
+import {FullscreenPlayer} from "./fullscreen-player.js";
 
 class MAudio extends HTMLElement {
     constructor() {
@@ -510,9 +511,12 @@ class MAudio extends HTMLElement {
         } else {
             this.bindAudioEvents();
         }
+        this.fullscreen ||= new FullscreenPlayer(this);
+        this.fullscreen.connect();
     }
 
     disconnectedCallback() {
+        this.fullscreen?.disconnect();
         this.stopProgressAnimation();
         this.clearRecovery();
         this.unbindAudioEvents();
