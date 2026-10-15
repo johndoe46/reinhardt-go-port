@@ -231,6 +231,9 @@ same-origin audio analysis still play normally, with a static background.
 
 ![Full screen player with album artwork, track details, a lime waveform, and the Next track button](docs/images/user-manual/fullscreen-player.png)
 
+*The full screen player shows the current track's artwork and live waveform.
+Press **F** to toggle this view, **Esc** to close it, or **N** for the next track.*
+
 ![Track menu with Play now, Add to queue, Manage tags, and Add to favorites](docs/images/user-manual/track-menu.png)
 
 *Open a track's menu to play it, queue it, download it, or add it to favorites.*
