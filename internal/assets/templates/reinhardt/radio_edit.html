@@ -1,0 +1,27 @@
+{{ define "head_title" }}{{ call .translate_literal "Radio" }}{{ end }}
+{{ define "main" }}
+<div class="container-fluid py-3">
+    <h1 class="h3">{{ if .station_form.id }}{{ call .translate_literal "Edit station" }}{{ else }}{{ call .translate_literal "Add station" }}{{ end }}</h1>
+    {{ if .error_message }}<div class="alert alert-danger" role="alert">{{ call .translate .error_message }}</div>{{ end }}
+    <form method="post" up-target="main, #now_playing" up-fail-target="main"
+          action="{{ if .station_form.id }}{{ call .url "radio_edit" .station_form.id }}{{ else }}{{ call .url "radio_new" }}{{ end }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <div class="mb-3">
+            <label for="station-name" class="form-label">{{ call .translate_literal "Station name" }}</label>
+            <input id="station-name" name="name" class="form-control" value="{{ .station_form.name }}" maxlength="200" required>
+        </div>
+        <div class="mb-3">
+            <label for="station-country" class="form-label">{{ call .translate_literal "Country" }}</label>
+            <input id="station-country" name="country" class="form-control" value="{{ .station_form.country }}" maxlength="120" required>
+        </div>
+        <div class="mb-3">
+            <label for="station-url" class="form-label">{{ call .translate_literal "Stream URL" }}</label>
+            <input id="station-url" name="url" type="url" class="form-control" value="{{ .station_form.url }}" maxlength="4096" required aria-describedby="station-url-help">
+            <div id="station-url-help" class="form-text">{{ call .translate_literal "Use a direct HTTP or HTTPS audio stream. Playlist files and HLS are not supported." }}</div>
+        </div>
+        <button type="submit" class="btn btn-primary">{{ call .translate_literal "Save" }}</button>
+        <a href="{{ call .url "radio" }}" class="btn btn-outline-secondary">{{ call .translate_literal "Cancel" }}</a>
+    </form>
+</div>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

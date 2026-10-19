@@ -1,0 +1,33 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "tag" }} {{ .tag.label }}{{ end }}
+{{ define "main" }}
+    <input data-tagpk="{{ .tag.pk }}" type="hidden" id="page_context" name="page_context" value="tag">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item"><a href="{{ call .url "tags" }}">{{ call .translate_literal "tags" }}</a></li>
+            <li class="breadcrumb-item active"><a id="current_url" href="{{ call .url "tag" }}?q={{ .tag.pk }}">{{ .tag }}</a></li>
+        </ol>
+    </nav>
+    <hr>
+    <form method="post" action="{{ call .url "rename_tag" .tag.pk }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <input type="hidden" name="action" value="add_tag">
+        <table>
+            <tr>
+                <td>
+                    <input value="{{ .tag.label }}" type="text" class="form-control" name="tag_label" placeholder="{{ call .translate_literal "tag name" }}">
+                </td>
+                <td>
+                    <button type="submit" class="btn btn-outline-primary">{{ call .translate_literal "rename" }}</button>
+                </td>
+            </tr>
+        </table>
+    </form>
+    {{ if .error_message }}
+        <div style="margin-top: 1em;" class="alert alert-danger">{{ call .translate .error_message }}</div>
+    {{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

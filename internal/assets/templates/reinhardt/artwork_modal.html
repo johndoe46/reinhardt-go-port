@@ -1,0 +1,10 @@
+
+
+
+{{ define "head_title" }}{{ .music_file }} {{ call .translate_literal "artwork" }}{{ end }}
+{{ define "main" }}
+    <div style="text-align: center;">
+        <img style="height:{{ .size }}px;width:{{ .size }}px" src="{{ call .url "artwork" .trackid .size }}" alt="artwork"/>
+    </div>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

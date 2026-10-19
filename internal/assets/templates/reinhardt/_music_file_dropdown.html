@@ -1,0 +1,18 @@
+
+<button data-trackid="{{ .music_file.pk }}"
+        data-remove_from_tag="{{ if .remove_from_tag }}{{ .remove_from_tag }}{{ end }}"
+        data-playing="{{ boolString .playing }}"
+        class="track_menu btn btn-sm btn-link dropdown-toggle btn-link-no-underline"
+        type="button"
+        data-bs-toggle="dropdown" aria-expanded="false" style="white-space: normal">
+    {{ if not .hide_artist }}
+        <i class="bi bi-person"></i>&nbsp;{{ .music_file.artist }}<br>
+    {{ end }}
+    {{ .music_file.title }}
+</button>
+<ul class="dropdown-menu dropdown-menu-{{ .music_file.pk }}"></ul>
+{{ if .handles }}
+    <div class="sortable_handle">
+        <i class="bi bi-arrows-move"></i>
+    </div>
+{{ end }}

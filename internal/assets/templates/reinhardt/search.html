@@ -1,0 +1,129 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "search" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="search">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active"><i class="bi bi-search"></i> {{ call .translate_literal "search" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if .q }}
+        <p>recherche de <strong>{{ .q }}</strong> - {{ call .translate_literal "results" }}</p>
+
+        {{ if not .has_results }}
+            <p class="alert alert-warning">{{ call .translate_literal "no results" }}</p>
+        {{ end }}
+
+        <div class="list-group list-group-flush">
+        {{ if length .found_albums }}
+            <details class="list-group-item">
+                <summary>
+                    <i class="bi bi-vinyl"></i>
+                    {{ call .translate_literal "albums" }}
+                    ({{ length .found_albums }})
+                </summary>
+                <div class="list-group list-group-flush">
+                    {{ $context1 := . }}{{ range $index1, $row1 := .found_albums }}{{ with scope $context1 "album" $row1 "forloop" (loopInfo $index1) }}
+                        <a class="list-group-item list-group-item-action"
+                           href="{{ call .url "album" }}?q={{ urlencode .album }}">
+                            {{ .album }}
+                        </a>
+                    {{ end }}{{ end }}
+                </div>
+            </details>
+        {{ end }}
+        {{ if length .found_genres }}
+            <details class="list-group-item">
+                <summary>
+                    <i class="bi bi-music-note"></i>
+                    {{ call .translate_literal "genres" }}
+                    ({{ length .found_genres }})
+                </summary>
+                <div class="list-group list-group-flush">
+                    {{ $context2 := . }}{{ range $index2, $row2 := .found_genres }}{{ with scope $context2 "genre" $row2 "forloop" (loopInfo $index2) }}
+                        <a class="list-group-item list-group-item-action"
+                           href="{{ call .url "genre" }}?q={{ urlencode .genre }}">
+                            {{ .genre }}
+                        </a>
+                    {{ end }}{{ end }}
+                </div>
+            </details>
+        {{ end }}
+        {{ if length .found_artists }}
+            <details class="list-group-item">
+                <summary>
+                    <i class="bi bi-person"></i>
+                    {{ call .translate_literal "artists" }}
+                    ({{ length .found_artists }})
+                </summary>
+                <div class="list-group list-group-flush">
+                    {{ $context3 := . }}{{ range $index3, $row3 := .found_artists }}{{ with scope $context3 "artist" $row3 "forloop" (loopInfo $index3) }}
+                        <a class="list-group-item list-group-item-action"
+                           href="{{ call .url "artist" }}?q={{ urlencode .artist }}">
+                           {{ .artist }}
+                        </a>
+                    {{ end }}{{ end }}
+                </div>
+            </details>
+        {{ end }}
+        {{ if .total_count }}
+            <details open class="list-group-item">
+                <summary>
+                    <i class="bi bi-music-note"></i>
+                    {{ call .translate_literal "tracks" }}
+                    ({{ .total_count }})
+                </summary>
+                <div class="dropdown" style="margin-top:1rem;">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        <i class="bi bi-music-note-list"></i> {{ call .translate_literal "tracks" }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a id="link_search_add_to_tag" up-layer="new" up-history="false"
+                               href="{{ call .url "search_add_to_tag" }}?sq={{ urlencode .q }}" class="dropdown-item">
+                                <i class="bi bi-tags"></i> {{ call .translate_literal "add to tag" }}
+                            </a>
+                        </li>
+                        <li>
+                            <form method="post" action="{{ call .url "search_add_to_favorites" }}" up-target="#alert_space">
+                                <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                <input type="hidden" name="sq" value="{{ .q }}">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-heart"></i> {{ call .translate_literal "add to favorites" }}
+                                </button>
+                            </form>
+                        </li>
+                        <li>
+                            <form method="post" action="{{ call .url "search_add_to_queue" }}" up-target="#alert_space">
+                                <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                <input type="hidden" name="sq" value="{{ .q }}">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-plus-circle"></i> {{ call .translate_literal "add to queue" }}
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+                {{ if gt .total_count 1000 }}
+                    <div class="alert alert-warning" role="alert" style="margin-top:1rem;">
+                        {{ call .translate_literal "Your search generated a large number of results. Results shown here are limited to the first 1000 items." }}
+                    </div>
+                {{ end }}
+                {{ with scope . "go_to_album" true }}
+                    {{ template "reinhardt/_music_files_list.html" . }}
+                {{ end }}
+            </details>
+        {{ end }}
+        </div>
+    {{ else }}
+        <div class="alert alert-warning">{{ call .translate_literal "empty request" }}</div>
+    {{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

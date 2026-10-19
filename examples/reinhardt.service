@@ -1,0 +1,26 @@
+# Replace example-user and /home/example-user with the existing service account
+# and its home directory. Adjust the executable path to your installation.
+[Unit]
+Description=Reinhardt music server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=example-user
+WorkingDirectory=/home/example-user/.reinhardt
+
+Environment="LISTEN_ADDR=127.0.0.1:8000"
+Environment="PATH=/home/example-user/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/usr/local/bin/reinhardt serve
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

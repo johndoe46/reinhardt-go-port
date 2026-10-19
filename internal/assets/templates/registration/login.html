@@ -1,0 +1,25 @@
+
+
+{{ define "main" }}
+    <style>
+    label{
+        display: block;
+    }
+    </style>
+    <div class="card" style="width: 18rem;">
+  <div class="card-body">
+      <h5 class="card-title">{{ call .translate_literal "login" }}</h5>
+      {{ if .email_sent }}
+        <p>{{ call .translate_literal "If an account exists for that email, an invite link has been sent." }}</p>
+      {{ end }}
+    <form method="post" up-submit="false">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        {{ .form }}
+        <p style="padding-top: 1em;"><button class="btn btn-primary" type="submit">{{ call .translate_literal "Send login link" }}</button></p>
+    </form>
+  </div>
+    </div>
+{{ end }}
+{{ define "footer" }}{{ "" }}{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

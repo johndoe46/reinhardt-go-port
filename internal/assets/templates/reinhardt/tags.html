@@ -1,0 +1,100 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "tags" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="tags">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active">{{ call .translate_literal "tags" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if not (length .tags) }}
+        {{ call .translate_literal "you have no tags yet" }}
+    {{ end }}
+    <div class="list-group list-group-flush">
+        {{ $context1 := . }}{{ range $index1, $row1 := .tags }}{{ with scope $context1 "tag" $row1 "forloop" (loopInfo $index1) }}
+            <div class="list-group-item list-group-item-action dropdown d-grid gap-2">
+                <button class="btn btn-link btn-link-no-underline dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                    <i class="bi bi-tag"></i> {{ .tag.label }} <br>
+                    ({{ .tag.track_count }} {{ call .translate_literal "tracks" }} / {{ humanDuration .tag.total_duration }})
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item" href="{{ call .url "tag" }}?q={{ .tag.pk }}">
+                            <i class="bi bi-music-note"></i> {{ call .translate_literal "see tracks" }}
+                        </a>
+                    </li>
+                    <li>
+                        <a download class="dropdown-item" href="{{ call .url "queue_as_mix" }}?q={{ .tag.pk }}">
+                            <i class="bi bi-download"></i> {{ call .translate_literal "download" }}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ call .url "rename_tag" .tag.pk }}">
+                            <i class="bi bi-pen"></i> {{ call .translate_literal "rename" }}
+                        </a>
+                    </li>
+                    <li>
+                        {{ if .tag.is_shared }}
+                            <a class="dropdown-item" href="{{ .tag.share_url }}" target="_blank">
+                                <i class="bi bi-share"></i> {{ call .translate_literal "open share link" }}
+                            </a>
+                            <form method="post" action="{{ call .url "tags" }}"
+                                  onsubmit="return confirm('{{ call .translate_literal "Remove this shared link?" }}');">
+                                <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                <input type="hidden" name="action" value="unshare_tag">
+                                <input type="hidden" name="tag_pk" value="{{ .tag.pk }}">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-link-45deg"></i> {{ call .translate_literal "remove shared link" }}
+                                </button>
+                            </form>
+                        {{ else }}
+                            <form method="post" action="{{ call .url "tags" }}">
+                                <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                <input type="hidden" name="action" value="share_tag">
+                                <input type="hidden" name="tag_pk" value="{{ .tag.pk }}">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="bi bi-share"></i> {{ call .translate_literal "generate share link" }}
+                                </button>
+                            </form>
+                        {{ end }}
+                    </li>
+                    <li>
+                        <form method="post" action="{{ call .url "tags" }}"
+                              onsubmit="return confirm('{{ call .translate_literal "Are you sure ?" }}');">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                            <input type="hidden" name="action" value="remove_tag">
+                            <input type="hidden" name="tag_pk" value="{{ .tag.pk }}">
+                            <button type="submit" class="dropdown-item">
+                                <i class="bi bi-eraser"></i> {{ call .translate_literal "remove" }}
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        {{ end }}{{ end }}
+    </div>
+    <hr>
+    <form method="post" action="{{ call .url "tags" }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <p>{{ call .translate_literal "new tag" }}</p>
+        <input type="hidden" name="action" value="add_tag">
+        <table>
+            <tr>
+                <td>
+                    <input type="text" class="form-control" name="tag_label" placeholder="{{ call .translate_literal "tag name" }}">
+                </td>
+                <td>
+                    <button type="submit" class="btn btn-outline-primary">{{ call .translate_literal "add" }}</button>
+                </td>
+            </tr>
+        </table>
+    </form>
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

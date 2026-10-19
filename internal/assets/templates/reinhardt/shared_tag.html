@@ -1,0 +1,275 @@
+
+<!doctype html>
+<html lang="{{ .LANGUAGE_CODE }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title .tag.label }} — Reinhardt</title>
+    <style>
+        :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #11131a; color: #f7f7fa; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #343952, #11131a 58%); }
+        main { --page-pad: clamp(1rem, 4vw, 3rem); width: 100%; margin: auto; padding: var(--page-pad); }
+        header { text-align: center; margin-bottom: 2rem; }
+        h1 { margin: .4rem 0; font-size: clamp(2rem, 7vw, 4.5rem); }
+        a { color: inherit; }
+        .playlist-actions { display: flex; justify-content: center; gap: .6rem; margin-top: 1rem; }
+        .playlist-action { display: inline-flex; align-items: center; padding: .7rem 1rem; border: 1px solid #ffffff45; border-radius: 999px; color: inherit; background: transparent; text-decoration: none; font: inherit; font-weight: 650; cursor: pointer; }
+        .playlist-action:hover, .playlist-action:focus-visible { background: #ffffff18; }
+        .player { position: sticky; top: 0; z-index: 10; display: flex; gap: .6rem; align-items: center; margin: calc(var(--page-pad) * -1) 0 .85rem; padding: .35rem .6rem; border: 1px solid #ffffff24; border-top: 0; border-radius: 0 0 .7rem .7rem; background: #11131ae6; box-shadow: 0 .8rem 1.6rem #0005; backdrop-filter: blur(16px); }
+        .artwork { width: 2.75rem; height: 2.75rem; object-fit: cover; border-radius: .35rem; box-shadow: 0 .4rem 1rem #0007; background: #292d3d; }
+        .player-details { flex: 1 1 auto; min-width: 0; }
+        .eyebrow { color: #afb6d9; text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; }
+        .player .eyebrow { display: none; }
+        #title { margin: 0 0 .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; }
+        #artist, #album { margin: .1rem 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd1e5; font-size: .84rem; }
+        #album { display: none; }
+        audio { flex: 0 1 34rem; width: min(34rem, 45vw); }
+        ol { padding: 0; margin: 0; list-style: none; }
+        #playlist { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-top: 2.5rem; }
+        .track { display: grid; min-width: 0; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; border: 1px solid #ffffff22; border-radius: .7rem; background: #191c28d9; box-shadow: 0 .8rem 1.8rem #0004; transition: background-color .15s ease-in-out, border-color .15s ease-in-out, box-shadow .15s ease-in-out; }
+        .track:hover, .track:focus-within { border-color: #ffffff55; background: #242838d9; box-shadow: 0 1rem 2.2rem #0007; }
+        .track-select { position: relative; width: 100%; display: grid; grid-template-columns: 1fr; gap: 0; align-content: start; align-items: start; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; font: inherit; }
+        .track-select:hover, .track-select:focus-visible, .track-select[aria-current="true"] { background: #ffffff0f; }
+        .track-artwork { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 0; background: #292d3d; }
+        .number { position: absolute; top: .65rem; left: .65rem; display: grid; place-items: center; min-width: 2rem; height: 2rem; padding: 0 .4rem; border-radius: 999px; background: #11131ad9; color: #f7f7fa; font-variant-numeric: tabular-nums; }
+        .track-title { display: block; font-weight: 650; }
+        .track-artist { display: block; color: #b9bed2; font-size: .9rem; }
+        .track-summary { display: block; padding: .85rem .85rem .3rem; }
+        .track-album { display: block; margin-top: .25rem; color: #969db8; font-size: .82rem; }
+        .track-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: .45rem; min-height: 3.65rem; padding: .7rem; border-top: 1px solid #ffffff18; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; height: 2.25rem; padding: .35rem .65rem; border: 1px solid transparent; border-radius: .375rem; font: inherit; font-size: .92rem; font-weight: 650; line-height: 1.45; text-align: center; text-decoration: none; cursor: pointer; transition: color .15s ease-in-out, background-color .15s ease-in-out, border-color .15s ease-in-out; }
+        .btn-icon { font-size: 1.05rem; }
+        .btn-secondary { color: #f7f7fa; background: #3f465c; border-color: #4d556f; }
+        .btn-secondary:hover, .btn-secondary:focus-visible { color: #fff; background: #4a536d; border-color: #5a637e; }
+        .btn-outline-secondary { color: #cdd1e5; background: transparent; border-color: #626a82; }
+        .btn-outline-secondary:hover, .btn-outline-secondary:focus-visible { color: #f7f7fa; background: #343a4f; border-color: #737b92; }
+        @media (max-width: 76rem) { #playlist { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        @media (max-width: 52rem) { .player { flex-wrap: wrap; } .artwork { width: 2.5rem; height: 2.5rem; } audio { flex-basis: 100%; width: 100%; } #playlist { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 38rem) { #playlist { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<main>
+    {{ if .music_files }}
+        {{ with scope . "first" (first .music_files) }}
+            <section class="player" aria-label="{{ call .translate_literal "Music player" }}">
+                <img id="artwork" class="artwork" src="{{ call .url "artwork" .first.pk 512 }}" alt="">
+                <div class="player-details">
+                    <div class="eyebrow">{{ call .translate_literal "Now playing" }}</div>
+                    <h2 id="title">{{ .first.title }}</h2>
+                    <p id="artist">{{ .first.artist }}</p>
+                    <p id="album">{{ .first.album }}</p>
+                </div>
+                <audio id="audio" controls preload="metadata"
+                       src="{{ call .url "serve_shared_music_file" .tag.pk .share_hash .first.pk }}"></audio>
+            </section>
+        {{ end }}
+    {{ end }}
+    <header>
+        <div class="eyebrow">{{ call .translate_literal "Shared playlist" }}</div>
+        <h1>{{ title .tag.label }}</h1>
+        <div>{{ length .music_files }} {{ call .translate_literal "tracks" }} · {{ humanDuration .total_duration }}</div>
+        {{ if .music_files }}
+            <div class="playlist-actions">
+                <button id="shuffle" class="playlist-action" type="button">{{ call .translate_literal "Shuffle" }}</button>
+                {{ if .can_download_all }}
+                    <a class="download-all playlist-action"
+                       href="{{ call .url "download_shared_tag" .tag.pk .share_hash }}" download>
+                        ↓ {{ call .translate_literal "Download all" }}
+                    </a>
+                {{ end }}
+            </div>
+        {{ end }}
+    </header>
+    {{ if .music_files }}
+        <ol id="playlist">
+            {{ $context1 := . }}{{ range $index1, $row1 := .music_files }}{{ with scope $context1 "music_file" $row1 "forloop" (loopInfo $index1) }}
+                <li class="track">
+                    <button class="track-select" type="button" {{ if .forloop.first }}aria-current="true"{{ end }}
+                            data-src="{{ call .url "serve_shared_music_file" .tag.pk .share_hash .music_file.pk }}"
+                            data-artwork="{{ call .url "artwork" .music_file.pk 512 }}"
+                            data-title="{{ .music_file.title }}" data-artist="{{ .music_file.artist }}"
+                            data-album="{{ .music_file.album }}">
+                        <span class="number">{{ .forloop.counter }}</span>
+                        <img class="track-artwork" src="{{ call .url "artwork" .music_file.pk 512 }}"
+                             alt="" width="48" height="48" loading="lazy">
+                        <span class="track-summary">
+                            <span class="track-title">{{ .music_file.title }}</span>
+                            <span class="track-artist">{{ .music_file.artist }}</span>
+                            {{ if .music_file.album }}
+                                <span class="track-album">{{ .music_file.album }}</span>
+                            {{ end }}
+                        </span>
+                    </button>
+                    <div class="track-actions">
+                        <button class="track-play btn btn-secondary btn-icon" type="button"
+                                aria-label="{{ call .translate_format "Play %(title)s" .music_file.title }}">
+                            <span aria-hidden="true">▶</span>
+                        </button>
+                        <a class="track-download btn btn-outline-secondary btn-icon"
+                           href="{{ call .url "serve_shared_music_file" .tag.pk .share_hash .music_file.pk }}"
+                           download="{{ .music_file.clean_file_name }}"
+                           aria-label="{{ call .translate_format "Download %(title)s" .music_file.title }}">
+                            <span aria-hidden="true">↓</span>
+                        </a>
+                    </div>
+                </li>
+            {{ end }}{{ end }}
+        </ol>
+    {{ else }}
+        <p>{{ call .translate_literal "This playlist has no tracks yet." }}</p>
+    {{ end }}
+</main>
+<script>
+    (() => {
+        const audio = document.querySelector('#audio');
+        if (!audio) return;
+        const playlist = document.querySelector('#playlist');
+        const tracks = [...document.querySelectorAll('#playlist .track-select')];
+        const shuffleAnimations = new WeakMap();
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const currentTrack = () => tracks.find(track => track.getAttribute('aria-current') === 'true') || tracks[0];
+        const shuffleTracks = () => {
+            const originalOrder = [...tracks];
+            const cards = tracks.map(track => track.closest('.track'));
+            const previousPositions = new Map(cards.map(card => [card, card.getBoundingClientRect()]));
+            cards.forEach(card => shuffleAnimations.get(card)?.cancel());
+            for (let index = tracks.length - 1; index > 0; index -= 1) {
+                const randomIndex = Math.floor(Math.random() * (index + 1));
+                [tracks[index], tracks[randomIndex]] = [tracks[randomIndex], tracks[index]];
+            }
+            if (tracks.length > 1 && tracks.every((track, index) => track === originalOrder[index])) {
+                tracks.push(tracks.shift());
+            }
+            tracks.forEach((track, index) => {
+                playlist.append(track.closest('.track'));
+                track.querySelector('.number').textContent = index + 1;
+            });
+            if (reducedMotion.matches) return;
+            tracks.forEach(track => {
+                const card = track.closest('.track');
+                const previousPosition = previousPositions.get(card);
+                const currentPosition = card.getBoundingClientRect();
+                const offsetX = previousPosition.left - currentPosition.left;
+                const offsetY = previousPosition.top - currentPosition.top;
+                if (offsetX === 0 && offsetY === 0) return;
+                const animation = card.animate(
+                    [
+                        { transform: `translate(${offsetX}px, ${offsetY}px)` },
+                        { transform: 'translate(0, 0)' },
+                    ],
+                    { duration: 500, easing: 'cubic-bezier(.22, 1, .36, 1)' },
+                );
+                shuffleAnimations.set(card, animation);
+            });
+        };
+        const setMediaSessionMetadata = button => {
+            if (!('mediaSession' in navigator) || !('MediaMetadata' in window)) return;
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: button.dataset.title,
+                artist: button.dataset.artist,
+                album: button.dataset.album,
+                artwork: [
+                    { src: button.dataset.artwork, sizes: '512x512' },
+                ],
+            });
+        };
+        const setMediaSessionPlaybackState = () => {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
+            }
+        };
+        const setMediaSessionPosition = () => {
+            if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
+            if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+            navigator.mediaSession.setPositionState({
+                duration: audio.duration,
+                playbackRate: audio.playbackRate,
+                position: audio.currentTime,
+            });
+        };
+        const select = (button, autoplay = true) => {
+            tracks.forEach(track => track.removeAttribute('aria-current'));
+            button.setAttribute('aria-current', 'true');
+            audio.src = button.dataset.src;
+            document.querySelector('#artwork').src = button.dataset.artwork;
+            document.querySelector('#title').textContent = button.dataset.title;
+            document.querySelector('#artist').textContent = button.dataset.artist;
+            document.querySelector('#album').textContent = button.dataset.album;
+            document.title = `${button.dataset.title} — {{ .tag.label }}`;
+            setMediaSessionMetadata(button);
+            button.closest('.track').scrollIntoView({
+                behavior: reducedMotion.matches ? 'auto' : 'smooth',
+                block: 'center',
+                inline: 'nearest',
+            });
+            if (autoplay) audio.play();
+        };
+        const playNextTrack = () => {
+            const current = tracks.indexOf(currentTrack());
+            if (current + 1 < tracks.length) {
+                select(tracks[current + 1]);
+                return true;
+            }
+            return false;
+        };
+        const playPreviousTrack = () => {
+            const current = tracks.indexOf(currentTrack());
+            if (audio.currentTime > 5 || current <= 0) {
+                audio.currentTime = 0;
+                setMediaSessionPosition();
+                return true;
+            }
+            select(tracks[current - 1]);
+            return true;
+        };
+        if ('mediaSession' in navigator) {
+            const setActionHandler = (action, handler) => {
+                try {
+                    navigator.mediaSession.setActionHandler(action, handler);
+                } catch (error) {
+                    /* Some browsers expose mediaSession but not every action. */
+                }
+            };
+            setActionHandler('play', () => audio.play());
+            setActionHandler('pause', () => audio.pause());
+            setActionHandler('previoustrack', playPreviousTrack);
+            setActionHandler('nexttrack', playNextTrack);
+            setActionHandler('seekbackward', details => {
+                audio.currentTime = Math.max(audio.currentTime - (details.seekOffset || 10), 0);
+                setMediaSessionPosition();
+            });
+            setActionHandler('seekforward', details => {
+                const fallbackDuration = Number.isFinite(audio.duration) ? audio.duration : audio.currentTime;
+                audio.currentTime = Math.min(audio.currentTime + (details.seekOffset || 10), fallbackDuration);
+                setMediaSessionPosition();
+            });
+            setActionHandler('seekto', details => {
+                if (!Number.isFinite(details.seekTime)) return;
+                if (details.fastSeek && typeof audio.fastSeek === 'function') {
+                    audio.fastSeek(details.seekTime);
+                } else {
+                    audio.currentTime = details.seekTime;
+                }
+                setMediaSessionPosition();
+            });
+        }
+        setMediaSessionMetadata(currentTrack());
+        document.querySelector('#shuffle').addEventListener('click', shuffleTracks);
+        tracks.forEach(track => track.addEventListener('click', () => select(track)));
+        document.querySelectorAll('#playlist .track-play').forEach(button => {
+            button.addEventListener('click', () => select(button.closest('.track').querySelector('.track-select')));
+        });
+        audio.addEventListener('ended', () => {
+            playNextTrack();
+        });
+        audio.addEventListener('play', setMediaSessionPlaybackState);
+        audio.addEventListener('pause', setMediaSessionPlaybackState);
+        audio.addEventListener('durationchange', setMediaSessionPosition);
+        audio.addEventListener('timeupdate', setMediaSessionPosition);
+        audio.addEventListener('ratechange', setMediaSessionPosition);
+    })();
+</script>
+</body>
+</html>

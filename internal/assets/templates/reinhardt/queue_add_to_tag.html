@@ -1,0 +1,54 @@
+
+
+{{ define "head_title" }}{{ call .translate_literal "add to tag" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="queue_add_to_tag">
+    <p>{{ call .translate_literal "add queue to tag" }}</p>
+    <hr>
+    {{ if ne .added_count nil }}
+        <div class="alert alert-light">
+            {{ call .translate_literal "queue added to tag" }}: {{ .selected_tag.label }}
+            ({{ .added_count }} {{ call .translate_literal "tracks" }})
+        </div>
+    {{ end }}
+    <form method="post" action="{{ call .url "queue_add_to_tag" }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <div class="add-to-tag-choice">
+            {{ if .tags }}
+                <div class="form-check">
+                    <input id="existingtagchoice" class="form-check-input add-to-tag-choice__radio"
+                           type="radio" name="tag_choice" value="existing" checked>
+                    <label for="existingtagchoice" class="form-check-label">{{ call .translate_literal "existing tag" }}</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input id="newtagchoice" class="form-check-input add-to-tag-choice__radio"
+                           type="radio" name="tag_choice" value="new">
+                    <label for="newtagchoice" class="form-check-label">{{ call .translate_literal "new tag" }}</label>
+                </div>
+                <div class="mb-3 add-to-tag-choice__existing">
+                    <label for="taginput" class="form-label">{{ call .translate_literal "tag" }}</label>
+                    <select id="taginput" name="tag_pk" class="form-select">
+                        {{ range .tags }}
+                            <option value="{{ .pk }}">{{ .label }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+            {{ else }}
+                <input type="hidden" name="tag_choice" value="new">
+                <div class="alert alert-light">
+                    {{ call .translate_literal "you have no tags yet" }}
+                </div>
+            {{ end }}
+            <div class="mb-3 add-to-tag-choice__new">
+                <label for="newtaginput" class="form-label">{{ call .translate_literal "new tag" }}</label>
+                <input id="newtaginput" type="text" class="form-control" name="new_tag"
+                       placeholder="{{ call .translate_literal "tag name" }}">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-tags"></i> {{ call .translate_literal "add" }}
+        </button>
+    </form>
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

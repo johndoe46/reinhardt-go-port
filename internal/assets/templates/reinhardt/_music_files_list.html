@@ -1,0 +1,9 @@
+
+
+<div class="list-group list-group-flush makeMeSortable" {{ if .remove_from_tag }}data-list_pk="{{ .remove_from_tag }}"{{ end }} >
+    {{ $context1 := . }}{{ range $index1, $row1 := .music_files }}{{ with scope $context1 "music_file" $row1 "forloop" (loopInfo $index1) }}
+        <div class="list-group-item list-group-item-action dropdown{{ if .handles }} queue_item{{ end }}" id="music_files_row_{{ .music_file.pk }}" data-itempk="{{ .music_file.pk }}">
+            {{ template "reinhardt/_music_file_dropdown.html" . }}
+        </div>
+    {{ end }}{{ end }}
+</div>

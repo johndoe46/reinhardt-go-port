@@ -1,0 +1,38 @@
+
+
+
+{{ define "head_title" }}{{ .album }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="album">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item">albums</li>
+            <li class="breadcrumb-item active">
+                {{ truncate .album 25 }}
+            </li>
+        </ol>
+    </nav>
+    <hr>
+    <p><i class="bi bi-vinyl"></i> {{ .album }}</p>
+    {{ if hasManyArtists .music_files }}
+        <p><i class="bi bi-person"></i> {{ call .translate_literal "compilation, various artists" }}</p>
+        {{ template "reinhardt/_add_album_to_queue_button.html" . }}
+        {{ with scope . "hide_artist" false }}
+            {{ template "reinhardt/_music_files_list.html" . }}
+        {{ end }}
+    {{ else }}
+        {{ with scope . "first_tune" (first .music_files) }}
+            <p><i class="bi bi-person"></i> 
+                <a href="{{ call .url "artist" }}?q={{ urlencode .first_tune.artist }}">
+                    {{ .first_tune.artist }}
+                </a>
+            </p>
+            {{ template "reinhardt/_add_album_to_queue_button.html" . }}
+        {{ end }}
+        {{ with scope . "hide_artist" true }}
+            {{ template "reinhardt/_music_files_list.html" . }}
+        {{ end }}
+    {{ end }}
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

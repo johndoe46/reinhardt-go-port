@@ -1,0 +1,736 @@
+{
+  "%(Count)d of %(Total)d users. Press n to create an account.": {
+    "one": "{{.Count}} of {{.Total}} user. Press n to create an account.",
+    "other": "{{.Count}} of {{.Total}} users. Press n to create an account."
+  },
+  "/ search  f refresh  d delete account  q/Esc quit  Ctrl-C quit": {
+    "other": "/ search  f refresh  d delete account  q/Esc quit  Ctrl-C quit"
+  },
+  "Account deleted, but refreshing the user list failed: %(Error)s": {
+    "other": "Account deleted, but refreshing the user list failed: {{.Error}}"
+  },
+  "Account no longer exists. Refresh the user list.": {
+    "other": "Account no longer exists. Refresh the user list."
+  },
+  "Account saved. Press l to view its login link.": {
+    "other": "Account saved. Press l to view its login link."
+  },
+  "Active": {
+    "other": "Active"
+  },
+  "Add %(title)s to radio favorites": {
+    "other": "Add {{.Title}} to radio favorites"
+  },
+  "Add station": {
+    "other": "Add station"
+  },
+  "Administrator": {
+    "other": "Administrator"
+  },
+  "Albums from": {
+    "other": "Albums from"
+  },
+  "All countries": {
+    "other": "All countries"
+  },
+  "Are you sure ?": {
+    "other": "Are you sure ?"
+  },
+  "Butterchurn is unavailable. Showing waveform.": {
+    "other": "Butterchurn is unavailable. Showing waveform."
+  },
+  "Cancel": {
+    "other": "Cancel"
+  },
+  "Close": {
+    "other": "Close"
+  },
+  "Close full screen player": {
+    "other": "Close full screen player"
+  },
+  "Confirm permanent deletion": {
+    "other": "Confirm permanent deletion"
+  },
+  "Connecting…": {
+    "other": "Connecting…"
+  },
+  "Could not fetch video details. Enter them manually.": {
+    "other": "Could not fetch video details. Enter them manually."
+  },
+  "Country": {
+    "other": "Country"
+  },
+  "Database: %(Path)s": {
+    "other": "Database: {{.Path}}"
+  },
+  "Default stations from radio-playlists. Changes apply only to your account.": {
+    "other": "Default stations from radio-playlists. Changes apply only to your account."
+  },
+  "Delete": {
+    "other": "Delete"
+  },
+  "Delete account": {
+    "other": "Delete account"
+  },
+  "Deleted account %(Username)s.": {
+    "other": "Deleted account {{.Username}}."
+  },
+  "Download %(title)s": {
+    "other": "Download {{.Title}}"
+  },
+  "Download all": {
+    "other": "Download all"
+  },
+  "Edit": {
+    "other": "Edit"
+  },
+  "Edit %(Username)s": {
+    "other": "Edit {{.Username}}"
+  },
+  "Edit station": {
+    "other": "Edit station"
+  },
+  "Email": {
+    "other": "Email"
+  },
+  "Email label": {
+    "other": "email:"
+  },
+  "Enter a public HTTP or HTTPS stream URL without credentials.": {
+    "other": "Enter a public HTTP or HTTPS stream URL without credentials."
+  },
+  "Enter a station name and country within the length limits.": {
+    "other": "Enter a station name and country within the length limits."
+  },
+  "Enter a valid email address.": {
+    "other": "Enter a valid email address."
+  },
+  "Favorites only": {
+    "other": "Favorites only"
+  },
+  "First name": {
+    "other": "First name"
+  },
+  "Full screen player (F)": {
+    "other": "Full screen player (F)"
+  },
+  "If an account exists for that email, an invite link has been sent.": {
+    "other": "If an account exists for that email, an invite link has been sent."
+  },
+  "Inactive accounts cannot sign in; saving signs them out.": {
+    "other": "Inactive accounts cannot sign in; saving signs them out."
+  },
+  "LIVE": {
+    "other": "LIVE"
+  },
+  "Language": {
+    "other": "Language"
+  },
+  "Language changes take full effect after a full page refresh.": {
+    "other": "Language changes take full effect after a full page refresh."
+  },
+  "Last name": {
+    "other": "Last name"
+  },
+  "Live radio": {
+    "other": "Live radio"
+  },
+  "Loading visualization…": {
+    "other": "Loading visualization…"
+  },
+  "Login link for %(Username)s:\n\n%(URL)s\n\nShare this link privately.": {
+    "other": "Login link for {{.Username}}:\n\n{{.URL}}\n\nShare this link privately."
+  },
+  "Looking up video details…": {
+    "other": "Looking up video details…"
+  },
+  "Music player": {
+    "other": "Music player"
+  },
+  "New user": {
+    "other": "New user"
+  },
+  "Next": {
+    "other": "Next"
+  },
+  "Next effect": {
+    "other": "Next effect"
+  },
+  "Next track": {
+    "other": "Next track"
+  },
+  "No stations found.": {
+    "other": "No stations found."
+  },
+  "Nothing playing": {
+    "other": "Nothing playing"
+  },
+  "Now playing": {
+    "other": "Now playing"
+  },
+  "Operation failed: %(Error)s": {
+    "other": "Operation failed: {{.Error}}"
+  },
+  "Permanently delete %(Username)s?": {
+    "other": "Permanently delete {{.Username}}?"
+  },
+  "Play": {
+    "other": "Play"
+  },
+  "Play %(title)s": {
+    "other": "Play {{.Title}}"
+  },
+  "Playing": {
+    "other": "Playing"
+  },
+  "Previous": {
+    "other": "Previous"
+  },
+  "Radio": {
+    "other": "Radio"
+  },
+  "Reconnecting…": {
+    "other": "Reconnecting…"
+  },
+  "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device.": {
+    "other": "Reinhardt is a web based audio streaming application, allowing you to access your music from anywhere, using almost any internet enabled device."
+  },
+  "Reinhardt user management": {
+    "other": "Reinhardt user management"
+  },
+  "Remove %(title)s from radio favorites": {
+    "other": "Remove {{.Title}} from radio favorites"
+  },
+  "Remove station %(title)s?": {
+    "other": "Remove station {{.Title}}?"
+  },
+  "Remove this shared link?": {
+    "other": "Remove this shared link?"
+  },
+  "Reset link": {
+    "other": "Reset link"
+  },
+  "Reset the login link for %(Username)s?\n\nThe previous link will stop working and all current sessions will be signed out.": {
+    "other": "Reset the login link for {{.Username}}?\n\nThe previous link will stop working and all current sessions will be signed out."
+  },
+  "Return to queue": {
+    "other": "Return to queue"
+  },
+  "Save": {
+    "other": "Save"
+  },
+  "Search": {
+    "other": "Search"
+  },
+  "Search for artwork on Google Images": {
+    "other": "Search for artwork on Google Images"
+  },
+  "Search stations": {
+    "other": "Search stations"
+  },
+  "Send login link": {
+    "other": "Send login link"
+  },
+  "Server default": {
+    "other": "Server default"
+  },
+  "Shared playlist": {
+    "other": "Shared playlist"
+  },
+  "Show oscilloscope in player": {
+    "other": "Show oscilloscope in player"
+  },
+  "Shuffle": {
+    "other": "Shuffle"
+  },
+  "Signed in as": {
+    "other": "Signed in as"
+  },
+  "Similar artists": {
+    "other": "Similar artists"
+  },
+  "Station name": {
+    "other": "Station name"
+  },
+  "Station pages": {
+    "other": "Station pages"
+  },
+  "Station unavailable. Press Play to retry.": {
+    "other": "Station unavailable. Press Play to retry."
+  },
+  "Stop": {
+    "other": "Stop"
+  },
+  "Stopped": {
+    "other": "Stopped"
+  },
+  "Stream URL": {
+    "other": "Stream URL"
+  },
+  "Tab/Shift-Tab move · Space toggles · Esc cancels": {
+    "other": "Tab/Shift-Tab move · Space toggles · Esc cancels"
+  },
+  "Tags for": {
+    "other": "Tags for"
+  },
+  "The image will be copied next to the track and named after the audio file.": {
+    "other": "The image will be copied next to the track and named after the audio file."
+  },
+  "The image will be copied next to the track with its original filename.": {
+    "other": "The image will be copied next to the track with its original filename."
+  },
+  "The previous link and all existing sessions have been revoked.": {
+    "other": "The previous link and all existing sessions have been revoked."
+  },
+  "This account is inactive. Enable Active before using the link.": {
+    "other": "This account is inactive. Enable Active before using the link."
+  },
+  "This field is required.": {
+    "other": "This field is required."
+  },
+  "This playlist has no tracks yet.": {
+    "other": "This playlist has no tracks yet."
+  },
+  "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone.": {
+    "other": "This removes the account, login link, sessions, preferences, queue, favorites, and playlists. This cannot be undone."
+  },
+  "Toggle full screen": {
+    "other": "Toggle full screen"
+  },
+  "Type the exact username below to confirm.": {
+    "other": "Type the exact username below to confirm."
+  },
+  "Unsupported language": {
+    "other": "Unsupported language"
+  },
+  "Upload": {
+    "other": "Upload"
+  },
+  "Use a direct HTTP or HTTPS audio stream. Playlist files and HLS are not supported.": {
+    "other": "Use a direct HTTP or HTTPS audio stream. Playlist files and HLS are not supported."
+  },
+  "Use this link to log in: %(url)s": {
+    "other": "Use this link to log in: {{.URL}}"
+  },
+  "Username": {
+    "other": "Username"
+  },
+  "Users": {
+    "other": "Users"
+  },
+  "Visualization": {
+    "other": "Visualization"
+  },
+  "Waveform": {
+    "other": "Waveform"
+  },
+  "You don't have any favorite... yet.": {
+    "other": "You don't have any favorite... yet."
+  },
+  "You don't have any tracks here... yet.": {
+    "other": "You don't have any tracks here... yet."
+  },
+  "Your Reinhardt login link": {
+    "other": "Your Reinhardt login link"
+  },
+  "Your search generated a large number of results. Results shown here are limited to the first 1000 items.": {
+    "other": "Your search generated a large number of results. Results shown here are limited to the first 1000 items."
+  },
+  "Youtube Rip": {
+    "other": "Youtube Rip"
+  },
+  "Youtube URL": {
+    "other": "Youtube URL"
+  },
+  "account has changed; refresh the user list before deleting it": {
+    "other": "account has changed; refresh the user list before deleting it"
+  },
+  "activate autofeed": {
+    "other": "activate autofeed"
+  },
+  "add": {
+    "other": "add"
+  },
+  "add a tag": {
+    "other": "add a tag"
+  },
+  "add all to queue": {
+    "other": "add all to queue"
+  },
+  "add artist to tag": {
+    "other": "add artist to tag"
+  },
+  "add queue to tag": {
+    "other": "add queue to tag"
+  },
+  "add search results to tag": {
+    "other": "add search results to tag"
+  },
+  "add to favorites": {
+    "other": "add to favorites"
+  },
+  "add to queue": {
+    "other": "add to queue"
+  },
+  "add to tag": {
+    "other": "add to tag"
+  },
+  "added": {
+    "other": "added"
+  },
+  "album": {
+    "other": "album"
+  },
+  "albums": {
+    "other": "albums"
+  },
+  "albums containing": {
+    "other": "albums containing"
+  },
+  "artist": {
+    "other": "artist"
+  },
+  "artist added to tag": {
+    "other": "artist added to tag"
+  },
+  "artists": {
+    "other": "artists"
+  },
+  "artists containing": {
+    "other": "artists containing"
+  },
+  "artwork": {
+    "other": "artwork"
+  },
+  "autofeed": {
+    "other": "autofeed"
+  },
+  "autofeed activated": {
+    "other": "autofeed activated"
+  },
+  "autofeed deactivated": {
+    "other": "autofeed deactivated"
+  },
+  "autofeed similar": {
+    "other": "autofeed similar"
+  },
+  "by": {
+    "other": "by"
+  },
+  "clear": {
+    "other": "clear"
+  },
+  "comment": {
+    "other": "comment"
+  },
+  "compilation, various artists": {
+    "other": "compilation, various artists"
+  },
+  "current artwork": {
+    "other": "current artwork"
+  },
+  "date.am": {
+    "other": "a.m."
+  },
+  "date.clock": {
+    "other": "{{.Hour12}}{{if .Minute}}:{{printf \"%02d\" .Minute}}{{end}} {{.Period}}"
+  },
+  "date.clock.midnight": {
+    "other": "midnight"
+  },
+  "date.clock.noon": {
+    "other": "noon"
+  },
+  "date.format": {
+    "other": "{{.Month}} {{.Day}}, {{.Year}}, {{.Clock}}"
+  },
+  "date.month.1": {
+    "other": "Jan."
+  },
+  "date.month.10": {
+    "other": "Oct."
+  },
+  "date.month.11": {
+    "other": "Nov."
+  },
+  "date.month.12": {
+    "other": "Dec."
+  },
+  "date.month.2": {
+    "other": "Feb."
+  },
+  "date.month.3": {
+    "other": "March"
+  },
+  "date.month.4": {
+    "other": "April"
+  },
+  "date.month.5": {
+    "other": "May"
+  },
+  "date.month.6": {
+    "other": "June"
+  },
+  "date.month.7": {
+    "other": "July"
+  },
+  "date.month.8": {
+    "other": "Aug."
+  },
+  "date.month.9": {
+    "other": "Sept."
+  },
+  "date.pm": {
+    "other": "p.m."
+  },
+  "deactivate autofeed": {
+    "other": "deactivate autofeed"
+  },
+  "details": {
+    "other": "details"
+  },
+  "download": {
+    "other": "download"
+  },
+  "download database": {
+    "other": "download database"
+  },
+  "email": {
+    "other": "email"
+  },
+  "empty request": {
+    "other": "empty request"
+  },
+  "existing tag": {
+    "other": "existing tag"
+  },
+  "explorer": {
+    "other": "explorer"
+  },
+  "failed downloads": {
+    "other": "failed downloads"
+  },
+  "failure": {
+    "other": "failure"
+  },
+  "favorites": {
+    "other": "favorites"
+  },
+  "friend tag": {
+    "other": "friend tag"
+  },
+  "friends": {
+    "other": "friends"
+  },
+  "friends lists": {
+    "other": "friends lists"
+  },
+  "from": {
+    "other": "from"
+  },
+  "generate share link": {
+    "other": "generate share link"
+  },
+  "genre": {
+    "other": "genre"
+  },
+  "genres": {
+    "other": "genres"
+  },
+  "genres containing": {
+    "other": "genres containing"
+  },
+  "home": {
+    "other": "home"
+  },
+  "invalid image": {
+    "other": "invalid image"
+  },
+  "language_name": {
+    "other": "English"
+  },
+  "latest additions": {
+    "other": "latest additions"
+  },
+  "login": {
+    "other": "login"
+  },
+  "manage tags": {
+    "other": "manage tags"
+  },
+  "more from same album": {
+    "other": "more from same album"
+  },
+  "more from same artist": {
+    "other": "more from same artist"
+  },
+  "more from same genre": {
+    "other": "more from same genre"
+  },
+  "new tag": {
+    "other": "new tag"
+  },
+  "next": {
+    "other": "next"
+  },
+  "no": {
+    "other": "no"
+  },
+  "no failed downloads": {
+    "other": "no failed downloads"
+  },
+  "no results": {
+    "other": "no results"
+  },
+  "not enough data": {
+    "other": "not enough data"
+  },
+  "open share link": {
+    "other": "open share link"
+  },
+  "play now": {
+    "other": "play now"
+  },
+  "player": {
+    "other": "player"
+  },
+  "preferences": {
+    "other": "preferences"
+  },
+  "queue": {
+    "other": "queue"
+  },
+  "queue added to tag": {
+    "other": "queue added to tag"
+  },
+  "radio_station_count": {
+    "one": "{{.Count}} station",
+    "other": "{{.Count}} stations"
+  },
+  "refresh": {
+    "other": "refresh"
+  },
+  "remove": {
+    "other": "remove"
+  },
+  "remove from favorites": {
+    "other": "remove from favorites"
+  },
+  "remove from queue": {
+    "other": "remove from queue"
+  },
+  "remove from tag": {
+    "other": "remove from tag"
+  },
+  "remove shared link": {
+    "other": "remove shared link"
+  },
+  "removed": {
+    "other": "removed"
+  },
+  "rename": {
+    "other": "rename"
+  },
+  "results": {
+    "other": "results"
+  },
+  "retries": {
+    "other": "retries"
+  },
+  "retry": {
+    "other": "retry"
+  },
+  "saved": {
+    "other": "saved"
+  },
+  "search": {
+    "other": "search"
+  },
+  "search results": {
+    "other": "search results"
+  },
+  "search results added to tag": {
+    "other": "search results added to tag"
+  },
+  "see queue": {
+    "other": "see queue"
+  },
+  "see tracks": {
+    "other": "see tracks"
+  },
+  "send": {
+    "other": "send"
+  },
+  "share link": {
+    "other": "share link"
+  },
+  "show art": {
+    "other": "show art"
+  },
+  "tag": {
+    "other": "tag"
+  },
+  "tag already exists": {
+    "other": "tag already exists"
+  },
+  "tag name": {
+    "other": "tag name"
+  },
+  "tag name is empty": {
+    "other": "tag name is empty"
+  },
+  "tags": {
+    "other": "tags"
+  },
+  "title": {
+    "other": "title"
+  },
+  "toggle player": {
+    "other": "toggle player"
+  },
+  "track": {
+    "other": "track"
+  },
+  "track image": {
+    "other": "track image"
+  },
+  "tracks": {
+    "other": "tracks"
+  },
+  "tracks containing": {
+    "other": "tracks containing"
+  },
+  "unknown album": {
+    "other": "unknown album"
+  },
+  "unknown artist": {
+    "other": "unknown artist"
+  },
+  "unknown genre": {
+    "other": "unknown genre"
+  },
+  "updated": {
+    "other": "updated"
+  },
+  "username %(Username)s already exists": {
+    "other": "username {{.Username}} already exists"
+  },
+  "username is required": {
+    "other": "username is required"
+  },
+  "username must be at most 150 characters": {
+    "other": "username must be at most 150 characters"
+  },
+  "year": {
+    "other": "year"
+  },
+  "yes": {
+    "other": "yes"
+  },
+  "you have no tags yet": {
+    "other": "you have no tags yet"
+  },
+  "↑/↓ select  Enter/e edit  n new  l login link  r reset link": {
+    "other": "↑/↓ select  Enter/e edit  n new  l login link  r reset link"
+  }
+}

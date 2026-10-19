@@ -1,0 +1,36 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "friends lists" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="friends">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item active">{{ call .translate_literal "friends lists" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ $context1 := . }}{{ range $index1, $row1 := .friends }}{{ with scope $context1 "friend" $row1 "forloop" (loopInfo $index1) }}
+        <div>
+            <h5><i class="bi bi-person"></i> {{ .friend.user.username }}</h5>
+            <div class="list-group">
+            {{ $context2 := . }}{{ range $index2, $row2 := .friend.tags }}{{ with scope $context2 "tag" $row2 "forloop" (loopInfo $index2) }}
+                <div class="list-group-item d-flex align-items-center justify-content-between gap-3 ps-4">
+                    <a href="{{ call .url "friend_tag" }}?tag={{ .tag.pk }}" class="flex-grow-1 text-decoration-none">
+                        {{ call .translate .tag.label }}
+                    </a>
+                    {{ if .tag.is_shared }}
+                        <a href="{{ call .url "shared_tag" .tag.pk .tag.share_hash }}"
+                           class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">
+                            <i class="bi bi-share"></i> {{ call .translate_literal "open share link" }}
+                        </a>
+                    {{ end }}
+                </div>
+            {{ end }}{{ end }}
+            </div>
+        </div>
+    {{ end }}{{ end }}
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

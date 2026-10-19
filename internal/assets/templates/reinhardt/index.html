@@ -1,0 +1,25 @@
+
+
+{{ define "head_title" }}{{ call .translate_literal "home" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="home">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a> Reinhardt</li>
+        </ol>
+    </nav>
+    <hr>
+    <p>
+        Affichez vos <a href="{{ call .url "favorites" }}">favoris</a>,
+        <a href="{{ call .url "artists" }}">l'index des artistes</a>,
+        celui des <a href="{{ call .url "genres" }}">genres</a>,
+        <a href="{{ call .url "tags" }}">vos étiquettes</a>
+        ou <a href="{{ call .url "friends" }}">celles de vos amis</a>.
+    </p>
+    <hr>
+    <div>
+    <p>{{ call .translate_literal "latest additions" }} :</p>
+    {{ template "reinhardt/_music_files_list.html" . }}
+    </div>
+{{ end }}
+{{ template "reinhardt/_base.html" . }}

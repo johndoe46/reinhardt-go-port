@@ -1,0 +1,62 @@
+
+
+
+{{ define "head_title" }}{{ .music_file }}{{ end }}
+{{ define "main" }}
+<input type="hidden" id="page_context" name="page_context" value="track_details">
+{{ if .message }}
+    <div class="alert alert-info">
+        {{ call .translate .message }}
+    </div>
+{{ end }}
+<form method="post" enctype="multipart/form-data" action="{{ call .url "track_details_modal" .music_file.pk }}">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+    <div class="mb-3 text-center">
+        <label class="form-label d-block" for="discoveredartwork">{{ call .translate_literal "current artwork" }}</label>
+        <img id="discoveredartwork" class="img-fluid rounded" style="max-width: 512px"
+             src="{{ call .url "artwork" .music_file.pk 512 }}"
+             alt="{{ call .translate_literal "current artwork" }}">
+    </div>
+    <div class="mb-3">
+        <label for="artistinput" class="form-label">{{ call .translate_literal "artist" }}</label>
+        <input {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="artistinput" name="artist" required value="{{ .music_file.artist }}">
+    </div>
+    <div class="mb-3">
+        <label for="titleinput" class="form-label">{{ call .translate_literal "title" }}</label>
+        <input {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="titleinput" name="title" required value="{{ .music_file.title }}">
+    </div>
+    <div class="mb-3">
+        <label for="albuminput" class="form-label">{{ call .translate_literal "album" }}</label>
+        <input {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="albuminput" name="album" value="{{ .music_file.album }}">
+    </div>
+    <div class="mb-3">
+        <label for="genreinput" class="form-label">{{ call .translate_literal "genre" }}</label>
+        <input {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="genreinput" name="genre" value="{{ .music_file.genre }}">
+    </div>
+    <div class="mb-3">
+        <label for="yearinput" class="form-label">{{ call .translate_literal "year" }}</label>
+        <input {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="yearinput" name="year" value="{{ .music_file.year }}">
+    </div>
+    <div class="mb-3">
+        <label for="commentinput" class="form-label">{{ call .translate_literal "comment" }}</label>
+        <textarea {{ if not .request.user.is_superuser }}disabled{{ end }} type="text" class="form-control" id="commentinput" name="comment">{{ .music_file.comment }}</textarea>
+    </div>
+    {{ if .request.user.is_superuser }}
+    <div class="mb-3">
+        <label for="trackimageinput" class="form-label">{{ call .translate_literal "track image" }}</label>
+        <input type="file" class="form-control" id="trackimageinput" name="track_image" accept="image/*">
+        <div class="form-text">{{ call .translate_literal "The image will be copied next to the track and named after the audio file." }}</div>
+        <div class="form-text">
+            <a id="track-artwork-search"
+               href="https://www.google.com/search?tbm=isch&amp;q={{ urlencode .music_file.artist }}%20{{ urlencode .music_file.title }}%20{{ urlencode .music_file.album }}"
+               target="_blank" rel="noopener noreferrer">
+                {{ call .translate_literal "Search for artwork on Google Images" }}
+            </a>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ call .translate_literal "send" }}</button>
+    {{ end }}
+</form>
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}

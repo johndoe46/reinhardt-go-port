@@ -1,0 +1,42 @@
+<dialog id="fullscreen-player" class="fullscreen-player" aria-labelledby="fullscreen-title">
+    <canvas class="fullscreen-player__scope" aria-hidden="true"></canvas>
+    <header class="fullscreen-player__header">
+        <span>Reinhardt <span class="fullscreen-player__divider">/</span> {{ call .translate_literal "Now playing" }}</span>
+        <button type="button" class="fullscreen-player__close" autofocus
+                aria-label="{{ call .translate_literal "Close full screen player" }}">
+            <span>{{ call .translate_literal "Close" }} <kbd>Esc</kbd></span>
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </header>
+    <section class="fullscreen-player__track" aria-live="polite" aria-atomic="true">
+        <div class="fullscreen-player__sleeve">
+            <i class="bi bi-vinyl fullscreen-player__placeholder" aria-hidden="true"></i>
+            <img class="fullscreen-player__artwork" alt="" hidden>
+        </div>
+        <div class="fullscreen-player__metadata">
+            <p class="fullscreen-player__artist"></p>
+            <h1 id="fullscreen-title" class="fullscreen-player__title">{{ call .translate_literal "Nothing playing" }}</h1>
+            <p class="fullscreen-player__album"></p>
+        </div>
+    </section>
+    <div class="fullscreen-player__bottom">
+        <div class="fullscreen-player__options">
+            <span class="fullscreen-player__hint"><kbd>F</kbd> {{ call .translate_literal "Toggle full screen" }}</span>
+            <div class="fullscreen-player__visualization">
+                <label for="fullscreen-visualization">{{ call .translate_literal "Visualization" }}</label>
+                <select id="fullscreen-visualization">
+                    <option value="waveform" selected>{{ call .translate_literal "Waveform" }}</option>
+                    <option value="butterchurn">Butterchurn</option>
+                </select>
+                <button type="button" class="fullscreen-player__effect" hidden>{{ call .translate_literal "Next effect" }}</button>
+            </div>
+            <span class="fullscreen-player__status" role="status"
+                  data-loading="{{ call .translate_literal "Loading visualization…" }}"
+                  data-unavailable="{{ call .translate_literal "Butterchurn is unavailable. Showing waveform." }}"></span>
+        </div>
+        <button type="button" class="fullscreen-player__next" aria-keyshortcuts="n">
+            <span>{{ call .translate_literal "Next track" }} <kbd>N</kbd></span>
+            <svg viewBox="0 0 64 32" aria-hidden="true"><path d="M2 16h57M46 3l13 13-13 13"/></svg>
+        </button>
+    </div>
+</dialog>

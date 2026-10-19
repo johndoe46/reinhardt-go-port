@@ -1,0 +1,65 @@
+
+
+
+{{ define "head_title" }}{{ call .translate_literal "Youtube Rip" }}{{ end }}
+{{ define "main" }}
+    <input type="hidden" id="page_context" name="page_context" value="ytrip">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ call .url "index" }}"><i class="bi bi-house"></i></a></li>
+            <li class="breadcrumb-item">{{ call .translate_literal "Youtube Rip" }}</li>
+        </ol>
+    </nav>
+    <hr>
+    {{ if .request.user.is_superuser }}
+        <p>
+            <a class="btn btn-outline-secondary" href="{{ call .url "ytrip_failures" }}">
+                <i class="bi bi-exclamation-triangle"></i>
+                {{ call .translate_literal "failed downloads" }}
+            </a>
+        </p>
+    {{ end }}
+    {{ if .message }}
+        <div class="alert alert-info">
+            {{ call .translate .message }}
+        </div>
+    {{ end }}
+    <form id="ytrip-form" method="post" action="{{ call .url "ytrip" }}"
+          data-metadata-url="{{ call .url "ytrip_metadata" }}"
+          data-lookup-loading="{{ call .translate_literal "Looking up video details…" }}"
+          data-lookup-failed="{{ call .translate_literal "Could not fetch video details. Enter them manually." }}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <div class="mb-3">
+            <label for="urlinput" class="form-label">{{ call .translate_literal "Youtube URL" }}</label>
+            <input type="url" class="form-control" id="urlinput" name="url" required>
+            <div class="form-text" role="status" aria-live="polite" data-lookup-status></div>
+        </div>
+        <div class="mb-3">
+            <label for="artistinput" class="form-label">{{ call .translate_literal "artist" }}</label>
+            <input type="text" class="form-control" id="artistinput" name="artist" required>
+        </div>
+        <div class="mb-3">
+            <label for="titleinput" class="form-label">{{ call .translate_literal "title" }}</label>
+            <input type="text" class="form-control" id="titleinput" name="title" required>
+        </div>
+        <div class="mb-3">
+            <label for="albuminput" class="form-label">{{ call .translate_literal "album" }}</label>
+            <input type="text" class="form-control" id="albuminput" name="album">
+        </div>
+        <div class="mb-3">
+            <label for="genreinput" class="form-label">{{ call .translate_literal "genre" }}</label>
+            <input type="text" class="form-control" id="genreinput" name="genre">
+        </div>
+        <div class="mb-3">
+            <label for="yearinput" class="form-label">{{ call .translate_literal "year" }}</label>
+            <input type="text" class="form-control" id="yearinput" name="year">
+        </div>
+        <div class="mb-3">
+            <label for="commentinput" class="form-label">{{ call .translate_literal "comment" }}</label>
+            <textarea class="form-control" id="commentinput" name="comment"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">{{ call .translate_literal "send" }}</button>
+    </form>
+{{ end }}
+
+{{ template "reinhardt/_base.html" . }}
