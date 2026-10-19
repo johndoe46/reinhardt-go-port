@@ -7,66 +7,67 @@
             <a class="btn btn-outline-primary" href="{{ call .url "radio_new" }}">{{ call .translate_literal "Add station" }}</a>
         {{ end }}
     </div>
-    <form method="get" action="{{ call .url "radio" }}" class="row g-2 mb-3 align-items-end" up-target="main">
+    <form method="get" action="{{ call .url "radio" }}" class="row g-2 mb-3 align-items-end" up-target="#radio-results">
         <div class="col-sm">
             <label class="form-label" for="radio-search">{{ call .translate_literal "Search stations" }}</label>
-            <input id="radio-search" class="form-control" type="search" name="q" value="{{ .radio_query }}">
+            <input id="radio-search" class="form-control" type="search" name="q" value="{{ .radio_query }}" up-autosubmit up-watch-event="keyup change">
         </div>
         <div class="col-sm">
             <label class="form-label" for="radio-country">{{ call .translate_literal "Country" }}</label>
-            <select id="radio-country" class="form-select" name="country">
+            <select id="radio-country" class="form-select" name="country" up-autosubmit>
                 <option value="">{{ call .translate_literal "All countries" }}</option>
                 {{ range .countries }}<option value="{{ .country }}" {{ if eq .country $.country }}selected{{ end }}>{{ .country }}</option>{{ end }}
             </select>
         </div>
         <div class="col-sm-auto align-self-end pb-2">
             <div class="form-check">
-                <input id="radio-favorites" class="form-check-input" type="checkbox" name="favorites" value="1" {{ if .radio_favorites }}checked{{ end }}>
+                <input id="radio-favorites" class="form-check-input" type="checkbox" up-autosubmit name="favorites" value="1" {{ if .radio_favorites }}checked{{ end }}>
                 <label class="form-check-label" for="radio-favorites">{{ call .translate_literal "Favorites only" }}</label>
             </div>
         </div>
-        <div class="col-sm-auto align-self-end"><button class="btn btn-outline-secondary" type="submit">{{ call .translate_literal "search" }}</button></div>
     </form>
-    <p class="text-body-secondary">{{ call .localize "radio_station_count" (dict "Count" .station_total) .station_total }}</p>
-    <ul class="list-group mb-3">
-    {{ range .stations }}
-        <li class="list-group-item d-flex flex-wrap align-items-center gap-2 ps-3">
-            <form method="post" action="{{ call $.url "radio_play" .id }}" up-target="#now_playing" up-history="false">
-                <input type="hidden" name="csrfmiddlewaretoken" value="{{ $.csrf_token }}">
-                <button type="submit" class="btn btn-outline-primary" aria-label="{{ call $.translate_format "Play %(title)s" .name }}"><i class="bi bi-play-fill" aria-hidden="true"></i></button>
-            </form>
-            <div class="flex-grow-1" style="min-width:0"><strong class="text-break">{{ .name }}</strong><br><span class="small text-body-secondary">{{ .country }}</span></div>
-            <form method="post" action="{{ call $.url "radio_favorite" .id }}" up-target="main" up-history="false">
-                <input type="hidden" name="csrfmiddlewaretoken" value="{{ $.csrf_token }}">
-                <input type="hidden" name="favorite" value="{{ if .is_favorite }}0{{ else }}1{{ end }}">
-                <input type="hidden" name="q" value="{{ $.radio_query }}">
-                <input type="hidden" name="country" value="{{ $.country }}">
-                <input type="hidden" name="favorites" value="{{ if $.radio_favorites }}1{{ else }}0{{ end }}">
-                <input type="hidden" name="page" value="{{ $.radio_page }}">
-                <button type="submit" class="btn btn-sm {{ if .is_favorite }}btn-outline-danger{{ else }}btn-outline-secondary{{ end }}"
-                        aria-pressed="{{ if .is_favorite }}true{{ else }}false{{ end }}"
-                        aria-label="{{ if .is_favorite }}{{ call $.translate_format "Remove %(title)s from radio favorites" .name }}{{ else }}{{ call $.translate_format "Add %(title)s to radio favorites" .name }}{{ end }}"
-                        title="{{ if .is_favorite }}{{ call $.translate_format "Remove %(title)s from radio favorites" .name }}{{ else }}{{ call $.translate_format "Add %(title)s to radio favorites" .name }}{{ end }}">
-                    <i class="bi {{ if .is_favorite }}bi-heart-fill{{ else }}bi-heart{{ end }}" aria-hidden="true"></i>
-                </button>
-            </form>
-            {{ if $.request.user.is_superuser }}
-                <a class="btn btn-sm btn-outline-secondary" href="{{ call $.url "radio_edit" .id }}">{{ call $.translate_literal "Edit" }}</a>
-                <form method="post" action="{{ call $.url "radio_delete" .id }}" up-target="main, #now_playing" up-history="false"
-                      up-confirm="{{ call $.translate_format "Remove station %(title)s?" .name }}">
+    <div id="radio-results">
+        <p class="text-body-secondary">{{ call .localize "radio_station_count" (dict "Count" .station_total) .station_total }}</p>
+        <ul class="list-group mb-3">
+        {{ range .stations }}
+            <li class="list-group-item d-flex flex-wrap align-items-center gap-2 ps-3">
+                <form method="post" action="{{ call $.url "radio_play" .id }}" up-target="#now_playing" up-history="false">
                     <input type="hidden" name="csrfmiddlewaretoken" value="{{ $.csrf_token }}">
-                    <button type="submit" class="btn btn-sm btn-outline-danger">{{ call $.translate_literal "Delete" }}</button>
+                    <button type="submit" class="btn btn-outline-primary" aria-label="{{ call $.translate_format "Play %(title)s" .name }}"><i class="bi bi-play-fill" aria-hidden="true"></i></button>
                 </form>
-            {{ end }}
-        </li>
-    {{ else }}
-        <li class="list-group-item">{{ call .translate_literal "No stations found." }}</li>
-    {{ end }}
-    </ul>
-    <nav class="d-flex justify-content-between" aria-label="{{ call .translate_literal "Station pages" }}">
-        <span>{{ if .previous_page }}<a class="btn btn-outline-secondary" href="{{ .previous_page }}">{{ call .translate_literal "Previous" }}</a>{{ end }}</span>
-        {{ if .next_page }}<a class="btn btn-outline-secondary" href="{{ .next_page }}">{{ call .translate_literal "Next" }}</a>{{ end }}
-    </nav>
+                <div class="flex-grow-1" style="min-width:0"><strong class="text-break">{{ .name }}</strong><br><span class="small text-body-secondary">{{ .country }}</span></div>
+                <form method="post" action="{{ call $.url "radio_favorite" .id }}" up-target="main" up-history="false">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ $.csrf_token }}">
+                    <input type="hidden" name="favorite" value="{{ if .is_favorite }}0{{ else }}1{{ end }}">
+                    <input type="hidden" name="q" value="{{ $.radio_query }}">
+                    <input type="hidden" name="country" value="{{ $.country }}">
+                    <input type="hidden" name="favorites" value="{{ if $.radio_favorites }}1{{ else }}0{{ end }}">
+                    <input type="hidden" name="page" value="{{ $.radio_page }}">
+                    <button type="submit" class="btn btn-sm {{ if .is_favorite }}btn-outline-danger{{ else }}btn-outline-secondary{{ end }}"
+                            aria-pressed="{{ if .is_favorite }}true{{ else }}false{{ end }}"
+                            aria-label="{{ if .is_favorite }}{{ call $.translate_format "Remove %(title)s from radio favorites" .name }}{{ else }}{{ call $.translate_format "Add %(title)s to radio favorites" .name }}{{ end }}"
+                            title="{{ if .is_favorite }}{{ call $.translate_format "Remove %(title)s from radio favorites" .name }}{{ else }}{{ call $.translate_format "Add %(title)s to radio favorites" .name }}{{ end }}">
+                        <i class="bi {{ if .is_favorite }}bi-heart-fill{{ else }}bi-heart{{ end }}" aria-hidden="true"></i>
+                    </button>
+                </form>
+                {{ if $.request.user.is_superuser }}
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ call $.url "radio_edit" .id }}">{{ call $.translate_literal "Edit" }}</a>
+                    <form method="post" action="{{ call $.url "radio_delete" .id }}" up-target="main, #now_playing" up-history="false"
+                          up-confirm="{{ call $.translate_format "Remove station %(title)s?" .name }}">
+                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ $.csrf_token }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">{{ call $.translate_literal "Delete" }}</button>
+                    </form>
+                {{ end }}
+            </li>
+        {{ else }}
+            <li class="list-group-item">{{ call .translate_literal "No stations found." }}</li>
+        {{ end }}
+        </ul>
+        <nav class="d-flex justify-content-between" aria-label="{{ call .translate_literal "Station pages" }}">
+            <span>{{ if .previous_page }}<a class="btn btn-outline-secondary" up-target="#radio-results" href="{{ .previous_page }}">{{ call .translate_literal "Previous" }}</a>{{ end }}</span>
+            {{ if .next_page }}<a class="btn btn-outline-secondary" up-target="#radio-results" href="{{ .next_page }}">{{ call .translate_literal "Next" }}</a>{{ end }}
+        </nav>
+    </div>
     <p class="small text-body-secondary mt-4">{{ call .translate_literal "Default stations from radio-playlists. Changes apply only to your account." }}
         <a href="https://github.com/AlonDrilich/radio-playlists" up-follow="false" target="_blank" rel="noopener noreferrer">radio-playlists (CC0)</a>
     </p>

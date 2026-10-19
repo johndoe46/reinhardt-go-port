@@ -99,7 +99,7 @@ INSERT INTO go_radio_favorite(owner_id,station_id) SELECT 2,id FROM go_radio_sta
 	if strings.Count(response.Body.String(), `<li class="list-group-item d-flex`) != 50 || !strings.Contains(response.Body.String(), "51 stations") || strings.Contains(response.Body.String(), `<strong class="text-break">Saved station Germany</strong>`) || strings.Contains(response.Body.String(), `<strong class="text-break">Saved station not a favorite</strong>`) {
 		test.Fatal("favorite filter did not combine with search and country")
 	}
-	link := regexp.MustCompile(`<a class="btn btn-outline-secondary" href="([^"]+)">Next</a>`).FindStringSubmatch(response.Body.String())
+	link := regexp.MustCompile(`<a class="btn btn-outline-secondary" up-target="#radio-results" href="([^"]+)">Next</a>`).FindStringSubmatch(response.Body.String())
 	if len(link) != 2 {
 		test.Fatal("missing next page link")
 	}
