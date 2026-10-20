@@ -23,6 +23,10 @@ func (app *App) routes() *http.ServeMux {
 		}
 	}
 
+	route("GET", "favicon.ico", func(writer http.ResponseWriter, request *http.Request, user *User) error {
+		http.ServeFileFS(writer, request, assets, "static/reinhardt.png")
+		return nil
+	})
 	route("GET POST", "accounts/login/", app.login)
 	route("POST", "accounts/logout/", app.logout)
 	route("GET", "invite/", app.invite)

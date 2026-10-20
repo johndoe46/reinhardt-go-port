@@ -1,6 +1,3 @@
-
-
-
 {{ define "head_title" }}{{ call .translate_literal "preferences" }}{{ end }}
 {{ define "main" }}
     <input type="hidden" id="page_context" name="page_context" value="preferences" data-player-oscilloscope="{{ yesno .preferences.show_oscilloscope "true,false" }}">

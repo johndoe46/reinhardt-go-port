@@ -1,12 +1,10 @@
-
-
-
 <!doctype html>
 <html lang="{{ .LANGUAGE_CODE }}" data-bs-theme="auto">
 <head>
     <!-- generated: {{ .generated_at }} -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" href="{{ call .static "reinhardt.png" }}">
     <title>{{ block "head_title" . }}{{ call .translate_literal "home" }}{{ end }} - Reinhardt</title>
     <script src="{{ call .static "bootstrap.bundle.min.js" }}"></script>
     <link href="{{ call .static "bootstrap.min.css" }}" rel="stylesheet">

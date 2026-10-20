@@ -1,4 +1,3 @@
-
 <div data-taglabel="{{ .tag_label }}" data-objectpk="{{ .object_pk }}" id="alert_space" style="margin:1em;"
      class="{{ if and (and (eq .tag_label "favorites") (eq .object_label "track")) (eq .action "removed") }}music_file_removed_from_favorite {{ end }}{{ if and (and (ne .tag_label "favorites") (eq .object_label "track")) (eq .action "removed") }}music_file_removed_from_tag {{ end }}alert alert-light hideMeAfter5Seconds">
     {{ call .translate .tag_label }}:

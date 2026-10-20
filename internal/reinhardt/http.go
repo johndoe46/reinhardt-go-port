@@ -184,7 +184,7 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 	responseWriter.Header().Set("Vary", "X-Up-Target, Cookie, Accept-Encoding")
 	responseWriter.Header().Set("Cache-Control", "private, no-cache")
 	user := app.sessionUser(request)
-	public := path == "accounts/login/" || path == "invite/" || strings.HasPrefix(path, "shared/") || strings.HasPrefix(path, "artwork/") || strings.HasPrefix(path, "artwork_modal/") || path == "similar_artists/" || path == "user_playlists_contents/"
+	public := path == "favicon.ico" || path == "accounts/login/" || path == "invite/" || strings.HasPrefix(path, "shared/") || strings.HasPrefix(path, "artwork/") || strings.HasPrefix(path, "artwork_modal/") || path == "similar_artists/" || path == "user_playlists_contents/"
 	if !public && !user.IsAuthenticated {
 		app.redirect(responseWriter, request, app.Store.URL("login")+"?next="+url.QueryEscape(request.URL.RequestURI()))
 		return
