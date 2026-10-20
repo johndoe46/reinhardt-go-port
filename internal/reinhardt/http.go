@@ -19,6 +19,9 @@ import (
 	"time"
 )
 
+// Session expiry and authentication cookies share the same lifetime in seconds.
+const sessionLifetimeSeconds = 31556952
+
 type App struct {
 	Store        *Store
 	Templates    Templates
@@ -106,7 +109,7 @@ func (app *App) csrf(responseWriter http.ResponseWriter, request *http.Request) 
 	// token() encodes 32 cryptographically random bytes as 64 hex characters.
 	// HttpOnly is false so JavaScript can read the cookie for X-CSRFToken.
 	csrfToken := token()
-	app.cookie(responseWriter, request, "csrftoken", csrfToken, false, 31556952)
+	app.cookie(responseWriter, request, "csrftoken", csrfToken, false, sessionLifetimeSeconds)
 	return csrfToken
 }
 func (app *App) checkCSRF(request *http.Request) error {
@@ -238,6 +241,8 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	if ctx == nil {
 		ctx = TemplateContext{}
 	}
+	// Enrich the handler's page data with request metadata and shared template
+	// helpers, so pages and standalone fragments use the same URLs and language.
 	ctx["request"] = Row{"user": user, "get_full_path": request.URL.RequestURI()}
 	ctx["request_is_from_unpoly"] = request.Header.Get("X-Up-Target") != ""
 	if name == "registration/login.html" {
@@ -258,6 +263,8 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	ctx["translate_literal"] = translator.Text
 	ctx["localize"] = translator.Message
 	ctx["generated_at"] = generatedAt()
+	// Keep a usable default for anonymous pages and fragments that skip loading
+	// the authenticated layout's preferences below.
 	ctx["preferences"] = Row{}
 	ctx["translate_format"] = func(formatText string, title any) (string, error) {
 		return translator.Format(formatText, map[string]any{"Title": fmt.Sprint(title)})
@@ -270,6 +277,8 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 			return err
 		}
 		ctx["preferences"] = prefs
+		// Ordinary Unpoly navigation preserves the existing player. Resolve its
+		// source only for a full document or an explicit player synchronization.
 		if request.Header.Get("X-Up-Target") == "" || ctx["sync_player"] == true {
 			var station *RadioStation
 			if user.RadioStationID != 0 {
@@ -281,19 +290,28 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 			if station != nil {
 				ctx["station"] = station
 			} else if ctx["sync_player"] == true {
+				// Switching away from radio must also restore queue playback state
+				// in a fragment response, where full-page initialization is skipped.
 				if err = app.queuePlaybackContext(request.Context(), user.ID, prefs, ctx); err != nil {
 					return err
 				}
 			}
 		}
+		// Populate the initial document's footer and search suggestions. Fragment
+		// navigation keeps those parts of the current document in place.
 		if fromUnpoly, _ := ctx["request_is_from_unpoly"].(bool); !fromUnpoly {
+			// Only these pages restore the saved queue track in the footer.
 			nowPlayingPage := false
 			for _, page := range []string{"index", "artists", "_artists_by_letter", "genres", "artist", "genre", "album", "favorites", "tag", "tags", "search", "queue", "rename_tag", "ytrip", "ytrip_failures"} {
 				if name == "reinhardt/"+page+".html" {
 					nowPlayingPage = true
 				}
 			}
+			// Respect playback data supplied by the handler and give radio priority
+			// over the saved queue position when choosing the initial player source.
 			if _, ok := ctx["music_file"]; !ok && nowPlayingPage && ctx["station"] == nil {
+				// A removed queue entry leaves the footer empty rather than failing
+				// the page; only other lookup errors should abort rendering.
 				ctx["current_position"] = 0
 				if position := prefs.CurrentPosition; position != 0 {
 					var current *QueueItem
@@ -318,6 +336,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 						}
 					}
 					if current != nil {
+						// Preferences store the association ID; player controls use its rank.
 						ctx["music_file"] = current.MusicFile
 						ctx["current_position"] = current.Rank
 					}
@@ -338,6 +357,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	}
 	var err error
 	responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Compress only when accepted and large enough to justify the gzip overhead.
 	if strings.Contains(request.Header.Get("Accept-Encoding"), "gzip") && renderedHTML.Len() > 200 {
 		var compressedHTML bytes.Buffer
 		if err = writeGzip(&compressedHTML, renderedHTML.Bytes()); err != nil {
@@ -347,6 +367,7 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 		renderedHTML = compressedHTML
 	}
 	responseWriter.WriteHeader(status)
+	// HEAD follows the same rendering and header path as GET, but sends no body.
 	if request.Method != "HEAD" {
 		_, err = responseWriter.Write(renderedHTML.Bytes())
 	}

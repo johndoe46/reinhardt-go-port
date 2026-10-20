@@ -169,6 +169,43 @@ test("library track recovery still restores its timestamp and advances on end", 
     assert.equal(nextCalls(), 1);
 });
 
+test("replacing audio transfers listeners and unbinding removes audio, control, and environment listeners", context => {
+    const {player, audio, nextCalls} = fixture(context, "track");
+    const replacement = new audio.constructor();
+    Object.assign(replacement, {paused: true, ended: false, duration: 300, currentTime: 0});
+    replacement.load = () => {};
+    replacement.pause = () => {};
+    audio.cloneNode = () => replacement;
+    audio.replaceWith = () => {};
+    Object.assign(player.oscilloscope, {source: {}, canAnalyse: () => false, releaseAudio() {}});
+
+    player.src = "https://audio.example/track.mp3";
+    assert.equal(player.audioEl, replacement);
+    audio.dispatchEvent(new Event("ended"));
+    assert.equal(nextCalls(), 0, "the old audio must no longer advance the queue");
+    player.bindAudioEvents();
+    replacement.dispatchEvent(new Event("ended"));
+    assert.equal(nextCalls(), 1, "rebinding must not duplicate listeners");
+
+    let progressStarts = 0;
+    player.startProgressAnimation = () => { progressStarts++; };
+    window.dispatchEvent(new Event("online"));
+    assert.equal(progressStarts, 1);
+
+    player.unbindAudioEvents();
+    replacement.dispatchEvent(new Event("ended"));
+    player.nextButtonEl.dispatchEvent(new Event("click"));
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("pageshow"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(nextCalls(), 1);
+    assert.equal(progressStarts, 1, "environment listeners must also be removed");
+
+    player.bindAudioEvents();
+    replacement.dispatchEvent(new Event("ended"));
+    assert.equal(nextCalls(), 2, "listeners must work after reconnecting");
+});
+
 test("playback fragments preserve the element, replay the same stopped station, and clear artwork", () => {
     const compilers = new Map();
     let submissions = 0;

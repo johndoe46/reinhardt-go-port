@@ -653,8 +653,8 @@ func (store *Store) Metadata(path string) (*Track, error) {
 		Genre:  store.Config.sanitize(genre, "genre"),
 		Year:   year, Comment: strings.TrimSpace(metadata.Comment()),
 		Duration: int64(duration), TrackNumber: int64(track),
-		CreatedAt:  info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"),
-		ModifiedAt: info.ModTime().UTC().Format("2006-01-02 15:04:05.000000"),
+		CreatedAt:  info.ModTime().UTC().Format(databaseTimestampLayout),
+		ModifiedAt: info.ModTime().UTC().Format(databaseTimestampLayout),
 	}, nil
 }
 func mp4Duration(file *os.File) int {
@@ -667,49 +667,51 @@ func mp4Duration(file *os.File) int {
 		if depth > 8 {
 			return 0
 		}
-		for off := start; off+8 <= end; {
+		for boxOffset := start; boxOffset+8 <= end; {
 			var boxHeader [16]byte
-			if _, err := file.ReadAt(boxHeader[:8], off); err != nil {
+			if _, err := file.ReadAt(boxHeader[:8], boxOffset); err != nil {
 				return 0
 			}
 			size := int64(binary.BigEndian.Uint32(boxHeader[:4]))
-			head := int64(8)
+			headerSize := int64(8)
 			kind := string(boxHeader[4:8])
 			if size == 1 {
-				if _, err := file.ReadAt(boxHeader[8:], off+8); err != nil {
+				if _, err := file.ReadAt(boxHeader[8:], boxOffset+8); err != nil {
 					return 0
 				}
 				size = int64(binary.BigEndian.Uint64(boxHeader[8:]))
-				head = 16
+				headerSize = 16
 			}
 			if size == 0 {
-				size = end - off
+				size = end - boxOffset
 			}
-			if size < head || size > end-off {
+			if size < headerSize || size > end-boxOffset {
 				return 0
 			}
-			if kind == "mdhd" && size >= head+24 {
+			if kind == "mdhd" && size >= headerSize+24 {
 				var mediaHeader [32]byte
-				bytesRead, _ := file.ReadAt(mediaHeader[:], off+head)
+				bytesRead, _ := file.ReadAt(mediaHeader[:], boxOffset+headerSize)
+				// mdhd version 0: 32-bit creation/modification times, timescale, duration.
 				if mediaHeader[0] == 0 && bytesRead >= 20 {
-					scale := binary.BigEndian.Uint32(mediaHeader[12:16])
-					if scale > 0 {
-						return int(binary.BigEndian.Uint32(mediaHeader[16:20]) / scale)
+					timescale := binary.BigEndian.Uint32(mediaHeader[12:16])
+					if timescale > 0 {
+						return int(binary.BigEndian.Uint32(mediaHeader[16:20]) / timescale)
 					}
 				}
+				// mdhd version 1: 64-bit creation/modification times and duration; 32-bit timescale.
 				if mediaHeader[0] == 1 && bytesRead >= 32 {
-					scale := binary.BigEndian.Uint32(mediaHeader[20:24])
-					if scale > 0 {
-						return int(binary.BigEndian.Uint64(mediaHeader[24:32]) / uint64(scale))
+					timescale := binary.BigEndian.Uint32(mediaHeader[20:24])
+					if timescale > 0 {
+						return int(binary.BigEndian.Uint64(mediaHeader[24:32]) / uint64(timescale))
 					}
 				}
 			}
 			if kind == "moov" || kind == "trak" || kind == "mdia" {
-				if duration := walk(off+head, off+size, depth+1); duration > 0 {
+				if duration := walk(boxOffset+headerSize, boxOffset+size, depth+1); duration > 0 {
 					return duration
 				}
 			}
-			off += size
+			boxOffset += size
 		}
 		return 0
 	}

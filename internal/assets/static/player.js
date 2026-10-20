@@ -116,6 +116,29 @@ class MAudio extends HTMLElement {
                 playNext();
             }
         };
+
+        this.eventBindings = [
+            ["audioEl", "play", this.onPlay],
+            ["audioEl", "playing", this.onPlaying],
+            ["audioEl", "pause", this.onPause],
+            ["audioEl", "ended", this.onEnded],
+            ["audioEl", "timeupdate", this.onTimeUpdate],
+            ["audioEl", "loadedmetadata", this.onTimeLikeUpdate],
+            ["audioEl", "durationchange", this.onTimeLikeUpdate],
+            ["audioEl", "seeking", this.onSeeking],
+            ["audioEl", "seeked", this.onSeeked],
+            ["audioEl", "waiting", this.onPlaybackInterrupted],
+            ["audioEl", "stalled", this.onPlaybackInterrupted],
+            ["audioEl", "error", this.onPlaybackInterrupted],
+            ["playButtonEl", "click", this.onPlayButtonClick],
+            ["nextButtonEl", "click", this.onNextButtonClick],
+            ["progressBarEl", "click", this.onProgressClick],
+            ["progressBarEl", "keydown", this.onProgressKeyDown],
+            ["document", "visibilitychange", this.onEnvironmentResume],
+            ["document", "visibilitychange", this.onProgressVisibilityChange],
+            ["window", "pageshow", this.onEnvironmentResume],
+            ["window", "online", this.onEnvironmentResume],
+        ];
     }
 
     get src() {
@@ -425,32 +448,22 @@ class MAudio extends HTMLElement {
         }
     }
 
+    updateEventListeners(method) {
+        for (const [targetName, eventName, handler] of this.eventBindings) {
+            // Audio elements can be replaced when switching to a remote stream.
+            const target = targetName === "document" ? document
+                : targetName === "window" ? window : this[targetName];
+            target[method](eventName, handler);
+        }
+    }
+
     bindAudioEvents() {
         if (this.eventsBound || !this.audioEl || !this.playButtonEl || !this.progressBarEl || !this.nextButtonEl) {
             return;
         }
         this.eventsBound = true;
         this.oscilloscope?.connect();
-        this.audioEl.addEventListener("play", this.onPlay);
-        this.audioEl.addEventListener("playing", this.onPlaying);
-        this.audioEl.addEventListener("pause", this.onPause);
-        this.audioEl.addEventListener("ended", this.onEnded);
-        this.audioEl.addEventListener("timeupdate", this.onTimeUpdate);
-        this.audioEl.addEventListener("loadedmetadata", this.onTimeLikeUpdate);
-        this.audioEl.addEventListener("durationchange", this.onTimeLikeUpdate);
-        this.audioEl.addEventListener("seeking", this.onSeeking);
-        this.audioEl.addEventListener("seeked", this.onSeeked);
-        this.audioEl.addEventListener("waiting", this.onPlaybackInterrupted);
-        this.audioEl.addEventListener("stalled", this.onPlaybackInterrupted);
-        this.audioEl.addEventListener("error", this.onPlaybackInterrupted);
-        this.playButtonEl.addEventListener("click", this.onPlayButtonClick);
-        this.nextButtonEl.addEventListener("click", this.onNextButtonClick);
-        this.progressBarEl.addEventListener("click", this.onProgressClick);
-        this.progressBarEl.addEventListener("keydown", this.onProgressKeyDown);
-        document.addEventListener("visibilitychange", this.onEnvironmentResume);
-        document.addEventListener("visibilitychange", this.onProgressVisibilityChange);
-        window.addEventListener("pageshow", this.onEnvironmentResume);
-        window.addEventListener("online", this.onEnvironmentResume);
+        this.updateEventListeners("addEventListener");
         this.startProgressAnimation();
     }
 
@@ -461,26 +474,7 @@ class MAudio extends HTMLElement {
         this.eventsBound = false;
         this.stopProgressAnimation();
         this.oscilloscope?.disconnect();
-        this.audioEl.removeEventListener("play", this.onPlay);
-        this.audioEl.removeEventListener("playing", this.onPlaying);
-        this.audioEl.removeEventListener("pause", this.onPause);
-        this.audioEl.removeEventListener("ended", this.onEnded);
-        this.audioEl.removeEventListener("timeupdate", this.onTimeUpdate);
-        this.audioEl.removeEventListener("loadedmetadata", this.onTimeLikeUpdate);
-        this.audioEl.removeEventListener("durationchange", this.onTimeLikeUpdate);
-        this.audioEl.removeEventListener("seeking", this.onSeeking);
-        this.audioEl.removeEventListener("seeked", this.onSeeked);
-        this.audioEl.removeEventListener("waiting", this.onPlaybackInterrupted);
-        this.audioEl.removeEventListener("stalled", this.onPlaybackInterrupted);
-        this.audioEl.removeEventListener("error", this.onPlaybackInterrupted);
-        this.playButtonEl.removeEventListener("click", this.onPlayButtonClick);
-        this.nextButtonEl.removeEventListener("click", this.onNextButtonClick);
-        this.progressBarEl.removeEventListener("click", this.onProgressClick);
-        this.progressBarEl.removeEventListener("keydown", this.onProgressKeyDown);
-        document.removeEventListener("visibilitychange", this.onEnvironmentResume);
-        document.removeEventListener("visibilitychange", this.onProgressVisibilityChange);
-        window.removeEventListener("pageshow", this.onEnvironmentResume);
-        window.removeEventListener("online", this.onEnvironmentResume);
+        this.updateEventListeners("removeEventListener");
     }
 
     render() {

@@ -163,3 +163,41 @@ func (app *App) sampleAutofeedTrack(ctx context.Context, key autofeedKey) (*Trac
 	}
 	return nil, nil
 }
+
+// selectAutofeedTrack tries similar artists, then the eligible pool, then any artist.
+// Call it only when autofeed is enabled and normal queue selection is exhausted.
+func (app *App) selectAutofeedTrack(ctx context.Context, owner int64, prefs *Preferences, currentItem *QueueItem) (*Track, error) {
+	var track *Track
+	var err error
+	if prefs.AutofeedSimilar && currentItem != nil {
+		last, err := app.Store.Track(ctx, currentItem.MusicFileID)
+		if err != nil {
+			return nil, err
+		}
+		similar := app.similarArtists(ctx, last.Artist)
+		for _, name := range similar {
+			track, err = app.randomAutofeedTrack(ctx, owner, &name)
+			if err != nil {
+				return nil, err
+			}
+			if track != nil {
+				break
+			}
+		}
+	}
+	if track == nil {
+		track, err = app.sampleAutofeedTrack(ctx, autofeedKey{owner: owner, excludeQueuedArtists: prefs.AutofeedSimilar})
+		if err != nil {
+			return nil, err
+		}
+	}
+	if track == nil && prefs.AutofeedSimilar {
+		// Once every eligible artist is represented, keep autofeed playing
+		// with a random nonmissing, nonblacklisted track from any artist.
+		track, err = app.randomAutofeedTrack(ctx, owner, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return track, nil
+}

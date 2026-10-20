@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const databaseTimestampLayout = "2006-01-02 15:04:05.000000"
+
 func (translator *Translator) displayDate(raw, timezone string) string {
 	parsedTime, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil {

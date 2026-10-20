@@ -105,7 +105,7 @@ func token() string {
 	}
 	return hex.EncodeToString(randomBytes)
 }
-func now() string              { return time.Now().UTC().Format("2006-01-02 15:04:05.000000") }
+func now() string              { return time.Now().UTC().Format(databaseTimestampLayout) }
 func label(name string) string { return strings.ToLower(strings.Join(strings.Fields(name), " ")) }
 func slug(text string) string {
 	var builder strings.Builder

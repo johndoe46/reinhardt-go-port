@@ -91,16 +91,16 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 			return err
 		}
 		sess := token()
-		if _, err = store.DB.ExecContext(request.Context(), "INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", sess, user.N("id"), time.Now().Unix()+31556952); err != nil {
+		if _, err = store.DB.ExecContext(request.Context(), "INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", sess, user.N("id"), time.Now().Unix()+sessionLifetimeSeconds); err != nil {
 			return err
 		}
 		if _, err = store.DB.ExecContext(request.Context(), "UPDATE auth_user SET last_login=? WHERE id=?", now(), user.N("id")); err != nil {
 			return err
 		}
-		app.cookie(responseWriter, request, "sessionid", sess, true, 31556952)
+		app.cookie(responseWriter, request, "sessionid", sess, true, sessionLifetimeSeconds)
 		// Rotate the CSRF token on successful invite-link login so tokens from
 		// before authentication no longer match. The redirect renders fresh forms.
-		app.cookie(responseWriter, request, "csrftoken", token(), false, 31556952)
+		app.cookie(responseWriter, request, "csrftoken", token(), false, sessionLifetimeSeconds)
 		next := request.URL.Query().Get("next")
 		if !strings.HasPrefix(next, store.Config.Path("")) || strings.HasPrefix(next, "//") {
 			next = store.URL("index")
@@ -173,43 +173,7 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		ctx["music_files"] = tracks
 		template = field
 	case "search/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		sq := strings.TrimSpace(request.URL.Query().Get("sq"))
-		tracks, err := store.Search(request.Context(), sq)
-		if err != nil {
-			return err
-		}
-		ctx["sq"] = sq
-		ctx["q"] = sq
-		ctx["music_files"] = tracks
-		count := len(tracks)
-		if sq != "" {
-			total, err := store.One(request.Context(), "SELECT COUNT(*) n FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE music_index MATCH ? AND m.missing=0", ftsEscape(sq))
-			if err != nil {
-				return err
-			}
-			count = int(total.N("n"))
-		}
-		ctx["total_count"] = count
-		found := count > 0
-		for _, field := range []string{"artist", "album", "genre"} {
-			values := []string{}
-			if sq != "" {
-				rows, err := store.Query(request.Context(), "SELECT DISTINCT m."+field+" value FROM reinhardt_musicfile m JOIN music_index f ON CAST(f.id AS INTEGER)=m.id WHERE f."+field+" MATCH ? ORDER BY m."+field, ftsEscape(sq))
-				if err != nil {
-					return err
-				}
-				for _, suggestionRow := range rows {
-					values = append(values, suggestionRow.S("value"))
-				}
-			}
-			ctx["found_"+field+"s"] = values
-			found = found || len(values) > 0
-		}
-		ctx["has_results"] = found
-		template = "search"
+		return app.searchPage(responseWriter, request, user, ctx)
 	case "api/music_files/search/":
 		return app.searchAPI(responseWriter, request)
 	case "dj/":
@@ -218,141 +182,13 @@ func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Reque
 		}
 		template = "music_file_search_page"
 	case "tags/":
-		if request.Method == "POST" {
-			action := request.FormValue("action")
-			if action == "add_tag" {
-				if _, err := store.AddTag(request.Context(), owner, request.FormValue("tag_label")); err != nil {
-					return bad(err.Error())
-				}
-			} else {
-				tag, err := store.Tag(request.Context(), request.FormValue("tag_pk"), owner)
-				if err != nil {
-					return err
-				}
-				if tag.Label == "queue" || tag.Label == "favorites" {
-					return forbidden()
-				}
-				switch action {
-				case "remove_tag":
-					_, err = store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE tag_id=?", tag.ID)
-					if err == nil {
-						_, err = store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_tag WHERE id=?", tag.ID)
-					}
-				case "share_tag", "unshare_tag":
-					_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_tag SET is_shared=?,modified_at=? WHERE id=?", action == "share_tag", now(), tag.ID)
-				default:
-					return bad("Invalid action")
-				}
-				if err != nil {
-					return err
-				}
-			}
-		}
-		tags, err := store.Tags(request.Context(), owner, false)
-		if err != nil {
-			return err
-		}
-		for _, tag := range tags {
-			tag.ShareURL = app.absolute(request, tag.ShareURL)
-		}
-		ctx["tags"] = tags
-		template = "tags"
+		return app.tagsPage(responseWriter, request, user, ctx)
 	case "tag/", "favorites/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		var tag *Tag
-		var tagErr error
-		if path == "favorites/" {
-			id, err := store.AddTag(request.Context(), owner, "favorites")
-			if err != nil {
-				return err
-			}
-			tag, tagErr = store.Tag(request.Context(), id, owner)
-		} else {
-			tag, tagErr = store.Tag(request.Context(), query, owner)
-		}
-		if tagErr != nil {
-			return tagErr
-		}
-		tracks, tagErr := store.TagTracks(request.Context(), tag.ID)
-		if tagErr != nil {
-			return tagErr
-		}
-		ctx["music_files"] = tracks
-		ctx["tag"] = tag
-		if tag.IsShared {
-			ctx["share_url"] = app.absolute(request, tag.ShareURL)
-		}
-		template = strings.TrimSuffix(path, "/")
+		return app.tagPage(responseWriter, request, user, path, query, ctx)
 	case "queue/", "clear_queue/", "shuffle_queue/":
-		if path == "shuffle_queue/" {
-			if err := postOnly(request); err != nil {
-				return err
-			}
-			if err := store.ShuffleQueue(request.Context(), owner); err != nil {
-				return err
-			}
-		}
-		if path == "clear_queue/" {
-			if err := postOnly(request); err != nil {
-				return err
-			}
-			_, err := store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", owner)
-			if err != nil {
-				return err
-			}
-		}
-		queue, err := store.Queue(request.Context(), owner)
-		if err != nil {
-			return err
-		}
-		id, err := store.AddTag(request.Context(), owner, "queue")
-		if err != nil {
-			return err
-		}
-		tag, err := store.Tag(request.Context(), id, owner)
-		if err != nil {
-			return err
-		}
-		total := int64(0)
-		for _, queueItem := range queue {
-			total += queueItem.MusicFile.Duration
-		}
-		tag.Duration = total
-		ctx["queue"] = queue
-		ctx["music_tag"] = tag
-		preferences, err := store.Preferences(request.Context(), owner)
-		if err != nil {
-			return err
-		}
-		ctx["now_playing"] = preferences.CurrentPosition
-		template = "queue"
+		return app.queuePage(responseWriter, request, user, path, ctx)
 	case "preferences/":
-		if request.Method == "POST" {
-			if request.PostForm.Has("language_code") {
-				code := request.PostForm.Get("language_code")
-				if code != "" && !app.Translations.supports(code) {
-					return bad(app.translator(user).Text("Unsupported language"))
-				}
-				if err := store.SetUserLanguage(request.Context(), owner, code); err != nil {
-					return err
-				}
-				// Render the updated language in the main fragment while Unpoly
-				// keeps the current player and the rest of the document in place.
-				user.LanguageCode = code
-				return app.render(responseWriter, request, user, "reinhardt/preferences.html", ctx, 200)
-			}
-			_, err := store.Preferences(request.Context(), owner)
-			if err != nil {
-				return err
-			}
-			_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=?,autofeed_similar=?,show_oscilloscope=? WHERE owner_id=?", request.FormValue("autofeed_queue") == "on", request.FormValue("autofeed_similar") == "on", request.FormValue("show_oscilloscope") == "on", owner)
-			if err != nil {
-				return err
-			}
-		}
-		template = "preferences"
+		return app.preferencesPage(responseWriter, request, user, ctx)
 	case "activate_autofeed/", "deactivate_autofeed/":
 		if err := postOnly(request); err != nil {
 			return err
@@ -822,7 +658,7 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 	if operationErr != nil {
 		return nil, 0, operationErr
 	}
-	current := int64(0)
+	currentRank := int64(0)
 	var currentItem *QueueItem
 	// The persisted position is an association id, while advancement compares
 	// ranks. Reordering the queue changes rank without changing the saved position.
@@ -832,73 +668,47 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 			return nil, 0, operationErr
 		}
 		if currentItem != nil {
-			current = currentItem.Rank
+			currentRank = currentItem.Rank
 		}
 	}
-	var chosen *QueueItem
+	var selectedItem *QueueItem
 	var track *Track
 	if item := request.FormValue("list_item"); item != "" {
 		// list_item comes from the player's track controls, so it identifies a
 		// music file, not the association id stored in preferences.
 		if id, err := strconv.ParseInt(item, 10, 64); err == nil && strconv.FormatInt(id, 10) == item {
-			chosen, operationErr = store.queueItem(request.Context(), owner, "a.music_file_id=?", id)
+			selectedItem, operationErr = store.queueItem(request.Context(), owner, "a.music_file_id=?", id)
 			if operationErr != nil && operationErr != sql.ErrNoRows {
 				return nil, 0, operationErr
 			}
 		}
 	}
-	if chosen == nil {
+	if selectedItem == nil {
 		if next := request.FormValue("next_track"); next != "" {
 			track, operationErr = store.Track(request.Context(), next)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
-			chosen, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
+			selectedItem, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		} else {
-			chosen, operationErr = store.queueItem(request.Context(), owner, "a.rank>?", current)
+			selectedItem, operationErr = store.queueItem(request.Context(), owner, "a.rank>?", currentRank)
 			if operationErr != nil && operationErr != sql.ErrNoRows {
 				return nil, 0, operationErr
 			}
 		}
 	}
-	if chosen == nil && prefs.AutofeedQueue {
+	if selectedItem == nil && prefs.AutofeedQueue {
 		// Keep Last.fm behind both the preference and queue-exhaustion checks.
 		// Normal advancement and disabled similarity must never contact Last.fm.
-		if prefs.AutofeedSimilar && currentItem != nil {
-			last, err := store.Track(request.Context(), currentItem.MusicFileID)
-			if err != nil {
-				return nil, 0, err
-			}
-			similar := app.similarArtists(request.Context(), last.Artist)
-			for _, name := range similar {
-				track, operationErr = app.randomAutofeedTrack(request.Context(), owner, &name)
-				if operationErr != nil {
-					return nil, 0, operationErr
-				}
-				if track != nil {
-					break
-				}
-			}
-		}
-		if track == nil {
-			track, operationErr = app.sampleAutofeedTrack(request.Context(), autofeedKey{owner: owner, excludeQueuedArtists: prefs.AutofeedSimilar})
-			if operationErr != nil {
-				return nil, 0, operationErr
-			}
-		}
-		if track == nil && prefs.AutofeedSimilar {
-			// Once every eligible artist is represented, keep autofeed playing
-			// with a random nonmissing, nonblacklisted track from any artist.
-			track, operationErr = app.randomAutofeedTrack(request.Context(), owner, nil)
-			if operationErr != nil {
-				return nil, 0, operationErr
-			}
+		track, operationErr = app.selectAutofeedTrack(request.Context(), owner, prefs, currentItem)
+		if operationErr != nil {
+			return nil, 0, operationErr
 		}
 		if track != nil {
-			chosen, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
+			selectedItem, operationErr = store.AddTrack(request.Context(), owner, "queue", track.ID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
@@ -906,15 +716,15 @@ func (app *App) nextSong(request *http.Request, user *User) (*Track, int64, erro
 	}
 	position := int64(0)
 	var rank int64
-	if chosen != nil {
-		position = chosen.ID
+	if selectedItem != nil {
+		position = selectedItem.ID
 		if track == nil {
-			track, operationErr = store.Track(request.Context(), chosen.MusicFileID)
+			track, operationErr = store.Track(request.Context(), selectedItem.MusicFileID)
 			if operationErr != nil {
 				return nil, 0, operationErr
 			}
 		}
-		rank = chosen.Rank
+		rank = selectedItem.Rank
 	}
 	_, operationErr = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", position, owner)
 	return track, rank, operationErr
@@ -930,6 +740,34 @@ func serializeTrack(track *Track) Row {
 		"hash": track.Hash, "download_url": track.DownloadURL,
 		"music_directory": track.MusicDirectoryID, "missing": track.Missing,
 	}
+}
+
+func parseSearchFieldValue(field, value string) (any, error) {
+	var parsed any = value
+	switch field {
+	case "id", "music_directory_id", "duration", "track_number":
+		integerValue, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, bad("Invalid integer value")
+		}
+		parsed = integerValue
+	case "missing":
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			parsed = 1
+		case "0", "false", "no", "off":
+			parsed = 0
+		default:
+			return nil, bad("Invalid boolean value")
+		}
+	case "created_at", "modified_at":
+		timestamp, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			return nil, bad("Invalid ISO-8601 datetime value")
+		}
+		parsed = timestamp.UTC().Format(databaseTimestampLayout)
+	}
+	return parsed, nil
 }
 
 func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -973,7 +811,7 @@ func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Requ
 		args = append(args, ftsEscape(query))
 		order = "f.rank"
 	}
-	for parameterName, vs := range params {
+	for parameterName, values := range params {
 		if parameterName == "sq" || parameterName == "limit" || parameterName == "offset" || parameterName == "order_by" {
 			continue
 		}
@@ -981,30 +819,10 @@ func (app *App) searchAPI(responseWriter http.ResponseWriter, request *http.Requ
 		if !ok {
 			return bad("Unknown query parameter \"" + parameterName + "\".")
 		}
-		value := vs[len(vs)-1]
-		var parsed any = value
-		switch field {
-		case "id", "music_directory_id", "duration", "track_number":
-			integerValue, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				return bad("Invalid integer value")
-			}
-			parsed = integerValue
-		case "missing":
-			switch strings.ToLower(value) {
-			case "1", "true", "yes", "on":
-				parsed = 1
-			case "0", "false", "no", "off":
-				parsed = 0
-			default:
-				return bad("Invalid boolean value")
-			}
-		case "created_at", "modified_at":
-			timestamp, err := time.Parse(time.RFC3339, value)
-			if err != nil {
-				return bad("Invalid ISO-8601 datetime value")
-			}
-			parsed = timestamp.UTC().Format("2006-01-02 15:04:05.000000")
+		value := values[len(values)-1]
+		parsed, err := parseSearchFieldValue(field, value)
+		if err != nil {
+			return err
 		}
 		clauses = append(clauses, "m."+field+"=?")
 		args = append(args, parsed)

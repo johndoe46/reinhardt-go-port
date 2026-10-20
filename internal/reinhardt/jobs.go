@@ -68,42 +68,9 @@ func (app *App) Work(ctx context.Context, once bool) error {
 		}
 		if storeErr == nil {
 			jobCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-			var err error
-			switch job.S("kind") {
-			case "youtube":
-				var data Row
-				err = json.Unmarshal([]byte(job.S("payload")), &data)
-				if err == nil {
-					err = app.youtubeRip(jobCtx, data)
-				}
-			case "jama", "dropbox":
-				var id int64
-				err = json.Unmarshal([]byte(job.S("payload")), &id)
-				if err == nil {
-					if job.S("kind") == "jama" {
-						err = app.syncJama(jobCtx, id)
-					} else {
-						err = app.syncDropbox(jobCtx, id)
-					}
-				}
-			default:
-				err = fmt.Errorf("unknown job kind %q", job.S("kind"))
-			}
+			err := app.executeJob(jobCtx, job)
 			cancel()
-			// Record the result even when shutdown cancelled the job. Bound
-			// bookkeeping separately so shutdown cannot wait indefinitely.
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			if err == nil {
-				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "DELETE FROM go_job WHERE id=?", job.N("id"))
-			} else if ctx.Err() != nil {
-				// Interrupted work remains ready for another worker without
-				// consuming a retry attempt during an orderly shutdown.
-				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET locked_at=NULL WHERE id=?", job.N("id"))
-			} else {
-				log.Printf("job %d (%s): %v", job.N("id"), job.S("kind"), err)
-				_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
-			}
-			cleanupCancel()
+			storeErr = app.recordJobResult(ctx, job, err)
 			if storeErr != nil {
 				return storeErr
 			}
@@ -119,6 +86,50 @@ func (app *App) Work(ctx context.Context, once bool) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (app *App) executeJob(ctx context.Context, job Row) error {
+	var err error
+	switch job.S("kind") {
+	case "youtube":
+		var data Row
+		err = json.Unmarshal([]byte(job.S("payload")), &data)
+		if err == nil {
+			err = app.youtubeRip(ctx, data)
+		}
+	case "jama", "dropbox":
+		var id int64
+		err = json.Unmarshal([]byte(job.S("payload")), &id)
+		if err == nil {
+			if job.S("kind") == "jama" {
+				err = app.syncJama(ctx, id)
+			} else {
+				err = app.syncDropbox(ctx, id)
+			}
+		}
+	default:
+		err = fmt.Errorf("unknown job kind %q", job.S("kind"))
+	}
+	return err
+}
+
+func (app *App) recordJobResult(ctx context.Context, job Row, err error) error {
+	// Record the result even when shutdown cancelled the job. Bound
+	// bookkeeping separately so shutdown cannot wait indefinitely.
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cleanupCancel()
+	var storeErr error
+	if err == nil {
+		_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "DELETE FROM go_job WHERE id=?", job.N("id"))
+	} else if ctx.Err() != nil {
+		// Interrupted work remains ready for another worker without
+		// consuming a retry attempt during an orderly shutdown.
+		_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET locked_at=NULL WHERE id=?", job.N("id"))
+	} else {
+		log.Printf("job %d (%s): %v", job.N("id"), job.S("kind"), err)
+		_, storeErr = app.Store.DB.ExecContext(cleanupCtx, "UPDATE go_job SET attempts=attempts+1,run_at=?,locked_at=NULL,error=? WHERE id=?", time.Now().Add(10*time.Minute).Unix(), err.Error(), job.N("id"))
+	}
+	return storeErr
 }
 
 func libraryPath(track *Track, ext string) (string, error) {
@@ -160,7 +171,7 @@ func (store *Store) importFile(ctx context.Context, path string, dir *MusicDirec
 	if err != nil {
 		return "", err
 	}
-	modifiedAt := info.ModTime().UTC().Format("2006-01-02 15:04:05.000000")
+	modifiedAt := info.ModTime().UTC().Format(databaseTimestampLayout)
 	trackMetadata.CreatedAt = modifiedAt
 	trackMetadata.ModifiedAt = modifiedAt
 	if err = store.indexFileMetadata(ctx, dest, dir, trackMetadata); err != nil {
