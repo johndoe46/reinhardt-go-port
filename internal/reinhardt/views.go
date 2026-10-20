@@ -12,392 +12,16 @@ import (
 	"time"
 )
 
-func (app *App) dispatch(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
-	store := app.Store
-	owner := user.ID
-	query := request.URL.Query().Get("q")
-	ctx := TemplateContext{}
-	template := ""
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if parts[0] == "radio" {
-		return app.radio(responseWriter, request, user, parts)
-	}
-	if len(parts) > 1 {
-		switch parts[0] {
-		case "shared":
-			return app.shared(responseWriter, request, user, parts)
-		case "stream", "download":
-			if err := safeOnly(request); err != nil {
-				return err
-			}
-			return app.audio(responseWriter, request, parts)
-		case "artwork":
-			if err := safeOnly(request); err != nil {
-				return err
-			}
-			return app.artwork(responseWriter, request, parts)
-		case "artwork_modal":
-			ctx["trackid"] = parts[1]
-			if len(parts) < 3 {
-				return sql.ErrNoRows
-			}
-			ctx["size"] = strings.TrimSuffix(parts[2], ".jpg")
-			return app.render(responseWriter, request, user, "reinhardt/artwork_modal.html", ctx, 200)
-		case "track_details_modal":
-			return app.trackDetails(responseWriter, request, user, parts[1])
-		case "rename_tag":
-			tag, err := store.Tag(request.Context(), parts[1], owner)
-			if err != nil {
-				return err
-			}
-			if request.Method == "POST" {
-				name := label(request.FormValue("tag_label"))
-				if name == "" {
-					ctx["error_message"] = "tag name is empty"
-				} else {
-					_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_tag SET label=?,modified_at=? WHERE id=? AND owner_id=?", name, now(), tag.ID, owner)
-					if err == nil {
-						app.redirect(responseWriter, request, store.URL("tags"))
-						return nil
-					}
-					ctx["error_message"] = "tag already exists"
-				}
-			}
-			ctx["tag"] = tag
-			return app.render(responseWriter, request, user, "reinhardt/rename_tag.html", ctx, 200)
-		}
-	}
-	switch path {
-	case "accounts/login/":
-		return app.login(responseWriter, request, user)
-	case "accounts/logout/":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		if cookie, err := request.Cookie("sessionid"); err == nil {
-			if _, err = store.DB.ExecContext(request.Context(), "DELETE FROM go_session WHERE token=?", cookie.Value); err != nil {
-				return err
-			}
-		}
-		app.cookie(responseWriter, request, "sessionid", "", true, -1)
-		app.redirect(responseWriter, request, store.URL("login"))
-		return nil
-	case "invite/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		user, err := store.One(request.Context(), `SELECT u.id FROM auth_user u JOIN reinhardt_preferences p ON p.owner_id=u.id WHERE p.access_token=? AND u.is_active=1`, query)
-		if err != nil {
-			return err
-		}
-		sess := token()
-		if _, err = store.DB.ExecContext(request.Context(), "INSERT INTO go_session(token,owner_id,expires) VALUES(?,?,?)", sess, user.N("id"), time.Now().Unix()+sessionLifetimeSeconds); err != nil {
-			return err
-		}
-		if _, err = store.DB.ExecContext(request.Context(), "UPDATE auth_user SET last_login=? WHERE id=?", now(), user.N("id")); err != nil {
-			return err
-		}
-		app.cookie(responseWriter, request, "sessionid", sess, true, sessionLifetimeSeconds)
-		// Rotate the CSRF token on successful invite-link login so tokens from
-		// before authentication no longer match. The redirect renders fresh forms.
-		app.cookie(responseWriter, request, "csrftoken", token(), false, sessionLifetimeSeconds)
-		next := request.URL.Query().Get("next")
-		if !strings.HasPrefix(next, store.Config.Path("")) || strings.HasPrefix(next, "//") {
-			next = store.URL("index")
-		}
-		app.redirect(responseWriter, request, next)
-		return nil
-	case "":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		tracks, err := app.latestAdditions(request.Context())
-		if err != nil {
-			return err
-		}
-		ctx["music_files"] = tracks
-		template = "index"
-	case "artists/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		letters, err := store.Query(request.Context(), "SELECT DISTINCT upper(substr(artist,1,1)) letter FROM reinhardt_musicfile ORDER BY letter")
-		if err != nil {
-			return err
-		}
-		ls := []string{}
-		for _, letterRow := range letters {
-			ls = append(ls, letterRow.S("letter"))
-		}
-		ctx["letters"] = ls
-		template = "artists"
-		if query != "" {
-			artists, err := store.Query(request.Context(), "SELECT DISTINCT artist FROM reinhardt_musicfile WHERE artist LIKE ? AND missing=0 ORDER BY lower(artist)", query+"%")
-			if err != nil {
-				return err
-			}
-			ctx["artists"] = artists
-			ctx["letter"] = query
-			template = "_artists_by_letter"
-		}
-	case "genres/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		genres, err := store.Query(request.Context(), "SELECT DISTINCT genre FROM reinhardt_musicfile WHERE missing=0 AND genre!='' ORDER BY lower(genre)")
-		if err != nil {
-			return err
-		}
-		for _, genreRow := range genres {
-			rs := []rune(strings.ToLower(strings.TrimSpace(genreRow.S("genre"))))
-			if len(rs) > 0 {
-				genreRow["first_letter"] = string(rs[0])
-			}
-		}
-		ctx["music_genres"] = genres
-		template = "genres"
-	case "artist/", "album/", "genre/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		field := strings.TrimSuffix(path, "/")
-		order := "m.artist,m.album,m.track_number"
-		if field == "album" {
-			order = "m.track_number"
-		}
-		tracks, err := store.Tracks(request.Context(), "WHERE m."+field+"=? AND m.missing=0 ORDER BY "+order, query)
-		if err != nil {
-			return err
-		}
-		ctx[field] = query
-		ctx["music_files"] = tracks
-		template = field
-	case "search/":
-		return app.searchPage(responseWriter, request, user, ctx)
-	case "api/music_files/search/":
-		return app.searchAPI(responseWriter, request)
-	case "dj/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		template = "music_file_search_page"
-	case "tags/":
-		return app.tagsPage(responseWriter, request, user, ctx)
-	case "tag/", "favorites/":
-		return app.tagPage(responseWriter, request, user, path, query, ctx)
-	case "queue/", "clear_queue/", "shuffle_queue/":
-		return app.queuePage(responseWriter, request, user, path, ctx)
-	case "preferences/":
-		return app.preferencesPage(responseWriter, request, user, ctx)
-	case "activate_autofeed/", "deactivate_autofeed/":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		if _, err := store.Preferences(request.Context(), owner); err != nil {
-			return err
-		}
-		active := path == "activate_autofeed/"
-		if _, err := store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=? WHERE owner_id=?", active, owner); err != nil {
-			return err
-		}
-		message := "autofeed deactivated"
-		if active {
-			message = "autofeed activated"
-		}
-		ctx["action"] = message
-		template = "_tag_message"
-	case "next_song/", "api/dj/next_song/":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		track, rank, err := app.nextSong(request, user)
-		if err != nil {
-			return err
-		}
-		// Responses use an empty string for the position when playback ends.
-		var position any = ""
-		if track != nil {
-			position = rank
-		}
-		if path == "api/dj/next_song/" {
-			var data any
-			if track != nil {
-				data = serializeTrack(track)
-			}
-			return jsonResponse(responseWriter, Row{"music_file": data, "current_position": position})
-		}
-		ctx["music_file"] = track
-		ctx["current_position"] = position
-		ctx["autoplay"] = true
-		template = "_now_playing"
-	case "reorder_queue/":
-		return app.reorder(responseWriter, request, user)
-	case "remove_from_queue/":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		res, err := store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_musicfiletag WHERE music_file_id=? AND tag_id IN (SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue')", request.FormValue("remove_item"), owner)
-		if err != nil {
-			return err
-		}
-		affectedRows, _ := res.RowsAffected()
-		if affectedRows == 0 {
-			return sql.ErrNoRows
-		}
-		_, err = responseWriter.Write([]byte("None"))
-		return err
-	case "add_to_tag/", "remove_from_tag/", "toggle_tag/":
-		return app.tagAction(responseWriter, request, user, path)
-	case "artist/add_to_tag/", "artist/add_to_favorites/", "artist/add_to_queue/", "search/add_to_tag/", "search/add_to_favorites/", "search/add_to_queue/", "queue/add_to_tag/", "queue/add_to_favorites/":
-		return app.bulkAddTracks(responseWriter, request, user, path)
-	case "music_file_tagger/", "music_file_dropdown/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		id, err := strconv.ParseInt(query, 10, 64)
-		if err != nil {
-			return bad("Invalid music file ID.")
-		}
-		track, err := store.Track(request.Context(), id)
-		if err != nil {
-			return err
-		}
-		ctx["music_file"] = track
-		if path == "music_file_tagger/" {
-			tags, err := store.Tags(request.Context(), owner, false)
-			if err != nil {
-				return err
-			}
-			ctx["tags"] = tags
-			ctx["next_url"] = request.URL.Query().Get("next")
-			assigned, err := store.Query(request.Context(), `SELECT t.id FROM reinhardt_tag t JOIN reinhardt_musicfiletag a ON a.tag_id=t.id WHERE t.owner_id=? AND a.music_file_id=? AND t.label NOT IN ('queue','favorites')`, owner, id)
-			if err != nil {
-				return err
-			}
-			ctx["assigned_tags_pks"] = rowIDs(assigned)
-			template = "music_file_tagger"
-		} else {
-			fav, err := store.One(request.Context(), `SELECT COUNT(*) n FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id WHERE t.owner_id=? AND t.label='favorites' AND a.music_file_id=?`, owner, id)
-			if err != nil {
-				return err
-			}
-			ctx["is_favorite"] = fav.N("n") > 0
-			ctx["playing"] = request.URL.Query().Get("playing")
-			ctx["context"] = request.URL.Query().Get("context")
-			if id := request.URL.Query().Get("tag"); id != "" {
-				if _, err := strconv.Atoi(id); err != nil {
-					return bad("Invalid tag ID.")
-				}
-				tag, err := store.Tag(request.Context(), id, owner)
-				if err != nil {
-					return err
-				}
-				ctx["remove_from_tag"] = tag.Label
-			}
-			template = "_track_dropdown_menu_items"
-		}
-	case "friends/":
-		friendRows, err := store.Query(request.Context(), "SELECT * FROM auth_user WHERE id!=? ORDER BY username", owner)
-		if err != nil {
-			return err
-		}
-		visible := []Row{}
-		for _, row := range friendRows {
-			friend := userFromRow(row)
-			tags, err := store.Tags(request.Context(), friend.ID, true)
-			if err != nil {
-				return err
-			}
-			ts := []*Tag{}
-			for _, tag := range tags {
-				if tag.TrackCount > 0 && (user.IsSuperuser || tag.Label != "queue") {
-					ts = append(ts, tag)
-				}
-			}
-			if len(ts) > 0 {
-				visible = append(visible, Row{"user": friend, "tags": ts})
-			}
-		}
-		ctx["friends"] = visible
-		template = "friends"
-	case "friend_tag/":
-		tag, err := store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE id=?", request.URL.Query().Get("tag"))
-		if err != nil {
-			return err
-		}
-		friend, err := store.user(request.Context(), "SELECT * FROM auth_user WHERE id=?", tag.OwnerID)
-		if err != nil {
-			return err
-		}
-		tracks, err := store.TagTracks(request.Context(), tag.ID)
-		if err != nil {
-			return err
-		}
-		ctx["music_files"] = tracks
-		ctx["friend_tag"] = tag
-		ctx["friend"] = friend
-		template = "friend_tag"
-	case "queue_as_mix/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		if query == "" {
-			tag, err := store.One(request.Context(), "SELECT id FROM reinhardt_tag WHERE owner_id=? AND label='queue'", owner)
-			if err != nil {
-				return err
-			}
-			query = tag.S("id")
-		}
-		tag, err := store.Tag(request.Context(), query, owner)
-		if err != nil {
-			return err
-		}
-		return app.archive(responseWriter, request, tag)
-	case "preferences/database/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		if !user.IsSuperuser {
-			return forbidden()
-		}
-		return app.databaseBackup(responseWriter, request)
-	case "similar_artists/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		ctx["similar_artists"] = app.similarArtists(request.Context(), query)
-		template = "_similar_artists"
-	case "user_playlists_contents/":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		return app.playlists(responseWriter, request, query)
-	case "upload/":
-		return app.upload(responseWriter, request, user)
-	case "ytrip/", "ytrip/metadata/", "ytrip/failures/":
-		return app.youtubeView(responseWriter, request, user, path)
-	default:
-		if len(parts) == 4 && parts[0] == "ytrip" && parts[1] == "failures" && parts[3] == "retry" {
-			return app.retryYouTube(responseWriter, request, user, parts[2])
-		}
-		return sql.ErrNoRows
-	}
-	return app.render(responseWriter, request, user, "reinhardt/"+template+".html", ctx, 200)
-}
-
-func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request, user *User, parts []string) error {
+func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request, user *User, action string) error {
 	if err := safeOnly(request); err != nil {
 		return err
 	}
-	if len(parts) < 3 {
-		return sql.ErrNoRows
-	}
-	tag, err := app.Store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", parts[1])
+	tag, err := app.Store.tag(request.Context(), "SELECT * FROM reinhardt_tag WHERE id=? AND is_shared=1", request.PathValue("id"))
 	if err != nil {
 		return err
 	}
 	app.Store.decorateTag(tag)
-	if subtle.ConstantTimeCompare([]byte(parts[2]), []byte(tag.ShareHash)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(request.PathValue("hash")), []byte(tag.ShareHash)) != 1 {
 		return sql.ErrNoRows
 	}
 	tracks, err := app.Store.TagTracks(request.Context(), tag.ID)
@@ -408,14 +32,11 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 	for _, track := range tracks {
 		total += track.Duration
 	}
-	if len(parts) > 3 {
-		switch parts[3] {
+	if action != "" {
+		switch action {
 		case "track":
-			if len(parts) != 5 {
-				return sql.ErrNoRows
-			}
 			for _, track := range tracks {
-				if fmt.Sprint(track.ID) == parts[4] {
+				if fmt.Sprint(track.ID) == request.PathValue("track") {
 					return serveLocal(responseWriter, request, track, false)
 				}
 			}
@@ -429,7 +50,7 @@ func (app *App) shared(responseWriter http.ResponseWriter, request *http.Request
 			return sql.ErrNoRows
 		}
 	}
-	return app.render(responseWriter, request, user, "reinhardt/shared_tag.html", TemplateContext{"tag": tag, "share_hash": parts[2], "music_files": tracks, "total_duration": total, "can_download_all": total < app.Store.Config.SharedPlaylistDownloadMaxSeconds}, 200)
+	return app.render(responseWriter, request, user, "reinhardt/shared_tag.html", TemplateContext{"tag": tag, "share_hash": request.PathValue("hash"), "music_files": tracks, "total_duration": total, "can_download_all": total < app.Store.Config.SharedPlaylistDownloadMaxSeconds}, 200)
 }
 
 func (app *App) tagAction(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
@@ -645,6 +266,8 @@ func (app *App) reorder(responseWriter http.ResponseWriter, request *http.Reques
 	if err = tx.Commit(); err != nil {
 		return err
 	}
+	// Unpoly checks the response type even when the form targets :none.
+	responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, err = responseWriter.Write([]byte("ok"))
 	return err
 }

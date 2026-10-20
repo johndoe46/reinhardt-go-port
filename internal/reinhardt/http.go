@@ -2,6 +2,7 @@ package reinhardt
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 const sessionLifetimeSeconds = 31556952
 
 type App struct {
+	router       *http.ServeMux
 	Store        *Store
 	Templates    Templates
 	Translations *Translations
@@ -59,7 +61,9 @@ func newApp(store *Store) (*App, error) {
 	// Client.Timeout covers body reads too. Use only a header deadline for audio
 	// so slow downloads and long tracks can outlive the short API timeout.
 	audioTransport.ResponseHeaderTimeout = 35 * time.Second
-	return &App{Store: store, Templates: templates, Translations: translations, Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, RadioClient: newRadioClient(), coverCache: map[string]coverResult{}}, nil
+	app := &App{Store: store, Templates: templates, Translations: translations, Client: &http.Client{Timeout: 35 * time.Second}, AudioClient: &http.Client{Transport: audioTransport}, RadioClient: newRadioClient(), coverCache: map[string]coverResult{}}
+	app.router = app.routes()
+	return app, nil
 }
 func (app *App) redirect(responseWriter http.ResponseWriter, request *http.Request, path string) {
 	// Unpoly uses this header to update its location during fragment navigation;
@@ -204,23 +208,28 @@ func (app *App) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 			return
 		}
 	}
-	err := app.dispatch(responseWriter, request, user, path)
-	if err != nil {
-		code := 500
-		message := "Internal server error"
-		var httpErr httpError
-		if errors.As(err, &httpErr) {
-			code = httpErr.Code
-			message = httpErr.Message
-		} else if errors.Is(err, sql.ErrNoRows) {
-			code = 404
-			message = "Not found"
-		} else {
-			log.Printf("%s %s: %v", request.Method, request.URL.Path, err)
-		}
-		http.Error(responseWriter, message, code)
-	}
+	// Routing runs after authentication and CSRF, using the original URL so
+	// redirects, template links, and named path parameters retain the prefix.
+	request = request.WithContext(context.WithValue(request.Context(), requestUserKey{}, user))
+	app.router.ServeHTTP(responseWriter, request)
 }
+
+func (app *App) respondError(responseWriter http.ResponseWriter, request *http.Request, err error) {
+	code := 500
+	message := "Internal server error"
+	var httpErr httpError
+	if errors.As(err, &httpErr) {
+		code = httpErr.Code
+		message = httpErr.Message
+	} else if errors.Is(err, sql.ErrNoRows) {
+		code = 404
+		message = "Not found"
+	} else {
+		log.Printf("%s %s: %v", request.Method, request.URL.Path, err)
+	}
+	http.Error(responseWriter, message, code)
+}
+
 func postOnly(request *http.Request) error {
 	if request.Method != "POST" {
 		return httpError{405, "POST required"}

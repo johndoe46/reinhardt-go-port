@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-func (app *App) searchPage(responseWriter http.ResponseWriter, request *http.Request, user *User, ctx TemplateContext) error {
+func (app *App) searchPage(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
+	ctx := TemplateContext{}
 	store := app.Store
 	if err := safeOnly(request); err != nil {
 		return err
@@ -46,7 +47,8 @@ func (app *App) searchPage(responseWriter http.ResponseWriter, request *http.Req
 	return app.render(responseWriter, request, user, "reinhardt/search.html", ctx, 200)
 }
 
-func (app *App) tagsPage(responseWriter http.ResponseWriter, request *http.Request, user *User, ctx TemplateContext) error {
+func (app *App) tagsPage(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
+	ctx := TemplateContext{}
 	store := app.Store
 	owner := user.ID
 	if request.Method == "POST" {
@@ -90,7 +92,9 @@ func (app *App) tagsPage(responseWriter http.ResponseWriter, request *http.Reque
 	return app.render(responseWriter, request, user, "reinhardt/tags.html", ctx, 200)
 }
 
-func (app *App) tagPage(responseWriter http.ResponseWriter, request *http.Request, user *User, path, query string, ctx TemplateContext) error {
+func (app *App) tagPage(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
+	ctx := TemplateContext{}
+	query := request.URL.Query().Get("q")
 	store := app.Store
 	owner := user.ID
 	if err := safeOnly(request); err != nil {
@@ -122,7 +126,8 @@ func (app *App) tagPage(responseWriter http.ResponseWriter, request *http.Reques
 	return app.render(responseWriter, request, user, "reinhardt/"+strings.TrimSuffix(path, "/")+".html", ctx, 200)
 }
 
-func (app *App) queuePage(responseWriter http.ResponseWriter, request *http.Request, user *User, path string, ctx TemplateContext) error {
+func (app *App) queuePage(responseWriter http.ResponseWriter, request *http.Request, user *User, path string) error {
+	ctx := TemplateContext{}
 	store := app.Store
 	owner := user.ID
 	if path == "shuffle_queue/" {
@@ -169,7 +174,8 @@ func (app *App) queuePage(responseWriter http.ResponseWriter, request *http.Requ
 	return app.render(responseWriter, request, user, "reinhardt/queue.html", ctx, 200)
 }
 
-func (app *App) preferencesPage(responseWriter http.ResponseWriter, request *http.Request, user *User, ctx TemplateContext) error {
+func (app *App) preferencesPage(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
+	ctx := TemplateContext{}
 	store := app.Store
 	owner := user.ID
 	if request.Method == "POST" {

@@ -2,11 +2,79 @@ package reinhardt
 
 import (
 	"fmt"
+	"mime"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestQueueMutationAcknowledgementsAreRenderable(test *testing.T) {
+	for _, action := range []string{"reorder", "remove"} {
+		test.Run(action, func(test *testing.T) {
+			app := testApp(test)
+			tagID := mustTag(test, app, 1, "queue", []int64{1, 2, 3})
+			mustTag(test, app, 2, "queue", []int64{3, 2})
+			otherQueue, err := app.Store.Queue(test.Context(), 2)
+			if err != nil {
+				test.Fatal(err)
+			}
+			current, err := app.Store.queueItem(test.Context(), 1, "a.music_file_id=?", 2)
+			if err != nil {
+				test.Fatal(err)
+			}
+			if _, err = app.Store.DB.ExecContext(test.Context(), "UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=1", current.ID); err != nil {
+				test.Fatal(err)
+			}
+			path, body := "/reorder_queue/", "ok"
+			form := url.Values{"list_pk": {fmt.Sprint(tagID)}, "new_order": {`[{"item":3,"rank":1},{"item":1,"rank":2},{"item":2,"rank":3}]`}}
+			want := []int64{3, 1, 2}
+			if action == "remove" {
+				path, body = "/remove_from_queue/", "None"
+				form = url.Values{"remove_item": {"1"}}
+				want = []int64{2, 3}
+			}
+			csrf := strings.Repeat("a", 64)
+			form.Set("csrfmiddlewaretoken", csrf)
+			request := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			request.Header.Set("X-Up-Target", ":none")
+			request.AddCookie(&http.Cookie{Name: "sessionid", Value: "session-1"})
+			request.AddCookie(&http.Cookie{Name: "csrftoken", Value: csrf})
+			response := httptest.NewRecorder()
+			app.ServeHTTP(response, request)
+			requireCode(test, response, http.StatusOK)
+			contentType, _, err := mime.ParseMediaType(response.Header().Get("Content-Type"))
+			if err != nil || contentType != "text/html" {
+				test.Fatalf("Unpoly requires an HTML acknowledgement even for :none; got %q", response.Header().Get("Content-Type"))
+			}
+			if response.Body.String() != body {
+				test.Fatalf("unexpected acknowledgement: %q", response.Body.String())
+			}
+			queue, err := app.Store.Queue(test.Context(), 1)
+			if err != nil {
+				test.Fatal(err)
+			}
+			got := []int64{}
+			for _, item := range queue {
+				got = append(got, item.MusicFileID)
+			}
+			if !reflect.DeepEqual(got, want) {
+				test.Fatalf("queue=%v, want %v", got, want)
+			}
+			prefs, err := app.Store.Preferences(test.Context(), 1)
+			if err != nil || prefs.CurrentPosition != current.ID {
+				test.Fatal("queue mutation changed the playing track", err)
+			}
+			afterOtherQueue, err := app.Store.Queue(test.Context(), 2)
+			if err != nil || !reflect.DeepEqual(otherQueue, afterOtherQueue) {
+				test.Fatal("queue mutation changed another user's queue", err)
+			}
+		})
+	}
+}
 
 func TestShuffleQueue(test *testing.T) {
 	app := testApp(test)

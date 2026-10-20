@@ -465,6 +465,11 @@ func TestCSRFMethodsLoginAndPrefix(test *testing.T) {
 		test.Fatal("no session or rotated CSRF")
 	}
 	app.Store.Config.URLPrefix = "music/"
+	// ServeMux registers the configured prefix when the application starts.
+	app, err = newApp(app.Store)
+	if err != nil {
+		test.Fatal(err)
+	}
 	response = call(app, "GET", "/music/", 1, nil, false)
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), `src="/music/static/player.js"`) {

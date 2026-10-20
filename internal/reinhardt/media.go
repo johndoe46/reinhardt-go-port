@@ -67,16 +67,13 @@ func serveLocal(responseWriter http.ResponseWriter, request *http.Request, track
 	http.ServeContent(responseWriter, request, track.CleanFileName, info.ModTime(), file)
 	return nil
 }
-func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
-	track, err := app.Store.Track(request.Context(), parts[1])
+func (app *App) audio(responseWriter http.ResponseWriter, request *http.Request, download bool) error {
+	track, err := app.Store.Track(request.Context(), request.PathValue("id"))
 	if err != nil {
 		return err
 	}
-	if parts[0] == "download" {
-		if len(parts) < 3 {
-			return sql.ErrNoRows
-		}
-		if parts[2] != track.CleanFileName {
+	if download {
+		if request.PathValue("filename") != track.CleanFileName {
 			app.redirect(responseWriter, request, track.DownloadURL)
 			return nil
 		}
@@ -394,11 +391,8 @@ func fallbackArtwork(track *Track, size int) image.Image {
 func intSqrt(value int) int {
 	return int(math.Sqrt(float64(value)))
 }
-func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request, parts []string) error {
-	if len(parts) != 3 {
-		return sql.ErrNoRows
-	}
-	size, err := strconv.Atoi(strings.TrimSuffix(parts[2], ".jpg"))
+func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request) error {
+	size, err := strconv.Atoi(strings.TrimSuffix(request.PathValue("size"), ".jpg"))
 	if err != nil {
 		return bad("Invalid artwork size")
 	}
@@ -407,7 +401,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 	default:
 		return bad("Invalid artwork size")
 	}
-	track, err := app.Store.Track(request.Context(), parts[1])
+	track, err := app.Store.Track(request.Context(), request.PathValue("id"))
 	if err != nil {
 		return err
 	}

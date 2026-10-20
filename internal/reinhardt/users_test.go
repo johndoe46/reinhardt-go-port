@@ -233,6 +233,10 @@ func TestManagedUserAccessAndSessions(test *testing.T) {
 	if stable, err := store.userAccessURL(ctx, 1, false); err != nil || stable != link {
 		test.Fatalf("view changed login link=%q, err=%v", stable, err)
 	}
+	app, err = newApp(store)
+	if err != nil {
+		test.Fatal(err)
+	}
 	requireCode(test, call(app, http.MethodGet, link, 0, nil, false), http.StatusFound)
 	reset, err := store.userAccessURL(ctx, 1, true)
 	if err != nil || reset == link {

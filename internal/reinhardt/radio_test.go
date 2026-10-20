@@ -254,7 +254,12 @@ func TestRadioManagementRequiresSuperuser(test *testing.T) {
 				for _, fragment := range []bool{false, true} {
 					test.Run(fmt.Sprintf("staff=%v/%s/%s/fragment=%v", staff, method, path, fragment), func(test *testing.T) {
 						form := url.Values{"name": {"Unauthorized change"}, "country": {"Germany"}, "url": {"https://radio.example/changed.mp3"}}
-						requireCode(test, call(app, method, path, 2, form, fragment), 403)
+						status := http.StatusForbidden
+						if method != "POST" && strings.HasSuffix(path, "/delete/") {
+							// ServeMux rejects unsupported methods before calling the view.
+							status = http.StatusMethodNotAllowed
+						}
+						requireCode(test, call(app, method, path, 2, form, fragment), status)
 					})
 				}
 			}

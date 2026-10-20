@@ -233,97 +233,60 @@ func (store *Store) deleteRadioStation(ctx context.Context, owner int64, id any)
 	return tx.Commit()
 }
 
-func (app *App) radio(responseWriter http.ResponseWriter, request *http.Request, user *User, parts []string) error {
-	managesStations := (len(parts) == 2 && parts[1] == "new") ||
-		(len(parts) == 3 && (parts[2] == "edit" || parts[2] == "delete"))
-	if managesStations && !user.IsSuperuser {
-		return forbidden()
-	}
+func (app *App) radioQueue(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
 	ctx := TemplateContext{}
-	if len(parts) == 1 {
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		return app.radioPage(responseWriter, request, user, ctx)
-	}
-	if len(parts) == 2 && parts[1] == "queue" {
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		// Selecting the saved association clears radio through the queue-selection
-		// trigger without advancing the queue or changing its membership.
-		prefs, err := app.Store.Preferences(request.Context(), user.ID)
-		if err != nil {
-			return err
-		}
-		if _, err = app.Store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", prefs.CurrentPosition, user.ID); err != nil {
-			return err
-		}
-		if err = app.queuePlaybackContext(request.Context(), user.ID, prefs, ctx); err != nil {
-			return err
-		}
-		ctx["autoplay"] = true
-		return app.render(responseWriter, request, user, "reinhardt/_now_playing.html", ctx, 200)
-	}
-	if len(parts) == 2 && parts[1] == "new" {
-		return app.radioEdit(responseWriter, request, user, &RadioStation{})
-	}
-	if len(parts) != 3 {
-		return sql.ErrNoRows
-	}
-	station, err := app.Store.RadioStation(request.Context(), user.ID, parts[1])
+	// Selecting the saved association clears radio through the queue-selection
+	// trigger without advancing the queue or changing its membership.
+	prefs, err := app.Store.Preferences(request.Context(), user.ID)
 	if err != nil {
 		return err
 	}
-	switch parts[2] {
-	case "favorite":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		switch request.PostFormValue("favorite") {
-		case "1":
-			_, err = app.Store.DB.ExecContext(request.Context(), "INSERT OR IGNORE INTO go_radio_favorite(owner_id,station_id) VALUES(?,?)", user.ID, station.ID)
-		case "0":
-			_, err = app.Store.DB.ExecContext(request.Context(), "DELETE FROM go_radio_favorite WHERE owner_id=? AND station_id=?", user.ID, station.ID)
-		default:
-			return bad("Invalid radio favorite state.")
-		}
-		if err != nil {
-			return err
-		}
-		page, _ := strconv.Atoi(request.PostForm.Get("page"))
-		app.redirect(responseWriter, request, app.Store.radioPageURL(request.PostForm.Get("q"), request.PostForm.Get("country"), request.PostForm.Get("favorites") == "1", page))
-		return nil
-	case "edit":
-		return app.radioEdit(responseWriter, request, user, station)
-	case "audio":
-		if err := safeOnly(request); err != nil {
-			return err
-		}
-		return app.radioAudio(responseWriter, request, station)
-	case "play":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		_, err = app.Store.DB.ExecContext(request.Context(), `INSERT INTO go_radio_playback(owner_id,station_id) VALUES(?,?)
-ON CONFLICT(owner_id) DO UPDATE SET station_id=excluded.station_id`, user.ID, station.ID)
-		if err != nil {
-			return err
-		}
-		ctx["station"] = station
-		ctx["autoplay"] = true
-		return app.render(responseWriter, request, user, "reinhardt/_now_playing.html", ctx, 200)
-	case "delete":
-		if err := postOnly(request); err != nil {
-			return err
-		}
-		if err = app.Store.deleteRadioStation(request.Context(), user.ID, station.ID); err != nil {
-			return err
-		}
-		app.redirect(responseWriter, request, app.Store.URL("radio"))
-		return nil
+	if _, err = app.Store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET current_position=? WHERE owner_id=?", prefs.CurrentPosition, user.ID); err != nil {
+		return err
 	}
-	return sql.ErrNoRows
+	if err = app.queuePlaybackContext(request.Context(), user.ID, prefs, ctx); err != nil {
+		return err
+	}
+	ctx["autoplay"] = true
+	return app.render(responseWriter, request, user, "reinhardt/_now_playing.html", ctx, 200)
+}
+
+func (app *App) radioFavorite(responseWriter http.ResponseWriter, request *http.Request, user *User, station *RadioStation) error {
+	var err error
+	switch request.PostFormValue("favorite") {
+	case "1":
+		_, err = app.Store.DB.ExecContext(request.Context(), "INSERT OR IGNORE INTO go_radio_favorite(owner_id,station_id) VALUES(?,?)", user.ID, station.ID)
+	case "0":
+		_, err = app.Store.DB.ExecContext(request.Context(), "DELETE FROM go_radio_favorite WHERE owner_id=? AND station_id=?", user.ID, station.ID)
+	default:
+		return bad("Invalid radio favorite state.")
+	}
+	if err != nil {
+		return err
+	}
+	page, _ := strconv.Atoi(request.PostForm.Get("page"))
+	app.redirect(responseWriter, request, app.Store.radioPageURL(request.PostForm.Get("q"), request.PostForm.Get("country"), request.PostForm.Get("favorites") == "1", page))
+	return nil
+}
+
+func (app *App) radioPlay(responseWriter http.ResponseWriter, request *http.Request, user *User, station *RadioStation) error {
+	ctx := TemplateContext{}
+	_, err := app.Store.DB.ExecContext(request.Context(), `INSERT INTO go_radio_playback(owner_id,station_id) VALUES(?,?)
+ON CONFLICT(owner_id) DO UPDATE SET station_id=excluded.station_id`, user.ID, station.ID)
+	if err != nil {
+		return err
+	}
+	ctx["station"] = station
+	ctx["autoplay"] = true
+	return app.render(responseWriter, request, user, "reinhardt/_now_playing.html", ctx, 200)
+}
+
+func (app *App) radioDelete(responseWriter http.ResponseWriter, request *http.Request, user *User, station *RadioStation) error {
+	if err := app.Store.deleteRadioStation(request.Context(), user.ID, station.ID); err != nil {
+		return err
+	}
+	app.redirect(responseWriter, request, app.Store.URL("radio"))
+	return nil
 }
 
 func (app *App) radioEdit(responseWriter http.ResponseWriter, request *http.Request, user *User, station *RadioStation) error {
