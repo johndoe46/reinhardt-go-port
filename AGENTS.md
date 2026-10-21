@@ -12,13 +12,14 @@ Reinhardt is a Go music application, embedding SQLite resources and assets in on
 
 ## Build, Test, and Development Commands
 
-Run commands from the repository root with Go 1.26+ and GNU Make:
+Run commands from the repository root with Go 1.27.3+ and GNU Make:
 
 - `make setup`: verify vendored dependencies, create `.env` if absent, and build.
 - `make build`: produce `bin/reinhardt` with embedded assets and CGO disabled.
 - `make run LISTEN=127.0.0.1:8000`: start HTTP and background jobs.
 - `make dev`: rebuild and restart on source or asset changes; requires Air.
 - `make fmt` / `make check`: format application Go code / check formatting and run `go vet`.
+- `make vulncheck`: install `govulncheck` under `bin/tools/` if needed, then scan application code, tests, and vendored dependencies (requires network access).
 - `make ci`: run checks, regression tests, and a release build.
 - `make tidy`: reconcile module files and refresh `vendor/` after dependency changes.
 

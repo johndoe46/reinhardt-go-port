@@ -5,6 +5,9 @@ SHELL := /bin/sh
 
 GO ?= go
 GOFMT ?= gofmt
+GOVULNCHECK_VERSION ?= v1.9.0
+GOVULNCHECK_DIR = $(abspath $(BUILD_DIR))/tools/govulncheck-$(GOVULNCHECK_VERSION)
+GOVULNCHECK ?= $(GOVULNCHECK_DIR)/govulncheck
 AIR ?= air
 BUILD_DIR ?= bin
 BIN ?= $(BUILD_DIR)/reinhardt
@@ -25,7 +28,7 @@ COVERAGE_HTML ?= $(BUILD_DIR)/coverage.html
 # Production and normal verification use pure Go and vendored sources.
 # Go's race detector requires CGO, so test-race is an explicit exception.
 export CGO_ENABLED := 0
-export GOTOOLCHAIN ?= local
+export GOTOOLCHAIN ?= go1.27.3
 export GO
 MODULE_FLAGS := -mod=vendor
 APP_FLAGS = --env-file "$(ENV_FILE)" $(if $(DATABASE),--database "$(DATABASE)")
@@ -33,14 +36,16 @@ LISTEN_FLAGS = $(if $(LISTEN),--listen "$(LISTEN)")
 DEV_BUILD_CMD = $(MAKE) build BIN="$(abspath $(BUILD_DIR))/dev/reinhardt"
 
 .PHONY: help doctor deps env setup install build build-debug build-linux-arm64 dev run run-http \
-	worker worker-once cli migrate check-app fmt fmt-check vet check test \
+	worker worker-once cli migrate check-app fmt fmt-check vet vulncheck check test \
 	test-verbose test-coverage test-race ci verify vendor tidy clean
 
 ##@ Help and prerequisites
 help: ## Show targets, variables, and examples (default)
 	@awk 'BEGIN { print "Usage: make <target> [VARIABLE=value]" } /^##@ / { printf "\n%s\n", substr($$0, 5) } /^[a-zA-Z0-9_-]+:.*## / { split($$0, parts, "## "); split(parts[1], target, ":"); printf "  %-20s %s\n", target[1], parts[2] }' $(MAKEFILE_LIST)
 	@printf '\nVariables:\n'
-	@printf '  GO, GOFMT             Go tools (requires Go 1.26+)\n'
+	@printf '  GO, GOFMT             Go tools (requires Go 1.27.3+)\n'
+	@printf '  GOVULNCHECK           Optional path to an existing vulnerability scanner\n'
+	@printf '  GOVULNCHECK_VERSION   Managed scanner version (default v1.9.0)\n'
 	@printf '  AIR                   Live reload tool for make dev (default air)\n'
 	@printf '  BUILD_DIR, BIN        Build directory and release executable\n'
 	@printf '  LINUX_ARM64_BIN       Linux/aarch64 executable (default bin/reinhardt-linux-arm64)\n'
@@ -59,7 +64,7 @@ help: ## Show targets, variables, and examples (default)
 	@printf '  make build-linux-arm64\n'
 
 doctor: ## Report Go and optional media tools
-	@command -v "$(GO)" >/dev/null || { printf 'Missing Go: install Go 1.26 or newer.\n' >&2; exit 1; }
+	@command -v "$(GO)" >/dev/null || { printf 'Missing Go: install Go 1.27.3 or newer.\n' >&2; exit 1; }
 	@$(GO) version
 	@for tool in ffmpeg yt-dlp; do \
 		if command -v "$$tool" >/dev/null; then printf '%s: available\n' "$$tool"; \
@@ -132,6 +137,18 @@ fmt-check: ## Fail if application Go sources need formatting
 
 vet: ## Run go vet with vendored dependencies and CGO disabled
 	$(GO) vet $(MODULE_FLAGS) ./...
+
+$(GOVULNCHECK_DIR)/govulncheck:
+	@mkdir -p "$(GOVULNCHECK_DIR)"
+	GOFLAGS= GOBIN="$(GOVULNCHECK_DIR)" $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+
+ifeq ($(GOVULNCHECK),$(GOVULNCHECK_DIR)/govulncheck)
+vulncheck: $(GOVULNCHECK_DIR)/govulncheck
+endif
+
+vulncheck: ## Install govulncheck if needed, then scan application code, tests, and vendored dependencies
+	@command -v "$(GOVULNCHECK)" >/dev/null || { printf 'Cannot find GOVULNCHECK: %s\n' "$(GOVULNCHECK)" >&2; exit 1; }
+	GOFLAGS="$(GOFLAGS) $(MODULE_FLAGS)" "$(GOVULNCHECK)" -test ./...
 
 check: fmt-check vet ## Check formatting and run static analysis
 

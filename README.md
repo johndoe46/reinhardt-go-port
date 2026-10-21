@@ -69,7 +69,7 @@ helper binaries. Install the following tools for the features you use:
 | `ffmpeg` | YouTube audio conversion and thumbnail conversion; artwork embedding in non-MP3 formats |
 | `ffprobe` | Media inspection during yt-dlp audio extraction; installed with FFmpeg |
 | `deno` 2.3+ | JavaScript challenges required by current yt-dlp for full YouTube support |
-| `go` 1.26+ and `gofmt` | Building, normal tests and formatting; both come with Go |
+| `go` 1.27.3+ and `gofmt` | Building, normal tests and formatting; both come with Go |
 | GNU `make` | The documented build, install, run and test targets |
 | `git` | Obtaining the source checkout; unnecessary for a copied release binary |
 | `node` | Optional tests that execute the shared player's JavaScript |
@@ -115,7 +115,7 @@ For source builds:
 sudo apt install -y make git
 ```
 
-Install Go 1.26 or newer using the
+Install Go 1.27.3 or newer using the
 [official Go instructions](https://go.dev/doc/install). Select the Linux archive
 for your architecture (`amd64` for x86-64 or `arm64` for aarch64), extract it
 into `/usr/local` as instructed there, then enable and verify it:
@@ -195,6 +195,9 @@ Install the build tools listed under [Prerequisites](#prerequisites) first.
 Go dependency sources are included in `vendor/`. Build and verification targets
 use `-mod=vendor`, so dependencies do not need to be downloaded. After changing
 `go.mod`, refresh the vendored sources with `make vendor`.
+The module requires Go 1.27.3. Make defaults `GOTOOLCHAIN` to `go1.27.3`, which
+may download that toolchain if it is not installed; override `GOTOOLCHAIN` to
+select another compatible toolchain.
 
 ```sh
 make setup
@@ -476,6 +479,21 @@ additional Go test options with `TEST_FLAGS`, for example `TEST_FLAGS=-count=1`.
 `bin/coverage.out` and `bin/coverage.html`. `make test-race` runs the race detector;
 this diagnostic target requires a C compiler and enables CGO for the test
 executable. Application builds and all other test targets retain CGO disabled.
+
+`make vulncheck` uses [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
+to scan application packages, tests, and their vendored dependencies for known
+vulnerabilities, including the Go standard library. It uses the online Go
+vulnerability database and fails when a vulnerability is reachable from the
+scanned code. On first use, it installs govulncheck v1.9.0 under `bin/tools/`,
+without changing the application's module files or requiring changes to `PATH`:
+
+```sh
+make vulncheck
+```
+
+Set `GOVULNCHECK_VERSION` to select another scanner version, or set
+`GOVULNCHECK=/path/to/govulncheck` to use an existing installation.
+This network-dependent check runs separately from `make ci`.
 
 `make fmt` formats application sources without touching vendor. `make clean`
 removes the release/debug binaries and coverage reports. `make tidy` reconciles
