@@ -1,11 +1,79 @@
 package reinhardt
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	id3 "github.com/bogem/id3v2/v2"
 )
+
+func TestImportFileTransliteratesKoreanPathsAndPreservesTags(test *testing.T) {
+	app := testApp(test)
+	dir, err := app.Store.DefaultMusicDirectory(test.Context())
+	if err != nil {
+		test.Fatal(err)
+	}
+	for index, scenario := range []struct {
+		title, filename string
+	}{
+		{"구중승천", "01-gujungseungceon.mp3"},
+		{"백두의 소환", "02-baegduyi-sohwan.mp3"},
+		{"왕조의 용맹", "03-wangjoyi-yongmaeng.mp3"},
+	} {
+		test.Run(scenario.title, func(test *testing.T) {
+			source := filepath.Join(test.TempDir(), scenario.title+".mp3")
+			if err := os.WriteFile(source, make([]byte, 32), 0644); err != nil {
+				test.Fatal(err)
+			}
+			metadata := &Track{FullPath: source, RelativePath: filepath.Base(source), Artist: "구룡", Title: scenario.title, Album: "백두의 소환", TrackNumber: int64(index + 1)}
+			id3Tag, err := id3.Open(source, id3.Options{Parse: true})
+			if err != nil {
+				test.Fatal(err)
+			}
+			id3Tag.SetVersion(4)
+			id3Tag.SetDefaultEncoding(id3.EncodingUTF8)
+			id3Tag.SetArtist(metadata.Artist)
+			id3Tag.SetTitle(metadata.Title)
+			id3Tag.SetAlbum(metadata.Album)
+			id3Tag.AddTextFrame("TRCK", id3.EncodingUTF8, strconv.Itoa(index+1)+"/3")
+			saveErr := id3Tag.Save()
+			closeErr := id3Tag.Close()
+			if saveErr != nil || closeErr != nil {
+				test.Fatal("write ID3 fixture", saveErr, closeErr)
+			}
+			sourceBytes, err := os.ReadFile(source)
+			if err != nil {
+				test.Fatal(err)
+			}
+			destination, err := app.Store.importFile(test.Context(), source, dir)
+			if err != nil {
+				test.Fatal(err)
+			}
+			relative := filepath.Join("g", "guryong", "baegduyi-sohwan", scenario.filename)
+			if destination != filepath.Join(dir.LocalPath, relative) {
+				test.Fatalf("destination=%q, want relative path %q", destination, relative)
+			}
+			importedBytes, err := os.ReadFile(destination)
+			if err != nil || !bytes.Equal(importedBytes, sourceBytes) {
+				test.Fatal("import changed audio file bytes", err)
+			}
+			if _, err := os.Stat(source); !os.IsNotExist(err) {
+				test.Fatal("successful import retained its source", err)
+			}
+			imported, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_musicfile WHERE relative_path=?", relative)
+			if err != nil {
+				test.Fatal(err)
+			}
+			if imported.S("artist") != metadata.Artist || imported.S("title") != metadata.Title || imported.S("album") != metadata.Album || imported.N("track_number") != metadata.TrackNumber {
+				test.Fatalf("import changed Korean metadata: %#v", imported)
+			}
+		})
+	}
+}
 
 func TestIndexFileMetadataPreservesTrackAndMembership(test *testing.T) {
 	app := testApp(test)

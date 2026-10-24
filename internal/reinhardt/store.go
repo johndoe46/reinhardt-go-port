@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/gosimple/unidecode"
 	"golang.org/x/text/unicode/norm"
 	_ "modernc.org/sqlite"
 )
@@ -109,7 +110,9 @@ func now() string              { return time.Now().UTC().Format(databaseTimestam
 func label(name string) string { return strings.ToLower(strings.Join(strings.Fields(name), " ")) }
 func slug(text string) string {
 	var builder strings.Builder
-	for _, character := range norm.NFKD.String(strings.ToLower(text)) {
+	// Compose decomposed tags (including Hangul) before ASCII transliteration.
+	text = strings.ToLower(unidecode.Unidecode(norm.NFKC.String(text)))
+	for _, character := range text {
 		if character < 128 && (unicode.IsLetter(character) || unicode.IsDigit(character) || character == '_') {
 			builder.WriteRune(character)
 		} else if unicode.IsSpace(character) || character == '-' {

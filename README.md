@@ -45,6 +45,7 @@ The direct dependencies listed in [go.mod](go.mod) serve these purposes:
 | `github.com/emersion/go-sasl` | Provide SASL PLAIN authentication for SMTP connections using configured email credentials. |
 | `github.com/emersion/go-smtp` | Send login-link emails over SMTP, including STARTTLS and implicit TLS connections. |
 | `github.com/gdamore/tcell/v2` | Handle terminal screens and keyboard input for interactive user management. |
+| `github.com/gosimple/unidecode` | Transliterate Unicode tags into ASCII for library paths, download filenames, and artist matching. |
 | `github.com/joho/godotenv` | Parse `.env` files and `~/.reinhardt/config`. |
 | `github.com/nicksnyder/go-i18n/v2` | Load embedded message catalogues and translate messages with language fallback, named variables, and plural rules. |
 | `github.com/rivo/tview` | Build the user-management TUI's table, search field, forms, and confirmation dialogs. |
@@ -407,7 +408,9 @@ Jobs persist in SQLite and retry twice at ten-minute intervals. Import scanning
 runs every five minutes when `MUSIC_IMPORT_DIR` is configured. Uploads are
 restricted to superusers and land in that directory. ZIP extraction rejects
 path traversal and symlinks and limits expanded size. Imports refuse to
-overwrite existing music. Failed YouTube downloads appear on the
+overwrite existing music. Library paths transliterate artist, album, and title
+tags into ASCII (for example, `구룡` becomes `guryong`); stored tags retain their
+original script. Failed YouTube downloads appear on the
 failure/retry screen. `jobs` reports pending and exhausted integration jobs.
 
 ## Media and integrations

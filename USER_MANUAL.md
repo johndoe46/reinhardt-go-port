@@ -416,6 +416,11 @@ your library. Imports do not overwrite existing music files. To process incoming
 files immediately, run `./reinhardt gathermusic` (or
 `.\reinhardt.exe gathermusic` on Windows).
 
+Imported folder and file names use ASCII approximations of artist, album, and
+title tags, so music tagged in scripts such as Korean can be imported. For
+example, `구룡` becomes `guryong` in the library path. Tags shown in the library
+keep their original script.
+
 ### YouTube downloads
 
 The download form is available to signed-in users. It has no navigation-menu
