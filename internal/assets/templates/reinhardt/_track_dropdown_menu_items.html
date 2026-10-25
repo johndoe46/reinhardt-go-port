@@ -7,12 +7,14 @@
 
 
 {{ if eq .context "queue" }}
+    {{ if not .grid_item }}
     <li>
         <button onclick="playQueueItem(this)" title="{{ call .translate_literal "play now" }}"
                 class="dropdown-item">
             <i class="bi bi-play"></i> {{ call .translate_literal "play now" }}
         </button>
     </li>
+    {{ end }}
     <li>
         <button class="dropdown-item" onclick="removeFromQueue(this)">
             <i class="bi bi-trash"></i> {{ call .translate_literal "remove from queue" }}
@@ -21,7 +23,7 @@
 {{ end }}
 
 {{/* No add to queue or play now if already playing */}}
-{{ if and (ne .playing "True") (ne .context "queue") }}
+{{ if and (not .grid_item) (ne .playing "True") (ne .context "queue") }}
     <li>
         <button onclick="playNext({{ .music_file.pk }})" type="submit" title="{{ call .translate_literal "play now" }}"
                 class="dropdown-item">

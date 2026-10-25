@@ -214,7 +214,7 @@ func TestCancelledMigrationReleasesWriteLock(test *testing.T) {
 			cancel()
 		}
 	})
-	if err := migrateLanguagePreference(ctx, app.Store.DB); !errors.Is(err, context.Canceled) {
+	if err := migratePreferences(ctx, app.Store.DB); !errors.Is(err, context.Canceled) {
 		test.Fatalf("error=%v, want context.Canceled", err)
 	}
 	// Reuse the connection: another BEGIN would fail if the cancelled

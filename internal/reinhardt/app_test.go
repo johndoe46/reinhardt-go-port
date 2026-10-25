@@ -487,6 +487,7 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
+	originalArtworkURL := app.Store.URL("artwork", originalTrack.ID, 96, originalTrack.ModifiedAt)
 	im := image.NewRGBA(image.Rect(0, 0, 200, 100))
 	for pixelY := 0; pixelY < 100; pixelY++ {
 		for pixelX := 0; pixelX < 200; pixelX++ {
@@ -533,6 +534,13 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	}
 	response = send(1, imageBytes.Bytes())
 	requireCode(test, response, 302)
+	updatedTrack, err := app.Store.Track(test.Context(), 1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	if originalArtworkURL == app.Store.URL("artwork", updatedTrack.ID, 96, updatedTrack.ModifiedAt) {
+		test.Fatal("upload did not change the browser's artwork cache key")
+	}
 	if _, err = os.Stat(originalTrack.FullPath + ".png"); err != nil {
 		test.Fatal("format not derived from content", err)
 	}

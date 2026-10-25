@@ -1,4 +1,16 @@
 {
+  "More track actions": {
+    "other": "Autres actions sur la piste"
+  },
+  "Loading track actions…": {
+    "other": "Chargement des actions de la piste…"
+  },
+  "Unable to load track actions. Close the menu and try again.": {
+    "other": "Impossible de charger les actions de la piste. Fermez le menu et réessayez."
+  },
+  "Display tracks as a grid with artwork": {
+    "other": "Afficher les pistes en grille avec les pochettes"
+  },
   "%(Count)d of %(Total)d users. Press n to create an account.": {
     "one": "{{.Count}} sur {{.Total}} utilisateur. Appuyez sur n pour créer un compte.",
     "other": "{{.Count}} sur {{.Total}} utilisateurs. Appuyez sur n pour créer un compte."

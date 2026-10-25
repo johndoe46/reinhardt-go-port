@@ -54,13 +54,13 @@
         </ul>
     </div>
     <hr>
-    <div class="list-group list-group-flush makeMeSortable" data-list_pk="{{ .music_tag.pk }}">
+    <div class="list-group list-group-flush makeMeSortable{{ if .preferences.show_track_grid }} track-grid{{ end }}" data-list_pk="{{ .music_tag.pk }}">
         {{ $context1 := . }}{{ range $index1, $row1 := .queue }}{{ with scope $context1 "item" $row1 "forloop" (loopInfo $index1) }}
             {{ with scope . "music_file" .item.music_file }}
                 <div data-musicpk="{{ .item.music_file.pk }}" data-itempk="{{ .music_file.pk }}"
                      class="{{ if eq .now_playing .item.pk }}now_playing {{ end }}list-group-item list-group-item-action dropdown queue_item"
                      id="music_files_row_{{ .music_file.pk }}">
-                        {{ template "reinhardt/_music_file_dropdown.html" (scope . "handles" true) }}
+                        {{ template "reinhardt/_music_file_dropdown.html" (scope . "handles" true "track_grid" .preferences.show_track_grid) }}
                 </div>
             {{ end }}
         {{ end }}{{ end }}

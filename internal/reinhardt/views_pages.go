@@ -196,7 +196,7 @@ func (app *App) preferencesPage(responseWriter http.ResponseWriter, request *htt
 		if err != nil {
 			return err
 		}
-		_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=?,autofeed_similar=?,show_oscilloscope=? WHERE owner_id=?", request.FormValue("autofeed_queue") == "on", request.FormValue("autofeed_similar") == "on", request.FormValue("show_oscilloscope") == "on", owner)
+		_, err = store.DB.ExecContext(request.Context(), "UPDATE reinhardt_preferences SET autofeed_queue=?,autofeed_similar=?,show_oscilloscope=?,show_track_grid=? WHERE owner_id=?", request.FormValue("autofeed_queue") == "on", request.FormValue("autofeed_similar") == "on", request.FormValue("show_oscilloscope") == "on", request.FormValue("show_track_grid") == "on", owner)
 		if err != nil {
 			return err
 		}

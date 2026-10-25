@@ -62,7 +62,7 @@ type Tag struct {
 	ShareURL      string
 }
 
-// Preferences holds a user's playback settings and optional language choice.
+// Preferences holds a user's playback, display, and language settings.
 type Preferences struct {
 	ID               int64
 	OwnerID          int64
@@ -70,6 +70,7 @@ type Preferences struct {
 	AutofeedSimilar  bool
 	RepeatQueue      bool
 	ShowOscilloscope bool
+	ShowTrackGrid    bool
 	CurrentPosition  int64
 	AccessToken      string
 	LanguageCode     *string
@@ -174,6 +175,7 @@ func preferencesFromRow(row Row) *Preferences {
 		AutofeedSimilar:  row.B("autofeed_similar"),
 		RepeatQueue:      row.B("repeat_queue"),
 		ShowOscilloscope: row.B("show_oscilloscope"),
+		ShowTrackGrid:    row.B("show_track_grid"),
 		CurrentPosition:  row.N("current_position"),
 		AccessToken:      row.S("access_token"),
 		LanguageCode:     nullableString(row["language_code"]),
@@ -290,6 +292,7 @@ func (record *Preferences) templateRow() Row {
 		"autofeed_similar":  record.AutofeedSimilar,
 		"repeat_queue":      record.RepeatQueue,
 		"show_oscilloscope": record.ShowOscilloscope,
+		"show_track_grid":   record.ShowTrackGrid,
 		"current_position":  record.CurrentPosition,
 		"access_token":      record.AccessToken,
 		"language_code":     record.LanguageCode,

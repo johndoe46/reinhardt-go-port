@@ -20,8 +20,12 @@
         </select>
         <p class="form-text" role="status">{{ call .translate_literal "Language changes take full effect after a full page refresh." }}</p>
     </form>
-    <form method="post" action="{{ call .url "preferences" }}" up-autosubmit>
+    <form id="switch_preferences" method="post" action="{{ call .url "preferences" }}" up-submit up-autosubmit up-target="main" up-history="false">
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+        <div class="form-check form-switch">
+            <input {{ if .preferences.show_track_grid }}checked{{ end }} name="show_track_grid" id="show_track_grid" class="form-check-input" type="checkbox" role="switch">
+            <label class="form-check-label" for="show_track_grid">{{ call .translate_literal "Display tracks as a grid with artwork" }}</label>
+        </div>
         <div class="form-check form-switch">
             <input {{ if .preferences.autofeed_queue }}checked{{ end }} name="autofeed_queue" id="autofeed_queue" class="form-check-input" type="checkbox" role="switch">
             <label class="form-check-label" for="autofeed_queue">{{ call .translate_literal "autofeed" }}</label>

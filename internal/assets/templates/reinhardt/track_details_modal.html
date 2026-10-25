@@ -11,7 +11,7 @@
     <div class="mb-3 text-center">
         <label class="form-label d-block" for="discoveredartwork">{{ call .translate_literal "current artwork" }}</label>
         <img id="discoveredartwork" class="img-fluid rounded" style="max-width: 512px"
-             src="{{ call .url "artwork" .music_file.pk 512 }}"
+             src="{{ call .url "artwork" .music_file.pk 512 .music_file.modified_at }}"
              alt="{{ call .translate_literal "current artwork" }}">
     </div>
     <div class="mb-3">

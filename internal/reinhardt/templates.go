@@ -344,6 +344,9 @@ func (store *Store) URL(name string, args ...any) string {
 		path = name + "/" + arg(0)
 	case "artwork", "artwork_modal":
 		path = name + "/" + arg(0) + "/" + arg(1) + ".jpg"
+		if version := arg(2); version != "" {
+			path += "?v=" + url.QueryEscape(version)
+		}
 	case "shared_tag", "download_shared_tag", "serve_shared_music_file":
 		path = "shared/" + arg(0) + "/" + arg(1) + "/"
 		if name == "download_shared_tag" {

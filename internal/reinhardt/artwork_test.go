@@ -12,13 +12,119 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestArtworkCacheControl(test *testing.T) {
+	app := testApp(test)
+	path := "/artwork/1/96.jpg"
+	fallback := call(app, "GET", path, 0, nil, false)
+	requireCode(test, fallback, http.StatusOK)
+	if fallback.Header().Get("Cache-Control") != "public, max-age=3600" || fallback.Header().Get("Vary") != "" {
+		test.Fatal("fallback should be cached briefly without varying by user", fallback.Header())
+	}
+	track, err := app.Store.Track(test.Context(), 1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	if err := os.WriteFile(track.FullPath+".png", artworkTestPNG(test), 0600); err != nil {
+		test.Fatal(err)
+	}
+	var first []byte
+	for _, method := range []string{"GET", "GET", "HEAD"} {
+		response := call(app, method, path, 1, nil, false)
+		requireCode(test, response, http.StatusOK)
+		if response.Header().Get("Cache-Control") != "public, max-age=31536000" || response.Header().Get("Vary") != "" {
+			test.Fatal("generated and disk-cached artwork must have long-lived caching", response.Header())
+		}
+		if method == "GET" {
+			if first != nil && !bytes.Equal(first, response.Body.Bytes()) {
+				test.Fatal("disk cache changed artwork bytes")
+			}
+			first = append([]byte(nil), response.Body.Bytes()...)
+		} else if response.Body.Len() != 0 {
+			test.Fatal("HEAD returned artwork bytes")
+		}
+		if modified := response.Header().Get("Last-Modified"); modified != "" {
+			request := httptest.NewRequest("GET", path, nil)
+			request.Header.Set("If-Modified-Since", modified)
+			conditional := httptest.NewRecorder()
+			app.ServeHTTP(conditional, request)
+			requireCode(test, conditional, http.StatusNotModified)
+			if conditional.Header().Get("Cache-Control") != "public, max-age=31536000" {
+				test.Fatal("conditional artwork response lost its cache policy")
+			}
+		}
+	}
+	for path, status := range map[string]int{"/artwork/1/100.jpg": http.StatusBadRequest, "/artwork/999/96.jpg": http.StatusNotFound} {
+		response := call(app, "GET", path, 0, nil, false)
+		requireCode(test, response, status)
+		if response.Header().Get("Cache-Control") != "private, no-cache" {
+			test.Fatal("artwork error response received long-lived caching")
+		}
+	}
+}
+
+func TestArtworkURLsChangeAfterTrackEdits(test *testing.T) {
+	app := testApp(test)
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET show_track_grid=1 WHERE owner_id=1"); err != nil {
+		test.Fatal(err)
+	}
+	queue := mustTag(test, app, 1, "queue", []int64{1})
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET current_position=(SELECT id FROM reinhardt_musicfiletag WHERE tag_id=?) WHERE owner_id=1", queue); err != nil {
+		test.Fatal(err)
+	}
+	tagID := mustTag(test, app, 1, "shared artwork", []int64{1})
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_tag SET is_shared=1 WHERE id=?", tagID); err != nil {
+		test.Fatal(err)
+	}
+	tag, err := app.Store.Tag(test.Context(), tagID, 1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	track, err := app.Store.Track(test.Context(), 1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	oldVersion := track.ModifiedAt
+	for _, version := range []string{oldVersion, "2026-10-25 22:00:00.123456"} {
+		if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET modified_at=? WHERE id=1", version); err != nil {
+			test.Fatal(err)
+		}
+		updated, err := app.Store.Track(test.Context(), 1)
+		if err != nil {
+			test.Fatal(err)
+		}
+		version = updated.ModifiedAt
+		for _, page := range []struct {
+			path string
+			size int
+		}{{"/album/?q=Album", 256}, {"/track_details_modal/1", 512}, {"/artwork_modal/1/512.jpg", 512}, {tag.ShareURL, 512}} {
+			response := call(app, "GET", page.path, 1, nil, false)
+			requireCode(test, response, http.StatusOK)
+			want := app.Store.URL("artwork", 1, page.size, version)
+			if !strings.Contains(response.Body.String(), want) {
+				test.Fatalf("%s lacks versioned artwork URL %s", page.path, want)
+			}
+			if page.size == 256 && !strings.Contains(response.Body.String(), `data-artwork512="`+app.Store.URL("artwork", 1, 512, version)+`"`) {
+				test.Fatal("footer and fullscreen player lost the artwork version")
+			}
+		}
+	}
+	app.Store.Config.URLPrefix = "reinhardt/"
+	versioned := app.Store.URL("artwork", 1, 96, "a & b?#")
+	parsed, err := url.Parse(versioned)
+	if err != nil || parsed.Path != "/reinhardt/artwork/1/96.jpg" || parsed.Query().Get("v") != "a & b?#" {
+		test.Fatal("versioned artwork URL lost prefix or escaping", versioned, err)
+	}
+}
 
 func artworkTestReceive[Result any](test *testing.T, ch <-chan Result) Result {
 	test.Helper()

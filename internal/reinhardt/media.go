@@ -391,6 +391,18 @@ func fallbackArtwork(track *Track, size int) image.Image {
 func intSqrt(value int) int {
 	return int(math.Sqrt(float64(value)))
 }
+
+func artworkCacheHeaders(responseWriter http.ResponseWriter, found bool) {
+	// Artwork is identical for every user and is never an Unpoly fragment.
+	responseWriter.Header().Del("Vary")
+	if found {
+		responseWriter.Header().Set("Cache-Control", "public, max-age=31536000")
+	} else {
+		// Retry discovery periodically instead of keeping a placeholder for a year.
+		responseWriter.Header().Set("Cache-Control", "public, max-age=3600")
+	}
+}
+
 func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request) error {
 	size, err := strconv.Atoi(strings.TrimSuffix(request.PathValue("size"), ".jpg"))
 	if err != nil {
@@ -413,6 +425,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 			return err
 		}
 		responseWriter.Header().Set("Content-Type", "image/jpeg")
+		artworkCacheHeaders(responseWriter, true)
 		http.ServeContent(responseWriter, request, "artwork.jpg", info.ModTime(), cachedFile)
 		return nil
 	}
@@ -461,6 +474,7 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 		}
 	}
 	responseWriter.Header().Set("Content-Type", "image/jpeg")
+	artworkCacheHeaders(responseWriter, found)
 	http.ServeContent(responseWriter, request, "artwork.jpg", time.Time{}, bytes.NewReader(buffer.Bytes()))
 	return nil
 }

@@ -54,7 +54,7 @@
     {{ if .music_files }}
         {{ with scope . "first" (first .music_files) }}
             <section class="player" aria-label="{{ call .translate_literal "Music player" }}">
-                <img id="artwork" class="artwork" src="{{ call .url "artwork" .first.pk 512 }}" alt="">
+                <img id="artwork" class="artwork" src="{{ call .url "artwork" .first.pk 512 .first.modified_at }}" alt="">
                 <div class="player-details">
                     <div class="eyebrow">{{ call .translate_literal "Now playing" }}</div>
                     <h2 id="title">{{ .first.title }}</h2>
@@ -88,11 +88,11 @@
                 <li class="track">
                     <button class="track-select" type="button" {{ if .forloop.first }}aria-current="true"{{ end }}
                             data-src="{{ call .url "serve_shared_music_file" .tag.pk .share_hash .music_file.pk }}"
-                            data-artwork="{{ call .url "artwork" .music_file.pk 512 }}"
+                            data-artwork="{{ call .url "artwork" .music_file.pk 512 .music_file.modified_at }}"
                             data-title="{{ .music_file.title }}" data-artist="{{ .music_file.artist }}"
                             data-album="{{ .music_file.album }}">
                         <span class="number">{{ .forloop.counter }}</span>
-                        <img class="track-artwork" src="{{ call .url "artwork" .music_file.pk 512 }}"
+                        <img class="track-artwork" src="{{ call .url "artwork" .music_file.pk 512 .music_file.modified_at }}"
                              alt="" width="48" height="48" loading="lazy">
                         <span class="track-summary">
                             <span class="track-title">{{ .music_file.title }}</span>

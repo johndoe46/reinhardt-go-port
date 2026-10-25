@@ -20,12 +20,6 @@
         </button>
     </form>
     <hr>
-    <div class="list-group list-group-flush">
-    {{ range .music_files }}
-        <div class="list-group-item list-group-item-action dropdown{{ if $.handles }} queue_item{{ end }}" id="music_files_row_{{ .pk }}" data-itempk="{{ .pk }}">
-            {{ template "reinhardt/_music_file_dropdown.html" (scope $ "music_file" .) }}
-        </div>
-    {{ end }}
-    </div>
+    {{ template "reinhardt/_music_files_list.html" . }}
 {{ end }}
 {{ template "reinhardt/_base.html" . }}

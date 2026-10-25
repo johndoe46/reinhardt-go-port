@@ -1,4 +1,16 @@
 {
+  "More track actions": {
+    "other": "More track actions"
+  },
+  "Loading track actions…": {
+    "other": "Loading track actions…"
+  },
+  "Unable to load track actions. Close the menu and try again.": {
+    "other": "Unable to load track actions. Close the menu and try again."
+  },
+  "Display tracks as a grid with artwork": {
+    "other": "Display tracks as a grid with artwork"
+  },
   "%(Count)d of %(Total)d users. Press n to create an account.": {
     "one": "{{.Count}} of {{.Total}} user. Press n to create an account.",
     "other": "{{.Count}} of {{.Total}} users. Press n to create an account."

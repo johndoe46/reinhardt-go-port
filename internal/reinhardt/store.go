@@ -177,9 +177,9 @@ func openStore(ctx context.Context, config *Config) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err = migrateLanguagePreference(ctx, db); err != nil {
+	if err = migratePreferences(ctx, db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("migrate language preference: %w", err)
+		return nil, fmt.Errorf("migrate preferences: %w", err)
 	}
 	store := &Store{db, config}
 	if err = store.seedRadioStations(ctx); err != nil {
@@ -205,7 +205,7 @@ func openStore(ctx context.Context, config *Config) (*Store, error) {
 
 // Upgrade existing preferences and move language choices from the initial Go
 // implementation. The write lock serializes upgrades by server/worker processes.
-func migrateLanguagePreference(ctx context.Context, db *sql.DB) error {
+func migratePreferences(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -231,6 +231,13 @@ func migrateLanguagePreference(ctx context.Context, db *sql.DB) error {
 	err = conn.QueryRowContext(ctx, "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'").Scan(&name)
 	if err == sql.ErrNoRows {
 		_, err = conn.ExecContext(ctx, "ALTER TABLE reinhardt_preferences ADD COLUMN language_code TEXT")
+	}
+	if err != nil {
+		return err
+	}
+	err = conn.QueryRowContext(ctx, "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='show_track_grid'").Scan(&name)
+	if err == sql.ErrNoRows {
+		_, err = conn.ExecContext(ctx, "ALTER TABLE reinhardt_preferences ADD COLUMN show_track_grid BOOL NOT NULL DEFAULT 0")
 	}
 	if err != nil {
 		return err

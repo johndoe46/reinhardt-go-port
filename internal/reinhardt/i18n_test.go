@@ -209,7 +209,7 @@ INSERT INTO go_user_language(owner_id,language_code) VALUES(1,'fr'),(2,'fr'),(3,
 			if err != nil || len(legacy) != 0 {
 				test.Fatal("obsolete language table was not removed", err)
 			}
-			if err := migrateLanguagePreference(test.Context(), store.DB); err != nil {
+			if err := migratePreferences(test.Context(), store.DB); err != nil {
 				test.Fatal("migration cannot be repeated", err)
 			}
 			repeated, err := store.Preferences(test.Context(), 1)
@@ -229,7 +229,7 @@ INSERT INTO go_user_language VALUES(1,'fr'),(999,'en')`); err != nil {
 	}
 	// An orphaned legacy row must cause the whole migration to roll back,
 	// including the column addition and any copied choices.
-	if err := migrateLanguagePreference(test.Context(), app.Store.DB); err == nil {
+	if err := migratePreferences(test.Context(), app.Store.DB); err == nil {
 		test.Fatal("migration accepted an invalid account reference")
 	}
 	columns, err := app.Store.Query(test.Context(), "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='language_code'")
@@ -243,7 +243,7 @@ INSERT INTO go_user_language VALUES(1,'fr'),(999,'en')`); err != nil {
 	if _, err := app.Store.DB.Exec("DELETE FROM go_user_language WHERE owner_id=999"); err != nil {
 		test.Fatal(err)
 	}
-	if err := migrateLanguagePreference(test.Context(), app.Store.DB); err != nil {
+	if err := migratePreferences(test.Context(), app.Store.DB); err != nil {
 		test.Fatal("migration could not be retried after rollback", err)
 	}
 	prefs, err := app.Store.Preferences(test.Context(), 1)

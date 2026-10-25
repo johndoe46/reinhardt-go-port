@@ -1,3 +1,6 @@
+{{ if .track_grid }}
+    {{ template "reinhardt/_track_card.html" . }}
+{{ else }}
 <button data-trackid="{{ .music_file.pk }}"
         data-remove_from_tag="{{ if .remove_from_tag }}{{ .remove_from_tag }}{{ end }}"
         data-playing="{{ boolString .playing }}"
@@ -10,6 +13,7 @@
     {{ .music_file.title }}
 </button>
 <ul class="dropdown-menu dropdown-menu-{{ .music_file.pk }}"></ul>
+{{ end }}
 {{ if .handles }}
     <div class="sortable_handle">
         <i class="bi bi-arrows-move"></i>

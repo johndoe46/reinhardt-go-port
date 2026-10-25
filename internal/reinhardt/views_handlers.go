@@ -213,6 +213,7 @@ func (app *App) trackMenu(responseWriter http.ResponseWriter, request *http.Requ
 		ctx["is_favorite"] = fav.N("n") > 0
 		ctx["playing"] = request.URL.Query().Get("playing")
 		ctx["context"] = request.URL.Query().Get("context")
+		ctx["grid_item"] = request.URL.Query().Get("grid") == "1"
 		if id := request.URL.Query().Get("tag"); id != "" {
 			if _, err := strconv.Atoi(id); err != nil {
 				return bad("Invalid tag ID.")
@@ -336,9 +337,14 @@ func (app *App) renameTag(responseWriter http.ResponseWriter, request *http.Requ
 }
 
 func (app *App) artworkModal(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
+	track, err := app.Store.Track(request.Context(), request.PathValue("id"))
+	if err != nil {
+		return err
+	}
 	ctx := TemplateContext{
-		"trackid": request.PathValue("id"),
-		"size":    strings.TrimSuffix(request.PathValue("size"), ".jpg"),
+		"trackid":         request.PathValue("id"),
+		"size":            strings.TrimSuffix(request.PathValue("size"), ".jpg"),
+		"artwork_version": track.ModifiedAt,
 	}
 	return app.render(responseWriter, request, user, "reinhardt/artwork_modal.html", ctx, 200)
 }
