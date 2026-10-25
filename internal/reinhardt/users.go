@@ -61,7 +61,7 @@ func (store *Store) saveManagedUser(ctx context.Context, user User) (int64, erro
 		if err != nil {
 			return 0, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,?)`, user.ID, token()); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,show_track_grid,current_position,access_token) VALUES(?,1,1,1,1,1,0,?)`, user.ID, token()); err != nil {
 			return 0, err
 		}
 	} else {
@@ -144,7 +144,7 @@ func (store *Store) userAccessURL(ctx context.Context, owner int64, reset bool) 
 	}
 	defer tx.Rollback()
 	var access string
-	err = tx.QueryRowContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,?)
+	err = tx.QueryRowContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,show_track_grid,current_position,access_token) VALUES(?,1,1,1,1,1,0,?)
 ON CONFLICT(owner_id) DO UPDATE SET access_token=CASE WHEN access_token IS NULL OR access_token='' OR ? THEN excluded.access_token ELSE access_token END
 RETURNING access_token`, owner, token(), reset).Scan(&access)
 	if err != nil {

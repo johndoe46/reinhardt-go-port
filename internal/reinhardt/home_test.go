@@ -169,9 +169,10 @@ func TestWarmHomeRequestsAvoidLibraryScan(test *testing.T) {
 				stats.suggestions.Store(0)
 				response := call(app, method, "/", owner, nil, fragment)
 				requireCode(test, response, 200)
-				wantCalls := int64(4)
+				// The default grid refreshes artwork references in one batch.
+				wantCalls := int64(5)
 				if fragment {
-					wantCalls = 3
+					wantCalls = 4
 				}
 				if stats.calls.Load() != wantCalls || stats.writes.Load() != 0 || stats.homeLoads.Load() != 0 || stats.suggestions.Load() != 0 {
 					test.Fatalf("warm home: SQL=%d writes=%d home loads=%d suggestion loads=%d", stats.calls.Load(), stats.writes.Load(), stats.homeLoads.Load(), stats.suggestions.Load())

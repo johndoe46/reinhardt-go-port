@@ -61,8 +61,8 @@ func TestNativeTemplatesFriendPlaylistTracks(test *testing.T) {
 				if !strings.Contains(body, fmt.Sprintf(`name="q" value="%d"`, tag)) || !strings.Contains(body, `name="add_type" value="friend_tag"`) {
 					test.Fatal("friend playlist lost its add-to-queue form")
 				}
-				if count := strings.Count(body, `class="track_menu `); count != len(scenario.tracks) {
-					test.Fatalf("rendered %d track controls, want %d", count, len(scenario.tracks))
+				if count := strings.Count(body, `<track-card `); count != len(scenario.tracks) {
+					test.Fatalf("rendered %d track cards, want %d", count, len(scenario.tracks))
 				}
 				previous := -1
 				for _, track := range scenario.tracks {

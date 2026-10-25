@@ -150,7 +150,7 @@ is_superuser BOOL NOT NULL, is_staff BOOL NOT NULL, is_active BOOL NOT NULL, dat
 CREATE TABLE reinhardt_preferences (
 id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL UNIQUE REFERENCES auth_user(id),
 autofeed_queue BOOL NOT NULL, autofeed_similar BOOL NOT NULL, repeat_queue BOOL NOT NULL,
-show_oscilloscope BOOL NOT NULL, current_position INTEGER NOT NULL, access_token TEXT UNIQUE, language_code TEXT);`)
+show_oscilloscope BOOL NOT NULL, show_track_grid BOOL NOT NULL, current_position INTEGER NOT NULL, access_token TEXT UNIQUE, language_code TEXT);`)
 	if err != nil {
 		test.Fatal(err)
 	}

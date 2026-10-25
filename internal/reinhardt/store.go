@@ -237,7 +237,7 @@ func migratePreferences(ctx context.Context, db *sql.DB) error {
 	}
 	err = conn.QueryRowContext(ctx, "SELECT name FROM pragma_table_info('reinhardt_preferences') WHERE name='show_track_grid'").Scan(&name)
 	if err == sql.ErrNoRows {
-		_, err = conn.ExecContext(ctx, "ALTER TABLE reinhardt_preferences ADD COLUMN show_track_grid BOOL NOT NULL DEFAULT 0")
+		_, err = conn.ExecContext(ctx, "ALTER TABLE reinhardt_preferences ADD COLUMN show_track_grid BOOL NOT NULL DEFAULT 1")
 	}
 	if err != nil {
 		return err
@@ -249,8 +249,8 @@ func migratePreferences(ctx context.Context, db *sql.DB) error {
 	if legacyTable {
 		// Explicit defaults also support existing tables whose required columns
 		// have application-level defaults rather than SQLite defaults.
-		if _, err = conn.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token,language_code)
-SELECT owner_id,1,1,1,1,0,NULL,language_code FROM go_user_language WHERE 1
+		if _, err = conn.ExecContext(ctx, `INSERT INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,show_track_grid,current_position,access_token,language_code)
+SELECT owner_id,1,1,1,1,1,0,NULL,language_code FROM go_user_language WHERE 1
 ON CONFLICT(owner_id) DO UPDATE SET language_code=excluded.language_code
 WHERE reinhardt_preferences.language_code IS NULL OR reinhardt_preferences.language_code=''`); err != nil {
 			return err
@@ -323,7 +323,7 @@ func (store *Store) Preferences(ctx context.Context, owner int64) (*Preferences,
 	if err != sql.ErrNoRows {
 		return preferencesFromRow(prefs), err
 	}
-	_, err = store.DB.ExecContext(ctx, `INSERT OR IGNORE INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,current_position,access_token) VALUES(?,1,1,1,1,0,NULL)`, owner)
+	_, err = store.DB.ExecContext(ctx, `INSERT OR IGNORE INTO reinhardt_preferences(owner_id,autofeed_queue,autofeed_similar,repeat_queue,show_oscilloscope,show_track_grid,current_position,access_token) VALUES(?,1,1,1,1,1,0,NULL)`, owner)
 	if err != nil {
 		return nil, err
 	}

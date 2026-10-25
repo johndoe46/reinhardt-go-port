@@ -360,12 +360,14 @@ Open **Preferences** to change these options; switches save automatically:
 - **Autofeed** automatically supplies more tracks when the queue runs out.
 - **Autofeed similar** prefers similar artists when autofeed is enabled.
 - **Show oscilloscope in player** toggles the animated sound display.
-- **Display tracks as a grid with artwork** shows artwork cards in track listings,
+- **Display tracks as a grid with artwork** is enabled by default for new accounts
+  and shows artwork cards in track listings,
   including search results, albums, artists, genres, favorites, tags, friends’ lists,
   and the queue. Each card has **Add to queue**, **Play now**, and **More track
   actions** buttons, with drag handles on sortable lists. Artist names and titles
   stay on one line; hover over clipped text or focus it with the keyboard to
-  scroll it. Turn the setting off to return to compact lists. This choice is saved separately for each account.
+  scroll it. Turn the setting off to return to compact lists. This choice is saved
+  separately for each account; updates preserve existing display preferences.
 
 ![Preferences with the language selector, refresh notice, and playback switches](docs/images/user-manual/preferences.png)
 

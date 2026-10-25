@@ -15,10 +15,15 @@ import (
 func TestTrackGridPreference(test *testing.T) {
 	app := testApp(test)
 	before, err := app.Store.Preferences(test.Context(), 1)
-	if err != nil || before.ShowTrackGrid {
-		test.Fatal("track grid should default to off", err)
+	if err != nil || !before.ShowTrackGrid {
+		test.Fatal("track grid should default to on", err)
 	}
-	response := call(app, "POST", "/preferences/", 1, url.Values{"show_track_grid": {"on"}, "autofeed_queue": {"on"}, "autofeed_similar": {"on"}, "show_oscilloscope": {"on"}}, true)
+	response := call(app, "GET", "/album/?q=Album", 1, nil, true)
+	requireCode(test, response, http.StatusOK)
+	if !strings.Contains(response.Body.String(), `class="track-grid-artwork"`) {
+		test.Fatal("new accounts should see the track grid without changing preferences")
+	}
+	response = call(app, "POST", "/preferences/", 1, url.Values{"show_track_grid": {"on"}, "autofeed_queue": {"on"}, "autofeed_similar": {"on"}, "show_oscilloscope": {"on"}}, true)
 	requireCode(test, response, http.StatusOK)
 	if !strings.Contains(response.Body.String(), `checked name="show_track_grid"`) || strings.Contains(response.Body.String(), `<m-audio`) {
 		test.Fatal("display setting did not update in the main fragment")
@@ -35,7 +40,7 @@ func TestTrackGridPreference(test *testing.T) {
 		test.Fatal("display setting changed other preferences", err)
 	}
 	other, err := app.Store.Preferences(test.Context(), 2)
-	if err != nil || other.ShowTrackGrid {
+	if err != nil || !other.ShowTrackGrid {
 		test.Fatal("display setting changed another account", err)
 	}
 	// The shared form saves every switch, including unchecked ones.
@@ -106,16 +111,56 @@ func TestTrackGridSchemaUpgrade(test *testing.T) {
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("upgrade changed existing preferences", err)
 	}
-	if _, err := store.DB.Exec("UPDATE reinhardt_preferences SET show_track_grid=1 WHERE owner_id=1"); err != nil {
+	if _, err := store.DB.Exec("UPDATE reinhardt_preferences SET show_track_grid=0 WHERE owner_id=1"); err != nil {
 		test.Fatal(err)
 	}
 	if err := migratePreferences(test.Context(), store.DB); err != nil {
 		test.Fatal(err)
 	}
-	before.ShowTrackGrid = true
+	before.ShowTrackGrid = false
 	after, err = store.Preferences(test.Context(), 1)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		test.Fatal("repeated upgrade reset saved preferences", err)
+	}
+}
+
+func TestTrackGridDefaultOnExistingSchema(test *testing.T) {
+	app := testApp(test)
+	// Existing SQLite columns retain their old default. New preferences must
+	// explicitly enable the grid while preserving accounts already using lists.
+	if _, err := app.Store.DB.Exec(`ALTER TABLE reinhardt_preferences DROP COLUMN show_track_grid;
+ALTER TABLE reinhardt_preferences ADD COLUMN show_track_grid BOOL NOT NULL DEFAULT 0;
+INSERT INTO auth_user(id,username) VALUES(3,'ordinary'),(4,'access-link'),(5,'language');
+CREATE TABLE go_user_language(owner_id INTEGER PRIMARY KEY REFERENCES auth_user(id),language_code TEXT NOT NULL);
+INSERT INTO go_user_language(owner_id,language_code) VALUES(5,'fr');`); err != nil {
+		test.Fatal(err)
+	}
+	before, err := app.Store.Preferences(test.Context(), 1)
+	if err != nil {
+		test.Fatal(err)
+	}
+	if _, err := app.Store.Preferences(test.Context(), 3); err != nil {
+		test.Fatal(err)
+	}
+	if _, err := app.Store.userAccessURL(test.Context(), 4, false); err != nil {
+		test.Fatal(err)
+	}
+	managed, err := app.Store.saveManagedUser(test.Context(), User{Username: "managed", IsActive: true})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if err := migratePreferences(test.Context(), app.Store.DB); err != nil {
+		test.Fatal(err)
+	}
+	for _, owner := range []int64{3, 4, 5, managed} {
+		prefs, err := app.Store.Preferences(test.Context(), owner)
+		if err != nil || !prefs.ShowTrackGrid {
+			test.Fatalf("new preferences for owner %d did not default to the grid: %v", owner, err)
+		}
+	}
+	after, err := app.Store.Preferences(test.Context(), 1)
+	if err != nil || !reflect.DeepEqual(before, after) || after.ShowTrackGrid {
+		test.Fatal("new defaults changed an existing account's saved preferences", err)
 	}
 }
 
@@ -172,6 +217,9 @@ func TestTrackGridListings(test *testing.T) {
 		}
 	}
 	// A user's saved view cannot affect another account's library pages.
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET show_track_grid=0 WHERE owner_id=2"); err != nil {
+		test.Fatal(err)
+	}
 	requireCode(test, call(app, "POST", "/preferences/", 1, url.Values{"show_track_grid": {"on"}}, true), http.StatusOK)
 	response := call(app, "GET", "/album/?q=Album", 2, nil, true)
 	requireCode(test, response, http.StatusOK)
