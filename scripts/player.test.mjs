@@ -206,16 +206,66 @@ test("replacing audio transfers listeners and unbinding removes audio, control, 
     assert.equal(nextCalls(), 2, "listeners must work after reconnecting");
 });
 
-test("playback fragments preserve the element, replay the same stopped station, and clear artwork", () => {
+test("track end and playback selections update the root player and queue without dismissing an overlay", context => {
+    const {player, audio} = fixture(context, "track");
+    const compilers = new Map();
+    const submissions = [];
+    const renders = [];
+    const form = {};
+    const nextTrack = {value: "stale track"};
+    const listItem = {value: "stale item"};
+    const pageContext = {value: "queue", dataset: {queueUrl: "/queue/"}};
+    const elements = {player, now_playing_form: form, queue_next_track: nextTrack, queue_list_item: listItem, page_context: pageContext};
+    const up = {
+        link: {config: {followSelectors: [], preloadSelectors: []}},
+        form: {config: {submitSelectors: []}}, history: {config: {}}, fragment: {config: {}}, on() {},
+        compiler: (name, compile) => compilers.set(name, compile),
+        submit(element, options) {submissions.push({element, options, nextTrack: nextTrack.value, listItem: listItem.value});},
+        render(options) {renders.push(options);},
+    };
+    const sandbox = {
+        up, navigator: {}, CustomEvent: class {},
+        document: {
+            querySelector: () => ({getAttribute: () => "light"}),
+            getElementById: id => elements[id] || null, dispatchEvent() {},
+        },
+    };
+    vm.runInNewContext(appSource, sandbox);
+    globalThis.playNext = sandbox.playNext;
+
+    audio.dispatchEvent(new Event("ended"));
+    sandbox.playNext(42);
+    sandbox.playQueueItem({closest: () => ({dataset: {itempk: "17"}})});
+
+    assert.equal(submissions.length, 3);
+    for (const {element, options} of submissions) {
+        assert.equal(element, form, "pass the persistent form itself, since selector lookup is scoped to the modal");
+        assert.equal(options.layer, "root", "render playback metadata underneath the modal");
+        assert.equal(options.peel, false, "keep the details modal and unsaved edits open");
+    }
+    assert.deepEqual(submissions.map(({nextTrack, listItem}) => [nextTrack, listItem]), [["", ""], [42, ""], ["", "17"]]);
+
+    compilers.get("#now_playing")({dataset: {kind: "track", url: "/stream/2/", autoplay: "true"}});
+    assert.equal(player.src, "/stream/2/");
+    assert.equal(audio.plays, 1, "the next track starts on the persistent player");
+    assert.equal(renders.length, 1);
+    assert.equal(renders[0].url, "/queue/");
+    assert.equal(renders[0].target, "main");
+    assert.equal(renders[0].layer, "root", "refresh the underlying queue instead of the modal's main fragment");
+    assert.equal(renders[0].peel, false);
+    assert.equal(renders[0].history, false);
+    assert.equal(renders[0].scroll, false);
+});
+
+test("playback fragments preserve the element, replay the same stopped station, and clear media artwork", () => {
     const compilers = new Map();
     let submissions = 0;
     const up = {link: {config: {followSelectors: [], preloadSelectors: []}}, form: {config: {submitSelectors: []}}, history: {config: {}}, fragment: {config: {}}, on() {}, submit() {submissions++;}, compiler: (name, fn) => compilers.set(name, fn)};
     const player = {src: "", kind: "track", plays: 0, pauses: 0, get isLive() {return this.kind === "live";}, setAttribute(name, value) { if (name === "data-kind") this.kind = value; }, getAttribute() { return this.kind; }, play() { this.plays++; }, pause() { this.pauses++; }};
     const nextTrack = {value: ""};
     const listItem = {value: ""};
-    const artwork = {style: {backgroundImage: "old artwork"}};
     const actions = new Map();
-    const sandbox = {up, document: {querySelector: selector => selector === "html" ? {getAttribute: () => "light"} : artwork, getElementById: id => ({player, queue_next_track: nextTrack, queue_list_item: listItem})[id] || null, dispatchEvent() {}}, navigator: {mediaSession: {setActionHandler: (name, handler) => actions.set(name, handler)}}, MediaMetadata: class {constructor(data) {Object.assign(this, data);}}, CustomEvent: class {}, console};
+    const sandbox = {up, document: {querySelector: () => ({getAttribute: () => "light"}), getElementById: id => ({player, now_playing_form: {}, queue_next_track: nextTrack, queue_list_item: listItem})[id] || null, dispatchEvent() {}}, navigator: {mediaSession: {setActionHandler: (name, handler) => actions.set(name, handler)}}, MediaMetadata: class {constructor(data) {Object.assign(this, data);}}, CustomEvent: class {}, console};
     vm.runInNewContext(appSource, sandbox);
     const compile = compilers.get("#now_playing");
     const fragment = {dataset: {kind: "live", url: "/radio/1/audio/", title: "Station", artist: "France", autoplay: "true"}};
@@ -224,7 +274,6 @@ test("playback fragments preserve the element, replay the same stopped station, 
     assert.equal(player.plays, 2);
     assert.equal(player.pauses, 1);
     assert.equal(actions.get("nexttrack"), null);
-    assert.equal(artwork.style.backgroundImage, "");
     assert.equal(sandbox.navigator.mediaSession.metadata.artwork.length, 0);
     sandbox.playNext();
     assert.equal(submissions, 0, "Next must not advance radio into the queue");

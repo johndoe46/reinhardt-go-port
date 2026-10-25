@@ -59,7 +59,7 @@ function playQueueItem(element) {
     unblinkPlayer();
     document.getElementById("queue_next_track").value = "";
     document.getElementById("queue_list_item").value = element.closest(".list-group-item").dataset.itempk;
-    up.submit("#now_playing_form");
+    up.submit(document.getElementById("now_playing_form"), {layer: "root", peel: false});
 }
 
 
@@ -83,7 +83,8 @@ function playNext(insertTrack) {
     } else {
         document.getElementById("queue_next_track").value = "";
     }
-    up.submit('#now_playing_form');
+    // The persistent player lives below any open overlays.
+    up.submit(document.getElementById("now_playing_form"), {layer: "root", peel: false});
     //getPlayer().play();
 }
 
@@ -147,7 +148,7 @@ up.compiler("#now_playing", function (element) {
     }
     const pageContext = document.getElementById("page_context");
     if (pageContext?.value === "queue") {
-        up.render({url: pageContext.dataset.queueUrl, target: "main", history: false, scroll: false});
+        up.render({url: pageContext.dataset.queueUrl, target: "main", layer: "root", peel: false, history: false, scroll: false});
     }
 });
 
