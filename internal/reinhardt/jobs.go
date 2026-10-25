@@ -413,14 +413,23 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	}
 	defer os.RemoveAll(tmp)
 	out := filepath.Join(tmp, "track.%(ext)s")
-	// Ignore the service account's yt-dlp config: output names and MP3 extraction
-	// must follow this pipeline's contract. Helpers are invoked without a shell.
-	cmd := app.ytDLPCommand(ctx, "--no-playlist", "-x", "--audio-format", "mp3", "--audio-quality", "320k", "--output", out, "--", canonical)
-	output, operationErr := cmd.CombinedOutput()
+	// Download the original audio before measuring its peak. Conversion happens
+	// once below, with the measured gain applied during MP3 encoding.
+	cmd := app.ytDLPCommand(ctx, "--no-playlist", "--format", "bestaudio/best", "--no-simulate", "--print", "after_move:filepath", "--output", filepath.Join(tmp, "source.%(ext)s"), "--", canonical)
+	var downloadErrors bytes.Buffer
+	cmd.Stderr = &downloadErrors
+	output, operationErr := cmd.Output()
 	if operationErr != nil {
-		return fmt.Errorf("yt-dlp: %w: %s", operationErr, output)
+		return fmt.Errorf("yt-dlp: %w: %.1000s", operationErr, downloadErrors.Bytes())
+	}
+	source := strings.TrimSpace(string(output))
+	if source == "" {
+		return fmt.Errorf("yt-dlp did not report the downloaded audio path")
 	}
 	path := filepath.Join(tmp, "track.mp3")
+	if operationErr = normalizeYouTubeAudio(ctx, source, path); operationErr != nil {
+		return operationErr
+	}
 	ripMetadata["relative_path"] = "track.mp3"
 	ripMetadata["full_path"] = path
 	// Artwork is optional. Give thumbnail extraction its own short deadline and

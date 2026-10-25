@@ -13,10 +13,62 @@ import (
 	"testing"
 )
 
-func TestYouTubeCookiesForMetadataAudioAndThumbnails(test *testing.T) {
+func installYouTubeTestTools(test *testing.T) string {
+	test.Helper()
 	if runtime.GOOS == "windows" {
 		test.Skip("fixture uses a POSIX shell")
 	}
+	tools := test.TempDir()
+	logs := test.TempDir()
+	test.Setenv("PATH", tools)
+	test.Setenv("YTDLP_TEST_LOG", logs)
+	test.Setenv("YTDLP_TEST_FAIL", "")
+	test.Setenv("YTDLP_TEST_PEAK", "-5.000000")
+	// Record each helper invocation, supplying fixtures without network access.
+	script := `#!/bin/sh
+mode=audio
+if [ "${0##*/}" = ffmpeg ]; then mode=encode; fi
+for arg in "$@"; do
+    case "$arg" in
+        --dump-single-json) mode=metadata ;;
+        --write-thumbnail) mode=thumbnail ;;
+        astats=*) mode=scan ;;
+    esac
+done
+printf '%s\n' "$@" > "$YTDLP_TEST_LOG/$mode"
+printf '%s\n' "$mode" >> "$YTDLP_TEST_LOG/calls"
+if [ "$mode" = "$YTDLP_TEST_FAIL" ]; then
+    printf '%s failed\n' "$mode" >&2
+    exit 1
+fi
+case "$mode" in
+    metadata) printf '%s\n' '{"artist":"Cookie Artist","track":"Cookie Track","release_year":2026}' ;;
+    audio)
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = --output ]; then
+                shift
+                source="${1%.*}.webm"
+                printf 'source fixture' > "$source"
+                printf '%s\n' "$source"
+                break
+            fi
+            shift
+        done ;;
+    scan) printf 'Peak level dB: %s\n' "$YTDLP_TEST_PEAK" >&2 ;;
+    encode)
+        for arg in "$@"; do destination="$arg"; done
+        printf 'audio fixture' > "$destination" ;;
+esac
+`
+	for _, name := range []string{"yt-dlp", "ffmpeg"} {
+		if err := os.WriteFile(filepath.Join(tools, name), []byte(script), 0700); err != nil {
+			test.Fatal(err)
+		}
+	}
+	return logs
+}
+
+func TestYouTubeCookiesForMetadataAudioAndThumbnails(test *testing.T) {
 	for _, configured := range []bool{false, true} {
 		name := "without cookies"
 		if configured {
@@ -24,38 +76,9 @@ func TestYouTubeCookiesForMetadataAudioAndThumbnails(test *testing.T) {
 		}
 		test.Run(name, func(test *testing.T) {
 			app := testApp(test)
-			tools := test.TempDir()
-			logs := test.TempDir()
-			test.Setenv("PATH", tools)
-			test.Setenv("YTDLP_TEST_LOG", logs)
+			logs := installYouTubeTestTools(test)
 			if configured {
 				app.Store.Config.YTDLPCookiesFile = filepath.Join(test.TempDir(), "cookies folder", "yt;session.txt")
-			}
-			// Exercise all three application calls without network or media tools.
-			script := `#!/bin/sh
-mode=audio
-for arg in "$@"; do
-    case "$arg" in
-        --dump-single-json) mode=metadata ;;
-        --write-thumbnail) mode=thumbnail ;;
-    esac
-done
-printf '%s\n' "$@" > "$YTDLP_TEST_LOG/$mode"
-case "$mode" in
-    metadata) printf '%s\n' '{"artist":"Cookie Artist","track":"Cookie Track","release_year":2026}' ;;
-    audio)
-        while [ "$#" -gt 0 ]; do
-            if [ "$1" = --output ]; then
-                shift
-                printf 'audio fixture' > "${1%.*}.mp3"
-                break
-            fi
-            shift
-        done ;;
-esac
-`
-			if err := os.WriteFile(filepath.Join(tools, "yt-dlp"), []byte(script), 0700); err != nil {
-				test.Fatal(err)
 			}
 			video := "https://www.youtube.com/watch?v=abcdefghijk"
 			response := call(app, "GET", "/ytrip/metadata/?"+url.Values{"url": {video}}.Encode(), 1, nil, false)
@@ -86,6 +109,48 @@ esac
 				}
 				if !configured && strings.Contains(string(data), "--cookies") {
 					test.Fatalf("%s used cookies when unset", mode)
+				}
+			}
+			calls, err := os.ReadFile(filepath.Join(logs, "calls"))
+			if err != nil || string(calls) != "metadata\naudio\nscan\nencode\nthumbnail\n" {
+				test.Fatalf("expected one scan followed by one encode: %s, %v", calls, err)
+			}
+			download, _ := os.ReadFile(filepath.Join(logs, "audio"))
+			if strings.Contains(string(download), "\n-x\n") || strings.Contains(string(download), "--audio-format") || !strings.Contains(string(download), "\nbestaudio/best\n") {
+				test.Fatalf("download must retain the original audio: %s", download)
+			}
+			encode, _ := os.ReadFile(filepath.Join(logs, "encode"))
+			if !strings.Contains(string(encode), "\nvolume=4.000000dB:precision=double\n") || !strings.Contains(string(encode), "\nlibmp3lame\n-b:a\n320k\n") {
+				test.Fatalf("gain was not applied during MP3 encoding: %s", encode)
+			}
+		})
+	}
+}
+
+func TestYouTubeNormalizationFailureIsRecorded(test *testing.T) {
+	for _, stage := range []string{"scan", "encode"} {
+		test.Run(stage, func(test *testing.T) {
+			app := testApp(test)
+			logs := installYouTubeTestTools(test)
+			test.Setenv("YTDLP_TEST_FAIL", stage)
+			err := app.youtubeRip(test.Context(), Row{"url": "https://youtu.be/abcdefghijk", "artist": "Artist", "title": "Normalized"})
+			if err == nil || !strings.Contains(err.Error(), stage+" failed") {
+				test.Fatalf("lost normalization failure: %v", err)
+			}
+			failure, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_youtuberipfailure")
+			if err != nil || !strings.Contains(failure.S("failure_message"), stage+" failed") {
+				test.Fatalf("failure cannot be reviewed and retried: %#v, %v", failure, err)
+			}
+			count, err := app.Store.One(test.Context(), "SELECT count(*) n FROM reinhardt_musicfile")
+			if err != nil || count.N("n") != 3 {
+				test.Fatalf("imported failed normalization: %#v, %v", count, err)
+			}
+			if _, err := os.Stat(filepath.Join(logs, "thumbnail")); !os.IsNotExist(err) {
+				test.Fatal("continued processing after normalization failed")
+			}
+			if stage == "scan" {
+				if _, err := os.Stat(filepath.Join(logs, "encode")); !os.IsNotExist(err) {
+					test.Fatal("encoded audio after the peak scan failed")
 				}
 			}
 		})

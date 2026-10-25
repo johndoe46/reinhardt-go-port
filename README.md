@@ -440,6 +440,13 @@ with CGO disabled; no system font or additional helper binary is needed.
 
 YouTube features use `yt-dlp`, `ffmpeg`, `ffprobe` and Deno on the service's `PATH`;
 see [Prerequisites](#prerequisites) for Debian and macOS installation commands.
+New YouTube imports are peak-normalized to a sample peak of -1 dBFS before MP3
+encoding. Reinhardt downloads the original audio, scans its decoded samples,
+then applies one constant gain across all channels during the sole 320 kb/s MP3
+encode. This preserves dynamics and channel balance; silence stays silent.
+The scan writes no intermediate audio file. MP3 encoding can shift the final
+decoded peaks slightly, so -1 dBFS is a pre-encoding target, not a true-peak limit.
+
 If YouTube requires authentication or bot verification, set the optional
 `YTDLP_COOKIES_FILE=/path/to/youtube-cookies.txt` in `.env` or the process
 environment to a Netscape-format cookies file. Reinhardt passes it explicitly

@@ -433,6 +433,12 @@ optional. Scroll down to the **Send** button to submit the form. The download
 runs in the background and is imported into the first registered music
 directory. Keep Reinhardt running while it processes the download.
 
+New downloads receive peak normalization targeting -1 dBFS before MP3 encoding.
+One constant volume adjustment preserves the track's dynamics and stereo balance.
+Reinhardt scans the downloaded source, then applies the adjustment during its
+single MP3 conversion. MP3 encoding can shift the final peaks slightly; peak
+normalization also does not make every track equally loud to the ear.
+
 If YouTube asks you to sign in or confirm you are not a bot, an administrator
 can set `YTDLP_COOKIES_FILE=/path/to/youtube-cookies.txt` in `.env` or the
 process environment. Use a Netscape-format cookies file following
