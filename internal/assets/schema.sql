@@ -17,6 +17,31 @@ CREATE TABLE IF NOT EXISTS reinhardt_musicfile (
  track_number INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, modified_at DATETIME NOT NULL,
  missing BOOL NOT NULL DEFAULT 0, hash TEXT, UNIQUE(music_directory_id, relative_path)
 );
+-- Artwork references are separate from library metadata so existing databases
+-- can adopt the shared cache without rewriting their music-file table.
+CREATE TABLE IF NOT EXISTS go_track_artwork (
+ track_id INTEGER PRIMARY KEY REFERENCES reinhardt_musicfile(id) ON DELETE CASCADE ON UPDATE CASCADE,
+ revision INTEGER NOT NULL DEFAULT 0,
+ artwork_hash TEXT CHECK(artwork_hash IS NULL OR (length(artwork_hash)=64 AND artwork_hash NOT GLOB '*[^0-9a-f]*'))
+);
+CREATE INDEX IF NOT EXISTS go_track_artwork_hash ON go_track_artwork(artwork_hash);
+-- Keep a revision even when the reference is invalidated: an older request
+-- must not publish its artwork after a metadata edit or an upload.
+CREATE TRIGGER IF NOT EXISTS go_track_artwork_update
+AFTER UPDATE OF modified_at,artist,title,album,relative_path,music_directory_id ON reinhardt_musicfile
+WHEN OLD.modified_at IS NOT NEW.modified_at OR OLD.artist IS NOT NEW.artist
+ OR OLD.title IS NOT NEW.title OR OLD.album IS NOT NEW.album
+ OR OLD.relative_path IS NOT NEW.relative_path OR OLD.music_directory_id IS NOT NEW.music_directory_id BEGIN
+ INSERT INTO go_track_artwork(track_id,revision) VALUES(NEW.id,1)
+ ON CONFLICT(track_id) DO UPDATE SET revision=revision+1,artwork_hash=NULL;
+END;
+CREATE TRIGGER IF NOT EXISTS go_track_artwork_directory_update
+AFTER UPDATE OF local_path ON reinhardt_musicdirectory
+WHEN OLD.local_path IS NOT NEW.local_path BEGIN
+ INSERT INTO go_track_artwork(track_id,revision)
+ SELECT id,1 FROM reinhardt_musicfile WHERE music_directory_id=NEW.id
+ ON CONFLICT(track_id) DO UPDATE SET revision=revision+1,artwork_hash=NULL;
+END;
 CREATE TABLE IF NOT EXISTS reinhardt_tag (
  id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INTEGER NOT NULL REFERENCES auth_user(id) ON DELETE CASCADE,
  label TEXT NOT NULL, created_at DATETIME NOT NULL, modified_at DATETIME NOT NULL,

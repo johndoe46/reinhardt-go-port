@@ -24,21 +24,23 @@ import (
 const sessionLifetimeSeconds = 31556952
 
 type App struct {
-	router       *http.ServeMux
-	Store        *Store
-	Templates    Templates
-	Translations *Translations
-	Client       *http.Client
-	AudioClient  *http.Client
-	RadioClient  *http.Client
-	coverMu      sync.Mutex
-	coverCache   map[string]coverResult
-	coverFlights map[string]*coverFlight
-	suggestions  suggestionCache
-	home         homeCache
-	autofeed     autofeedCache
-	similar      similarLookupCache
-	artistNames  libraryArtistCache
+	router         *http.ServeMux
+	Store          *Store
+	Templates      Templates
+	Translations   *Translations
+	Client         *http.Client
+	AudioClient    *http.Client
+	RadioClient    *http.Client
+	coverMu        sync.Mutex
+	coverCache     map[string]coverResult
+	coverFlights   map[string]*coverFlight
+	artworkMu      sync.Mutex
+	artworkFlights map[string]*artworkRenderFlight
+	suggestions    suggestionCache
+	home           homeCache
+	autofeed       autofeedCache
+	similar        similarLookupCache
+	artistNames    libraryArtistCache
 }
 type httpError struct {
 	Code    int
@@ -360,8 +362,10 @@ func (app *App) render(responseWriter http.ResponseWriter, request *http.Request
 	}
 	// Render before committing headers, so a template failure can still produce
 	// a clean HTTP error instead of an incomplete successful response.
+	pageContext := templateDomainValue(ctx).(TemplateContext)
+	pageContext["artwork_url"] = app.Store.templateArtworkURL(request.Context(), pageContext)
 	var renderedHTML bytes.Buffer
-	if err := pageTemplate.ExecuteTemplate(&renderedHTML, name, templateDomainValue(ctx)); err != nil {
+	if err := pageTemplate.ExecuteTemplate(&renderedHTML, name, pageContext); err != nil {
 		return err
 	}
 	var err error

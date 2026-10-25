@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -299,7 +300,9 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 					if operationErr = atomicFile(track.FullPath+ext, bytes.NewReader(data), true); operationErr != nil {
 						return operationErr
 					}
-					app.invalidateCovers(track.ID)
+					if operationErr = app.invalidateCovers(request.Context(), track.ID); operationErr != nil {
+						return operationErr
+					}
 					if fileExtension(track) != ".mp3" {
 						if err := embedArtwork(request.Context(), track, track.FullPath+ext); err != nil {
 							log.Printf("embed artwork: %v", err)
@@ -321,18 +324,21 @@ func (app *App) trackDetails(responseWriter http.ResponseWriter, request *http.R
 	return app.render(responseWriter, request, user, "reinhardt/track_details_modal.html", TemplateContext{"music_file": track, "message": message}, status)
 }
 
-func (app *App) invalidateCovers(id int64) {
-	files, _ := filepath.Glob(filepath.Join(app.Store.Config.CoversDir, fmt.Sprintf("*-%d-*", id)))
-	for _, cachePath := range files {
-		os.Remove(cachePath)
-	}
-}
 func nearbyPicture(track *Track) string {
 	path := track.FullPath
+	var newest string
+	var modified time.Time
 	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif"} {
 		if info, err := os.Stat(path + ext); err == nil && info.Mode().IsRegular() {
-			return path + ext
+			// A new upload in another format must beat an older discovery JPG
+			// without deleting the user's other sidecar files.
+			if newest == "" || info.ModTime().After(modified) {
+				newest, modified = path+ext, info.ModTime()
+			}
 		}
+	}
+	if newest != "" {
+		return newest
 	}
 	for _, dir := range []string{filepath.Dir(path), filepath.Dir(filepath.Dir(path))} {
 		for _, ext := range []string{".jpg", ".png"} {
@@ -403,32 +409,156 @@ func artworkCacheHeaders(responseWriter http.ResponseWriter, found bool) {
 	}
 }
 
-func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request) error {
+func requestedArtworkSize(request *http.Request) (int, error) {
 	size, err := strconv.Atoi(strings.TrimSuffix(request.PathValue("size"), ".jpg"))
 	if err != nil {
-		return bad("Invalid artwork size")
+		return 0, bad("Invalid artwork size")
 	}
 	switch size {
 	case 96, 128, 192, 256, 384, 512:
+		return size, nil
 	default:
-		return bad("Invalid artwork size")
+		return 0, bad("Invalid artwork size")
 	}
-	track, err := app.Store.Track(request.Context(), request.PathValue("id"))
+}
+
+func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Request) error {
+	size, err := requestedArtworkSize(request)
 	if err != nil {
 		return err
 	}
-	cache := filepath.Join(app.Store.Config.CoversDir, fmt.Sprintf("thumb-%d-%d-square.jpg", track.ID, size))
-	if cachedFile, err := os.Open(cache); err == nil {
-		defer cachedFile.Close()
-		info, err := cachedFile.Stat()
+	artwork, err := app.Store.trackArtwork(request.Context(), request.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	if artwork.hash != "" {
+		if redirected, err := app.redirectArtwork(responseWriter, request, artwork.hash, size); redirected || err != nil {
+			return err
+		}
+	}
+	track := artwork.track
+	im := app.loadArtwork(request.Context(), track)
+	if im != nil {
+		hash := artworkImageHash(im)
+		if err := app.Store.rememberArtwork(request.Context(), artwork, hash); err != nil {
+			return err
+		}
+		cache := app.artworkThumbnailPath(hash, size)
+		if _, err := app.renderArtwork(request.Context(), cache, cache, func() image.Image { return cropSquare(im, size) }); err != nil {
+			return err
+		}
+		// Replace old per-track files only after the shared thumbnail is ready.
+		app.removeLegacyCovers(track.ID)
+		redirected, err := app.redirectArtwork(responseWriter, request, hash, size)
 		if err != nil {
 			return err
 		}
-		responseWriter.Header().Set("Content-Type", "image/jpeg")
-		artworkCacheHeaders(responseWriter, true)
-		http.ServeContent(responseWriter, request, "artwork.jpg", info.ModTime(), cachedFile)
+		if !redirected {
+			return fmt.Errorf("artwork thumbnail disappeared before serving")
+		}
 		return nil
 	}
+	// Lazy upgrades preserve existing thumbnails when originals are unavailable.
+	legacy := filepath.Join(app.Store.Config.CoversDir, fmt.Sprintf("thumb-%d-%d-square.jpg", track.ID, size))
+	if served, err := serveArtworkFile(responseWriter, request, legacy, false); served || err != nil {
+		return err
+	}
+	data, err := app.renderArtwork(request.Context(), artworkFallbackKey(track, size), "", func() image.Image { return fallbackArtwork(track, size) })
+	if err != nil {
+		return err
+	}
+	responseWriter.Header().Set("Content-Type", "image/jpeg")
+	artworkCacheHeaders(responseWriter, false)
+	http.ServeContent(responseWriter, request, "artwork.jpg", time.Time{}, bytes.NewReader(data))
+	return nil
+}
+
+// Track URLs are mutable lookup endpoints. Only the hash destination is
+// immutable, and its URL is identical for every track sharing that image.
+func (app *App) redirectArtwork(responseWriter http.ResponseWriter, request *http.Request, hash string, size int) (bool, error) {
+	if _, err := os.Stat(app.artworkThumbnailPath(hash, size)); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	artworkCacheHeaders(responseWriter, false)
+	http.Redirect(responseWriter, request, app.Store.URL("artwork_hash", hash, size), http.StatusFound)
+	return true, nil
+}
+
+func (app *App) artworkByHash(responseWriter http.ResponseWriter, request *http.Request) error {
+	hash := request.PathValue("hash")
+	if request.PathValue("version") != artworkRenderVersion || !artworkHashPattern.MatchString(hash) {
+		return sql.ErrNoRows
+	}
+	size, err := requestedArtworkSize(request)
+	if err != nil {
+		return err
+	}
+	cache := app.artworkThumbnailPath(hash, size)
+	if served, err := serveArtworkFile(responseWriter, request, cache, true); served || err != nil {
+		return err
+	}
+	// A known hash can be rendered at a previously unrequested size. Try its
+	// current users, verifying the source content before publishing anything
+	// under an immutable URL. Never put a fallback or changed image here.
+	references, err := app.Store.Query(request.Context(), "SELECT track_id FROM go_track_artwork WHERE artwork_hash=? ORDER BY track_id", hash)
+	if err != nil {
+		return err
+	}
+	for _, reference := range references {
+		artwork, err := app.Store.trackArtwork(request.Context(), reference.S("track_id"))
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if artwork.hash != hash {
+			continue
+		}
+		im := app.loadArtwork(request.Context(), artwork.track)
+		if err := request.Context().Err(); err != nil {
+			return err
+		}
+		if im == nil || artworkImageHash(im) != hash {
+			continue
+		}
+		if _, err := app.renderArtwork(request.Context(), cache, cache, func() image.Image { return cropSquare(im, size) }); err != nil {
+			return err
+		}
+		if served, err := serveArtworkFile(responseWriter, request, cache, true); served || err != nil {
+			return err
+		}
+		return fmt.Errorf("artwork thumbnail disappeared before serving")
+	}
+	return sql.ErrNoRows
+}
+
+func serveArtworkFile(responseWriter http.ResponseWriter, request *http.Request, path string, immutable bool) (bool, error) {
+	cachedFile, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer cachedFile.Close()
+	info, err := cachedFile.Stat()
+	if err != nil {
+		return false, err
+	}
+	responseWriter.Header().Set("Content-Type", "image/jpeg")
+	artworkCacheHeaders(responseWriter, true)
+	if immutable {
+		responseWriter.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		responseWriter.Header().Set("ETag", `"`+filepath.Base(path)+`"`)
+	}
+	http.ServeContent(responseWriter, request, "artwork.jpg", info.ModTime(), cachedFile)
+	return true, nil
+}
+
+func (app *App) loadArtwork(ctx context.Context, track *Track) image.Image {
 	var im image.Image
 	// A track-specific sidecar records an explicit edit and must beat stale embedded artwork.
 	if picture := nearbyPicture(track); strings.HasPrefix(picture, track.FullPath) && picture != "" {
@@ -454,29 +584,9 @@ func (app *App) artwork(responseWriter http.ResponseWriter, request *http.Reques
 		}
 	}
 	if im == nil {
-		im = app.discoverCover(request.Context(), track)
+		im = app.discoverCover(ctx, track)
 	}
-	found := im != nil
-	if found {
-		im = cropSquare(im, size)
-	} else {
-		im = fallbackArtwork(track, size)
-	}
-	var buffer bytes.Buffer
-	if err = jpeg.Encode(&buffer, im, &jpeg.Options{Quality: 85}); err != nil {
-		return err
-	}
-	// Persist actual covers only. Saving a generated placeholder here would hide
-	// artwork added or discovered later until someone explicitly removed the file.
-	if found {
-		if err = atomicFile(cache, bytes.NewReader(buffer.Bytes()), true); err != nil {
-			return err
-		}
-	}
-	responseWriter.Header().Set("Content-Type", "image/jpeg")
-	artworkCacheHeaders(responseWriter, found)
-	http.ServeContent(responseWriter, request, "artwork.jpg", time.Time{}, bytes.NewReader(buffer.Bytes()))
-	return nil
+	return im
 }
 
 func (app *App) archive(responseWriter http.ResponseWriter, request *http.Request, tag *Tag) error {

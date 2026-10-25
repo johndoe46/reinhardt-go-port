@@ -52,6 +52,11 @@ func (app *App) indexPage(responseWriter http.ResponseWriter, request *http.Requ
 	if err != nil {
 		return err
 	}
+	// Discovery does not change the cached home metadata revision. Refresh the
+	// artwork references in a batch at render time if the page displays images.
+	for _, track := range tracks {
+		track.artworkHash, track.artworkHashLoaded = "", false
+	}
 	ctx["music_files"] = tracks
 	return app.render(responseWriter, request, user, "reinhardt/index.html", ctx, 200)
 }
@@ -342,9 +347,8 @@ func (app *App) artworkModal(responseWriter http.ResponseWriter, request *http.R
 		return err
 	}
 	ctx := TemplateContext{
-		"trackid":         request.PathValue("id"),
-		"size":            strings.TrimSuffix(request.PathValue("size"), ".jpg"),
-		"artwork_version": track.ModifiedAt,
+		"music_file": track,
+		"size":       strings.TrimSuffix(request.PathValue("size"), ".jpg"),
 	}
 	return app.render(responseWriter, request, user, "reinhardt/artwork_modal.html", ctx, 200)
 }

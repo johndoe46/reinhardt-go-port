@@ -101,6 +101,9 @@ func (app *App) routes() *http.ServeMux {
 	route("GET", "artwork/{id}/{size}", func(writer http.ResponseWriter, request *http.Request, user *User) error {
 		return app.artwork(writer, request)
 	})
+	route("GET", "artwork/{version}/{hash}/{size}", func(writer http.ResponseWriter, request *http.Request, user *User) error {
+		return app.artworkByHash(writer, request)
+	})
 	route("GET", "artwork_modal/{id}/{size}", app.artworkModal)
 	route("GET POST", "track_details_modal/{id}", func(writer http.ResponseWriter, request *http.Request, user *User) error {
 		return app.trackDetails(writer, request, user, request.PathValue("id"))

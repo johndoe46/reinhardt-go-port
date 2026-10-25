@@ -22,10 +22,20 @@ import (
 	"time"
 )
 
+// Model the browser following a track lookup to its shared artwork URL. Tests
+// for redirect behavior use call directly so they can inspect the first hop.
+func callArtwork(app *App, method, path string, owner int, form url.Values, fragment bool) *httptest.ResponseRecorder {
+	response := call(app, method, path, owner, form, fragment)
+	if response.Code == http.StatusFound && strings.HasPrefix(response.Header().Get("Location"), app.Store.Config.Path("artwork/"+artworkRenderVersion+"/")) {
+		return call(app, method, response.Header().Get("Location"), owner, nil, fragment)
+	}
+	return response
+}
+
 func TestArtworkCacheControl(test *testing.T) {
 	app := testApp(test)
 	path := "/artwork/1/96.jpg"
-	fallback := call(app, "GET", path, 0, nil, false)
+	fallback := callArtwork(app, "GET", path, 0, nil, false)
 	requireCode(test, fallback, http.StatusOK)
 	if fallback.Header().Get("Cache-Control") != "public, max-age=3600" || fallback.Header().Get("Vary") != "" {
 		test.Fatal("fallback should be cached briefly without varying by user", fallback.Header())
@@ -39,9 +49,9 @@ func TestArtworkCacheControl(test *testing.T) {
 	}
 	var first []byte
 	for _, method := range []string{"GET", "GET", "HEAD"} {
-		response := call(app, method, path, 1, nil, false)
+		response := callArtwork(app, method, path, 1, nil, false)
 		requireCode(test, response, http.StatusOK)
-		if response.Header().Get("Cache-Control") != "public, max-age=31536000" || response.Header().Get("Vary") != "" {
+		if response.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || response.Header().Get("Vary") != "" {
 			test.Fatal("generated and disk-cached artwork must have long-lived caching", response.Header())
 		}
 		if method == "GET" {
@@ -53,18 +63,22 @@ func TestArtworkCacheControl(test *testing.T) {
 			test.Fatal("HEAD returned artwork bytes")
 		}
 		if modified := response.Header().Get("Last-Modified"); modified != "" {
-			request := httptest.NewRequest("GET", path, nil)
+			artwork, err := app.Store.trackArtwork(test.Context(), "1")
+			if err != nil {
+				test.Fatal(err)
+			}
+			request := httptest.NewRequest("GET", app.Store.URL("artwork_hash", artwork.hash, 96), nil)
 			request.Header.Set("If-Modified-Since", modified)
 			conditional := httptest.NewRecorder()
 			app.ServeHTTP(conditional, request)
 			requireCode(test, conditional, http.StatusNotModified)
-			if conditional.Header().Get("Cache-Control") != "public, max-age=31536000" {
+			if conditional.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 				test.Fatal("conditional artwork response lost its cache policy")
 			}
 		}
 	}
 	for path, status := range map[string]int{"/artwork/1/100.jpg": http.StatusBadRequest, "/artwork/999/96.jpg": http.StatusNotFound} {
-		response := call(app, "GET", path, 0, nil, false)
+		response := callArtwork(app, "GET", path, 0, nil, false)
 		requireCode(test, response, status)
 		if response.Header().Get("Cache-Control") != "private, no-cache" {
 			test.Fatal("artwork error response received long-lived caching")
@@ -107,7 +121,7 @@ func TestArtworkURLsChangeAfterTrackEdits(test *testing.T) {
 			path string
 			size int
 		}{{"/album/?q=Album", 256}, {"/track_details_modal/1", 512}, {"/artwork_modal/1/512.jpg", 512}, {tag.ShareURL, 512}} {
-			response := call(app, "GET", page.path, 1, nil, false)
+			response := callArtwork(app, "GET", page.path, 1, nil, false)
 			requireCode(test, response, http.StatusOK)
 			want := app.Store.URL("artwork", 1, page.size, version)
 			if !strings.Contains(response.Body.String(), want) {
@@ -121,7 +135,7 @@ func TestArtworkURLsChangeAfterTrackEdits(test *testing.T) {
 	app.Store.Config.URLPrefix = "reinhardt/"
 	versioned := app.Store.URL("artwork", 1, 96, "a & b?#")
 	parsed, err := url.Parse(versioned)
-	if err != nil || parsed.Path != "/reinhardt/artwork/1/96.jpg" || parsed.Query().Get("v") != "a & b?#" {
+	if err != nil || parsed.Path != "/reinhardt/artwork/1/96.jpg" || parsed.Query().Get("v") != artworkRenderVersion+":a & b?#" {
 		test.Fatal("versioned artwork URL lost prefix or escaping", versioned, err)
 	}
 }
@@ -243,7 +257,7 @@ func TestConcurrentArtworkSizesAndAlbumTracksShareDiscovery(test *testing.T) {
 	for index := range callers {
 		go func() {
 			size := []int{96, 128, 192, 256, 384, 512}[index%6]
-			results <- result{size, call(app, "GET", fmt.Sprintf("/artwork/%d/%d.jpg", 1+index%2, size), 0, nil, false)}
+			results <- result{size, callArtwork(app, "GET", fmt.Sprintf("/artwork/%d/%d.jpg", 1+index%2, size), 0, nil, false)}
 		}()
 	}
 	artworkTestReceive(test, started)
@@ -262,6 +276,10 @@ func TestConcurrentArtworkSizesAndAlbumTracksShareDiscovery(test *testing.T) {
 	}
 	if searches.Load() != 1 || downloads.Load() != 1 {
 		test.Fatalf("same-album discovery duplicated: searches=%d downloads=%d", searches.Load(), downloads.Load())
+	}
+	references, err := app.Store.One(test.Context(), "SELECT COUNT(DISTINCT artwork_hash) hashes,COUNT(*) tracks FROM go_track_artwork WHERE artwork_hash IS NOT NULL")
+	if err != nil || references.N("hashes") != 1 || references.N("tracks") != 2 || len(artworkCacheFiles(test, app)) != 6 {
+		test.Fatal("concurrent album tracks did not share one thumbnail per size", references, err)
 	}
 	app.coverMu.Lock()
 	defer app.coverMu.Unlock()

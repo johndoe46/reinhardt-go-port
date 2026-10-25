@@ -343,7 +343,7 @@ func (store *Store) SetUserLanguage(ctx context.Context, owner int64, code strin
 	return err
 }
 
-const tracksSQL = `SELECT m.*,d.local_path FROM reinhardt_musicfile m JOIN reinhardt_musicdirectory d ON d.id=m.music_directory_id `
+const tracksSQL = `SELECT m.*,d.local_path,(SELECT artwork_hash FROM go_track_artwork WHERE track_id=m.id) artwork_hash FROM reinhardt_musicfile m JOIN reinhardt_musicdirectory d ON d.id=m.music_directory_id `
 
 func (store *Store) Tracks(ctx context.Context, clause string, args ...any) ([]*Track, error) {
 	rows, err := store.Query(ctx, tracksSQL+clause, args...)
@@ -410,7 +410,7 @@ func (store *Store) TagTracks(ctx context.Context, id any) ([]*Track, error) {
 	return store.Tracks(ctx, "JOIN reinhardt_musicfiletag a ON a.music_file_id=m.id WHERE a.tag_id=? AND m.missing=0 ORDER BY a.rank,a.id", id)
 }
 func (store *Store) Queue(ctx context.Context, owner int64) ([]*QueueItem, error) {
-	tracks, err := store.Query(ctx, `SELECT m.*,d.local_path,
+	tracks, err := store.Query(ctx, `SELECT m.*,d.local_path,(SELECT artwork_hash FROM go_track_artwork WHERE track_id=m.id) artwork_hash,
 a.id AS queue_id,a.tag_id AS queue_tag_id,a.rank AS queue_rank,
 a.created_at AS queue_created_at,a.modified_at AS queue_modified_at
 FROM reinhardt_musicfiletag a JOIN reinhardt_tag t ON t.id=a.tag_id

@@ -1,7 +1,7 @@
 {{ define "head_title" }}{{ .music_file }} {{ call .translate_literal "artwork" }}{{ end }}
 {{ define "main" }}
     <div style="text-align: center;">
-        <img style="height:{{ .size }}px;width:{{ .size }}px" src="{{ call .url "artwork" .trackid .size .artwork_version }}" alt="artwork"/>
+        <img style="height:{{ .size }}px;width:{{ .size }}px" src="{{ call .artwork_url .music_file.pk .size .music_file.modified_at }}" alt="artwork"/>
     </div>
 {{ end }}
 {{ template "reinhardt/_base.html" . }}

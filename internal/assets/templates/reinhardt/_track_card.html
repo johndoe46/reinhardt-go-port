@@ -3,7 +3,7 @@
             data-menu-url="{{ call .url "music_file_dropdown" }}"
             data-menu-loading="{{ call .translate_literal "Loading track actions…" }}"
             data-menu-error="{{ call .translate_literal "Unable to load track actions. Close the menu and try again." }}">
-    <img class="track-grid-artwork" src="{{ call .url "artwork" .music_file.pk 256 .music_file.modified_at }}" alt="" width="256" height="256" loading="lazy" decoding="async" draggable="false">
+    <img class="track-grid-artwork" src="{{ call .artwork_url .music_file.pk 256 .music_file.modified_at }}" alt="" width="256" height="256" loading="lazy" decoding="async" draggable="false">
     <div class="track-card-line track-grid-artist" tabindex="0" title="{{ .music_file.artist }}"><span>{{ .music_file.artist }}</span></div>
     <div class="track-card-line track-grid-title" tabindex="0" title="{{ .music_file.title }}"><span>{{ .music_file.title }}</span></div>
     <div class="track-card-actions">

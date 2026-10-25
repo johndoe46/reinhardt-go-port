@@ -27,6 +27,9 @@ type Track struct {
 	CleanFileName    string
 	DownloadURL      string
 	PlaybackURL      string
+
+	artworkHash       string
+	artworkHashLoaded bool
 }
 
 // User holds account details and the current request's authentication state.
@@ -99,6 +102,7 @@ func trackFromRow(row Row) *Track {
 	if row == nil {
 		return nil
 	}
+	_, artworkHashLoaded := row["artwork_hash"]
 	return &Track{
 		ID:               row.N("id"),
 		MusicDirectoryID: row.N("music_directory_id"),
@@ -120,6 +124,9 @@ func trackFromRow(row Row) *Track {
 		CleanFileName:    row.S("clean_file_name"),
 		DownloadURL:      row.S("download_url"),
 		PlaybackURL:      row.S("playback_url"),
+
+		artworkHash:       row.S("artwork_hash"),
+		artworkHashLoaded: artworkHashLoaded,
 	}
 }
 
@@ -235,6 +242,9 @@ func (record *Track) templateRow() Row {
 		"clean_file_name":    record.CleanFileName,
 		"download_url":       record.DownloadURL,
 		"playback_url":       record.PlaybackURL,
+
+		"artwork_hash":        record.artworkHash,
+		"artwork_hash_loaded": record.artworkHashLoaded,
 	}
 }
 

@@ -43,11 +43,18 @@ func (store *Store) enqueueSync(ctx context.Context, id int64) error {
 }
 func (app *App) Work(ctx context.Context, once bool) error {
 	nextGather := time.Now()
+	nextArtworkCleanup := time.Now()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		if ctx.Err() != nil {
 			return nil
+		}
+		if time.Now().After(nextArtworkCleanup) {
+			if err := app.Store.pruneArtworkCache(ctx, time.Now().Add(-24*time.Hour)); err != nil && ctx.Err() == nil {
+				log.Printf("artwork cache cleanup: %v", err)
+			}
+			nextArtworkCleanup = time.Now().Add(time.Hour)
 		}
 		if app.Store.Config.MusicImportDir != "" && time.Now().After(nextGather) {
 			if err := app.Store.Gather(ctx); err != nil {

@@ -470,6 +470,16 @@ cancelling one request does not cancel discovery for the others. Shared network
 lookups keep an eight-second deadline, and successes and misses remain cached
 for one hour. See [artwork concurrency](docs/artwork-performance.md).
 
+Artwork thumbnails in `COVERS_DIR` are shared by image content, size, and rendering
+version, with persistent track references in SQLite. Identical covers across an
+album occupy one file per requested size. Uploads invalidate only the edited
+track's reference. Existing per-track thumbnails are replaced lazily; the worker
+checks hourly for unreferenced cache files older than 24 hours. See
+[shared artwork caching](docs/artwork-performance.md#shared-thumbnail-storage).
+Pages reference resolved artwork by its hash, allowing browsers to reuse the
+same immutable image URL across tracks. Unresolved track requests redirect to
+that shared URL after discovery; generated sleeves retain short-lived caching.
+
 YouTube downloads also require a registered destination in the database used by
 the server. Register an existing music directory with
 `make cli ARGS='addmusicdir /path/to/music'`, using the same `DATABASE` or

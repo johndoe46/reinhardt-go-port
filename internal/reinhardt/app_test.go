@@ -496,10 +496,10 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	}
 	var imageBytes bytes.Buffer
 	png.Encode(&imageBytes, im)
-	response := call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	response := callArtwork(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
 	requireCode(test, response, 200)
 	first := append([]byte(nil), response.Body.Bytes()...)
-	response = call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	response = callArtwork(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
 	if !bytes.Equal(first, response.Body.Bytes()) {
 		test.Fatal("unstable fallback")
 	}
@@ -544,7 +544,7 @@ func TestArtworkUploadPermissionsValidationAndCache(test *testing.T) {
 	if _, err = os.Stat(originalTrack.FullPath + ".png"); err != nil {
 		test.Fatal("format not derived from content", err)
 	}
-	response = call(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
+	response = callArtwork(app, "GET", "/artwork/1/96.jpg", 0, nil, false)
 	requireCode(test, response, 200)
 	decoded, err := jpeg.Decode(bytes.NewReader(response.Body.Bytes()))
 	if err != nil {

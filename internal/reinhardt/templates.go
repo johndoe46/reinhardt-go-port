@@ -342,9 +342,16 @@ func (store *Store) URL(name string, args ...any) string {
 		path = "ytrip/failures/" + arg(0) + "/retry/"
 	case "rename_tag", "track_details_modal":
 		path = name + "/" + arg(0)
+	case "artwork_hash":
+		path = "artwork/" + artworkRenderVersion + "/" + arg(0) + "/" + arg(1) + ".jpg"
 	case "artwork", "artwork_modal":
 		path = name + "/" + arg(0) + "/" + arg(1) + ".jpg"
 		if version := arg(2); version != "" {
+			if name == "artwork" {
+				// Bypass older browsers' year-long cached per-track image bodies
+				// so unresolved artwork reaches the new redirect endpoint.
+				version = artworkRenderVersion + ":" + version
+			}
 			path += "?v=" + url.QueryEscape(version)
 		}
 	case "shared_tag", "download_shared_tag", "serve_shared_music_file":

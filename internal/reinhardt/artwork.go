@@ -196,5 +196,11 @@ func (app *App) fetchCover(ctx context.Context, path, artist, album, title strin
 	if atomicFile(path+".jpg", bytes.NewReader(encoded.Bytes()), false) != nil {
 		return nil
 	}
+	// Use the persisted JPEG's pixels for both discovery callers and later
+	// sidecar reads, keeping the shared thumbnail identity stable across restarts.
+	im, _, err = decodedImage(bytes.NewReader(encoded.Bytes()))
+	if err != nil {
+		return nil
+	}
 	return im
 }

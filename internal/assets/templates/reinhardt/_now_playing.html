@@ -12,12 +12,12 @@
      data-artist="{{ .music_file.artist }}"
      data-album="{{ .music_file.album }}"
      data-title="{{ .music_file.title }}"
-     data-artwork96="{{ call .url "artwork" .music_file.id 96 .music_file.modified_at }}"
-     data-artwork128="{{ call .url "artwork" .music_file.id 128 .music_file.modified_at }}"
-     data-artwork192="{{ call .url "artwork" .music_file.id 192 .music_file.modified_at }}"
-     data-artwork256="{{ call .url "artwork" .music_file.id 256 .music_file.modified_at }}"
-     data-artwork384="{{ call .url "artwork" .music_file.id 384 .music_file.modified_at }}"
-     data-artwork512="{{ call .url "artwork" .music_file.id 512 .music_file.modified_at }}"
+     data-artwork96="{{ call .artwork_url .music_file.id 96 .music_file.modified_at }}"
+     data-artwork128="{{ call .artwork_url .music_file.id 128 .music_file.modified_at }}"
+     data-artwork192="{{ call .artwork_url .music_file.id 192 .music_file.modified_at }}"
+     data-artwork256="{{ call .artwork_url .music_file.id 256 .music_file.modified_at }}"
+     data-artwork384="{{ call .artwork_url .music_file.id 384 .music_file.modified_at }}"
+     data-artwork512="{{ call .artwork_url .music_file.id 512 .music_file.modified_at }}"
      {{ end }}
 >
     <div class="dropup">
