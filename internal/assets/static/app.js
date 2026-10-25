@@ -128,8 +128,6 @@ up.compiler("#now_playing", function (element) {
     if (nextURL && (element.dataset.autoplay === "true" || continueLive)) player.play();
     document.dispatchEvent(new CustomEvent("reinhardt:track", {detail: {...element.dataset}}));
 
-    const artwork = document.querySelector('#artworkbig');
-    if (artwork) artwork.style.backgroundImage = element.dataset.artwork512 ? `url("${element.dataset.artwork512}")` : "";
     if ("mediaSession" in navigator) {
         const action = (name, handler) => {
             try { navigator.mediaSession.setActionHandler(name, handler); } catch { /* optional browser action */ }

@@ -14,20 +14,6 @@ main {
 }
 
 
-#artworkbig {
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: right center;
-    background-attachment: fixed;
-    position: fixed;
-    top: 50%;
-    transform: translate(0%, -50%);
-    right: 1em;
-    width: 512px;
-    height: 512px;
-    z-index: -1;
-}
-
 footer {
     position: fixed;
     bottom: 0;
