@@ -370,6 +370,15 @@ func fingerprint(ripMetadata Row) string {
 	digest := sha256.Sum256(metadataJSON)
 	return hex.EncodeToString(digest[:])
 }
+
+func (app *App) ytDLPCommand(ctx context.Context, args ...string) *exec.Cmd {
+	options := []string{"--ignore-config"}
+	if cookiesFile := app.Store.Config.YTDLPCookiesFile; cookiesFile != "" {
+		options = append(options, "--cookies", cookiesFile)
+	}
+	return exec.CommandContext(ctx, "yt-dlp", append(options, args...)...)
+}
+
 func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	defer func() {
 		// Failure records must survive the download's deadline or cancellation.
@@ -406,7 +415,7 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	out := filepath.Join(tmp, "track.%(ext)s")
 	// Ignore the service account's yt-dlp config: output names and MP3 extraction
 	// must follow this pipeline's contract. Helpers are invoked without a shell.
-	cmd := exec.CommandContext(ctx, "yt-dlp", "--ignore-config", "--no-playlist", "-x", "--audio-format", "mp3", "--audio-quality", "320k", "--output", out, "--", canonical)
+	cmd := app.ytDLPCommand(ctx, "--no-playlist", "-x", "--audio-format", "mp3", "--audio-quality", "320k", "--output", out, "--", canonical)
 	output, operationErr := cmd.CombinedOutput()
 	if operationErr != nil {
 		return fmt.Errorf("yt-dlp: %w: %s", operationErr, output)
@@ -417,7 +426,7 @@ func (app *App) youtubeRip(ctx context.Context, ripMetadata Row) (err error) {
 	// Artwork is optional. Give thumbnail extraction its own short deadline and
 	// continue with another cover source or no image if it fails.
 	thumbnailCtx, thumbnailCancel := context.WithTimeout(ctx, 30*time.Second)
-	thumbnail := exec.CommandContext(thumbnailCtx, "yt-dlp", "--ignore-config", "--no-playlist", "--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg", "--output", out, "--", canonical)
+	thumbnail := app.ytDLPCommand(thumbnailCtx, "--no-playlist", "--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg", "--output", out, "--", canonical)
 	if output, err := thumbnail.CombinedOutput(); err != nil {
 		log.Printf("YouTube thumbnail: %v: %.1000s", err, output)
 	}
@@ -459,7 +468,7 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 		}
 		ctx, cancel := context.WithTimeout(request.Context(), 20*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "yt-dlp", "--ignore-config", "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--", canonical)
+		cmd := app.ytDLPCommand(ctx, "--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--", canonical)
 		output, err := cmd.Output()
 		if err != nil {
 			return httpError{502, "Could not fetch video metadata"}

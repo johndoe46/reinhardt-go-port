@@ -31,6 +31,7 @@ type Config struct {
 	SanitizeTags                     bool
 	SharedPlaylistDownloadMaxSeconds int64
 	MusicImportDir                   string
+	YTDLPCookiesFile                 string
 	MaxUploadBytes                   int64
 	CookieSecure                     bool
 	LogLevel                         int
@@ -68,6 +69,7 @@ var configKeys = []string{
 	"SANITIZE_TAGS",
 	"SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS",
 	"MUSIC_IMPORT_DIR",
+	"YTDLP_COOKIES_FILE",
 	"MAX_UPLOAD_BYTES",
 	"COOKIE_SECURE",
 	"LOG_LEVEL",
@@ -105,6 +107,7 @@ func (config *Config) values() map[string]string {
 		"SANITIZE_TAGS":                        strconv.FormatBool(config.SanitizeTags),
 		"SHARED_PLAYLIST_DOWNLOAD_MAX_SECONDS": strconv.FormatInt(config.SharedPlaylistDownloadMaxSeconds, 10),
 		"MUSIC_IMPORT_DIR":                     config.MusicImportDir,
+		"YTDLP_COOKIES_FILE":                   config.YTDLPCookiesFile,
 		"MAX_UPLOAD_BYTES":                     strconv.FormatInt(config.MaxUploadBytes, 10),
 		"COOKIE_SECURE":                        strconv.FormatBool(config.CookieSecure),
 		"LOG_LEVEL":                            strconv.Itoa(config.LogLevel),
@@ -213,6 +216,7 @@ func parseConfig(values map[string]string) (*Config, error) {
 		LanguageCode:           values["LANGUAGE_CODE"],
 		TimeZone:               values["TIME_ZONE"],
 		MusicImportDir:         values["MUSIC_IMPORT_DIR"],
+		YTDLPCookiesFile:       values["YTDLP_COOKIES_FILE"],
 		CSRFTrustedOrigins:     configList(values["CSRF_TRUSTED_ORIGINS"]),
 		LastFMAPIKey:           values["LASTFM_API_KEY"],
 		JamaEndpoint:           values["JAMA_ENDPOINT"],

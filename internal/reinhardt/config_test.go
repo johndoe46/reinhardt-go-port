@@ -20,6 +20,36 @@ func unsetConfigEnvironment(test *testing.T, keys ...string) {
 	}
 }
 
+func TestYTDLPCookiesFileConfig(test *testing.T) {
+	for _, source := range []string{"default", "dotenv", "environment"} {
+		test.Run(source, func(test *testing.T) {
+			unsetConfigEnvironment(test, configKeys...)
+			home := test.TempDir()
+			envFile := filepath.Join(home, ".env")
+			want := ""
+			contents := ""
+			if source != "default" {
+				want = filepath.Join(home, "file cookies.txt")
+				contents = fmt.Sprintf("YTDLP_COOKIES_FILE=%q\n", want)
+			}
+			if err := os.WriteFile(envFile, []byte(contents), 0600); err != nil {
+				test.Fatal(err)
+			}
+			if source == "environment" {
+				want = filepath.Join(home, "environment cookies.txt")
+				test.Setenv("YTDLP_COOKIES_FILE", want)
+			}
+			config, err := loadConfigFromHome(home, envFile, "")
+			if err != nil {
+				test.Fatal(err)
+			}
+			if config.YTDLPCookiesFile != want || config.values()["YTDLP_COOKIES_FILE"] != want {
+				test.Fatalf("cookies setting = %q, want %q", config.YTDLPCookiesFile, want)
+			}
+		})
+	}
+}
+
 func TestConfigCLI(test *testing.T) {
 	for _, reveal := range []bool{false, true} {
 		test.Run(fmt.Sprintf("show-secrets=%v", reveal), func(test *testing.T) {

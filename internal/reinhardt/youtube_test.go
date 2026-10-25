@@ -2,12 +2,95 @@ package reinhardt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestYouTubeCookiesForMetadataAudioAndThumbnails(test *testing.T) {
+	if runtime.GOOS == "windows" {
+		test.Skip("fixture uses a POSIX shell")
+	}
+	for _, configured := range []bool{false, true} {
+		name := "without cookies"
+		if configured {
+			name = "with cookies"
+		}
+		test.Run(name, func(test *testing.T) {
+			app := testApp(test)
+			tools := test.TempDir()
+			logs := test.TempDir()
+			test.Setenv("PATH", tools)
+			test.Setenv("YTDLP_TEST_LOG", logs)
+			if configured {
+				app.Store.Config.YTDLPCookiesFile = filepath.Join(test.TempDir(), "cookies folder", "yt;session.txt")
+			}
+			// Exercise all three application calls without network or media tools.
+			script := `#!/bin/sh
+mode=audio
+for arg in "$@"; do
+    case "$arg" in
+        --dump-single-json) mode=metadata ;;
+        --write-thumbnail) mode=thumbnail ;;
+    esac
+done
+printf '%s\n' "$@" > "$YTDLP_TEST_LOG/$mode"
+case "$mode" in
+    metadata) printf '%s\n' '{"artist":"Cookie Artist","track":"Cookie Track","release_year":2026}' ;;
+    audio)
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = --output ]; then
+                shift
+                printf 'audio fixture' > "${1%.*}.mp3"
+                break
+            fi
+            shift
+        done ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(tools, "yt-dlp"), []byte(script), 0700); err != nil {
+				test.Fatal(err)
+			}
+			video := "https://www.youtube.com/watch?v=abcdefghijk"
+			response := call(app, "GET", "/ytrip/metadata/?"+url.Values{"url": {video}}.Encode(), 1, nil, false)
+			requireCode(test, response, 200)
+			var metadata map[string]string
+			if err := json.Unmarshal(response.Body.Bytes(), &metadata); err != nil || metadata["artist"] != "Cookie Artist" || metadata["title"] != "Cookie Track" || metadata["year"] != "2026" {
+				test.Fatalf("unexpected metadata: %#v, %v", metadata, err)
+			}
+			if err := app.youtubeRip(test.Context(), Row{"url": video, "artist": metadata["artist"], "title": metadata["title"]}); err != nil {
+				test.Fatal(err)
+			}
+			track, err := app.Store.One(test.Context(), "SELECT * FROM reinhardt_musicfile WHERE artist=? AND title=?", metadata["artist"], metadata["title"])
+			if err != nil || track.S("relative_path") == "" {
+				test.Fatalf("download was not imported: %#v, %v", track, err)
+			}
+			for _, mode := range []string{"metadata", "audio", "thumbnail"} {
+				data, err := os.ReadFile(filepath.Join(logs, mode))
+				if err != nil {
+					test.Fatal(err)
+				}
+				args := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+				wantPrefix := []string{"--ignore-config"}
+				if configured {
+					wantPrefix = append(wantPrefix, "--cookies", app.Store.Config.YTDLPCookiesFile)
+				}
+				if len(args) < len(wantPrefix)+2 || !reflect.DeepEqual(args[:len(wantPrefix)], wantPrefix) || !reflect.DeepEqual(args[len(args)-2:], []string{"--", video}) {
+					test.Fatalf("%s received incorrect arguments: %#v", mode, args)
+				}
+				if !configured && strings.Contains(string(data), "--cookies") {
+					test.Fatalf("%s used cookies when unset", mode)
+				}
+			}
+		})
+	}
+}
 
 func removeTestMusicDirectories(test *testing.T, app *App) {
 	test.Helper()

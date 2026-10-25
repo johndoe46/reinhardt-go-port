@@ -433,6 +433,15 @@ optional. Scroll down to the **Send** button to submit the form. The download
 runs in the background and is imported into the first registered music
 directory. Keep Reinhardt running while it processes the download.
 
+If YouTube asks you to sign in or confirm you are not a bot, an administrator
+can set `YTDLP_COOKIES_FILE=/path/to/youtube-cookies.txt` in `.env` or the
+process environment. Use a Netscape-format cookies file following
+[yt-dlp's cookie instructions](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp).
+This optional setting applies to metadata lookup, audio downloads and thumbnails;
+leave it empty to use no cookies. Restart the server and any separate workers
+after configuring it. Their accounts need read/write access to the file because
+yt-dlp can refresh it. Keep the file private and outside version control.
+
 ![YouTube download form with the URL field and example track metadata](docs/images/user-manual/youtube-download.png)
 
 *Open `/ytrip/` directly and enter the video URL and track information.*

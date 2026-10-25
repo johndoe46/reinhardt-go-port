@@ -440,6 +440,16 @@ with CGO disabled; no system font or additional helper binary is needed.
 
 YouTube features use `yt-dlp`, `ffmpeg`, `ffprobe` and Deno on the service's `PATH`;
 see [Prerequisites](#prerequisites) for Debian and macOS installation commands.
+If YouTube requires authentication or bot verification, set the optional
+`YTDLP_COOKIES_FILE=/path/to/youtube-cookies.txt` in `.env` or the process
+environment to a Netscape-format cookies file. Reinhardt passes it explicitly
+to yt-dlp for metadata lookup, audio downloads and thumbnails, while continuing
+to ignore yt-dlp's own configuration. Leave it empty to use no cookies.
+Configure both the server and worker if they run separately, then restart them.
+Their accounts need read/write access because yt-dlp can refresh the file.
+Keep the file private and outside version control. See
+[yt-dlp's cookie instructions](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp).
+
 Artwork embedding in non-MP3 formats uses `ffmpeg`; the
 validated sidecar image remains available even if embedding is unsuccessful.
 Automatic cover discovery uses Apple's music search API.
