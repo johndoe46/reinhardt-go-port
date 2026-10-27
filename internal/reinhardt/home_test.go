@@ -4,9 +4,80 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestHomeLoadMore(test *testing.T) {
+	for _, count := range []int{0, 25, 26, 50, 53} {
+		test.Run(fmt.Sprintf("albums=%d", count), func(test *testing.T) {
+			app := testApp(test)
+			if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET missing=1"); err != nil {
+				test.Fatal(err)
+			}
+			// Equal timestamps exercise stable ordering across page boundaries.
+			if _, err := app.Store.DB.Exec(`WITH RECURSIVE n(id) AS (SELECT 1 UNION ALL SELECT id+1 FROM n WHERE id<?)
+INSERT INTO reinhardt_musicfile(music_directory_id,relative_path,artist,title,album,genre,comment,created_at,modified_at,missing)
+SELECT 1,printf('page-%d.mp3',id),'Artist',printf('Track %d',id),printf('Album %03d',id),'','','2026-01-01','2026-01-01',0 FROM n WHERE id<=?`, count, count); err != nil {
+				test.Fatal(err)
+			}
+			want, err := app.Store.Tracks(test.Context(), strings.TrimSuffix(latestAdditionsClause, " LIMIT 26"))
+			if err != nil {
+				test.Fatal(err)
+			}
+			for _, grid := range []bool{false, true} {
+				if _, err := app.Store.DB.Exec("UPDATE reinhardt_preferences SET show_track_grid=? WHERE owner_id=1", grid); err != nil {
+					test.Fatal(err)
+				}
+				for _, fragment := range []bool{false, true} {
+					for offset := 0; offset <= count; offset += latestAdditionsPageSize {
+						response := call(app, "GET", fmt.Sprintf("/?offset=%d", offset), 1, nil, fragment)
+						requireCode(test, response, 200)
+						body := response.Body.String()
+						rows := regexp.MustCompile(`id="music_files_row_(\d+)"`).FindAllStringSubmatch(body, -1)
+						end := min(offset+latestAdditionsPageSize, count)
+						if len(rows) != end-offset {
+							test.Fatalf("offset %d: got %d tracks, want %d", offset, len(rows), end-offset)
+						}
+						for index, row := range rows {
+							if row[1] != fmt.Sprint(want[offset+index].ID) {
+								test.Fatalf("offset %d: track %s is out of order", offset, row[1])
+							}
+						}
+						hasMore := end < count
+						if strings.Contains(body, ">Load more</a>") != hasMore {
+							test.Fatalf("offset %d: incorrect load more visibility", offset)
+						}
+						if hasMore && (!strings.Contains(body, fmt.Sprintf(`href="/?offset=%d"`, end)) || !strings.Contains(body, `up-target="#latest-additions:after, #latest-additions-more"`) || !strings.Contains(body, `up-history="false"`)) {
+							test.Fatal("load more must append the next page and replace its button without navigation")
+						}
+						if !strings.Contains(body, `id="latest-additions"`) || !strings.Contains(body, `id="latest-additions-more"`) || !strings.Contains(body, `value="home"`) {
+							test.Fatal("home fragment lost its append targets or page context")
+						}
+						if fragment && strings.Contains(body, `<m-audio`) {
+							test.Fatal("loading more must preserve the player")
+						}
+						if len(rows) > 0 && strings.Contains(body, `<track-card `) != grid {
+							test.Fatal("load more ignored the track grid preference")
+						}
+						if !hasMore {
+							break
+						}
+					}
+				}
+			}
+			for _, offset := range []string{"-1", "invalid", "999999999999999999999999999999"} {
+				requireCode(test, call(app, "GET", "/?offset="+offset, 1, nil, true), 400)
+			}
+			response := call(app, "GET", "/?offset=1000", 1, nil, true)
+			requireCode(test, response, 200)
+			if strings.Contains(response.Body.String(), `id="music_files_row_`) || strings.Contains(response.Body.String(), ">Load more</a>") {
+				test.Fatal("out-of-range page must be empty with no load more button")
+			}
+		})
+	}
+}
 
 func TestLatestAdditionsSelectionAndInvalidation(test *testing.T) {
 	app := testApp(test)
@@ -24,7 +95,7 @@ func TestLatestAdditionsSelectionAndInvalidation(test *testing.T) {
 			if err != nil || !reflect.DeepEqual(got, want) {
 				test.Fatalf("cached home tracks differ from the original query: got %v, want %v: %v", got, want, err)
 			}
-			if len(got) > 25 {
+			if len(got) > latestAdditionsPageSize+1 {
 				test.Fatal("home cache exceeded the page limit")
 			}
 		}
@@ -191,6 +262,53 @@ func TestWarmHomeRequestsAvoidLibraryScan(test *testing.T) {
 	requireCode(test, response, 200)
 	if !strings.Contains(response.Body.String(), "Visible edit") || stats.homeLoads.Load() != 1 {
 		test.Fatal("Unpoly home response did not reflect the committed edit")
+	}
+}
+
+func TestHomePaginationAvoidsLibraryScan(test *testing.T) {
+	app := testApp(test)
+	populateHomeLibrary(test, app, 10000)
+	stats := measureAppSQL(test, app)
+	requireCode(test, call(app, "GET", "/", 1, nil, true), 200)
+	if stats.homeLoads.Load() != 1 {
+		test.Fatal("first visit must build the album order once")
+	}
+	// Distinct, previously unseen pages must use the shared order, even across
+	// users. Caching only repeated offset requests would miss this regression.
+	for index, offset := range []int{25, 50, 75, 250, 500, 750} {
+		want, err := app.Store.Tracks(test.Context(), latestAdditionsClause+" OFFSET ?", offset)
+		if err != nil {
+			test.Fatal(err)
+		}
+		stats.homeLoads.Store(0)
+		stats.writes.Store(0)
+		stats.calls.Store(0)
+		got, err := app.latestAdditionsAt(test.Context(), offset)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			test.Fatalf("page %d differs from the grouped selection: %v", offset, err)
+		}
+		if stats.homeLoads.Load() != 0 || stats.calls.Load() != 2 || stats.writes.Load() != 0 {
+			test.Fatal("pagination must only read the revision and hydrate its page")
+		}
+		response := call(app, "GET", fmt.Sprintf("/?offset=%d", offset), index%2+1, nil, true)
+		requireCode(test, response, 200)
+		if stats.homeLoads.Load() != 0 || stats.writes.Load() != 0 || strings.Count(response.Body.String(), `id="music_files_row_`) != latestAdditionsPageSize {
+			test.Fatal("load more scanned the library, wrote to SQLite, or lost tracks")
+		}
+	}
+	// A metadata edit on a later page must invalidate both cached order and rows.
+	page, err := app.latestAdditionsAt(test.Context(), 25)
+	if err != nil {
+		test.Fatal(err)
+	}
+	if _, err := app.Store.DB.Exec("UPDATE reinhardt_musicfile SET title='Updated later page' WHERE id=?", page[0].ID); err != nil {
+		test.Fatal(err)
+	}
+	stats.homeLoads.Store(0)
+	response := call(app, "GET", "/?offset=25", 1, nil, true)
+	requireCode(test, response, 200)
+	if stats.homeLoads.Load() != 1 || !strings.Contains(response.Body.String(), "Updated later page") {
+		test.Fatal("later page did not refresh after a library edit")
 	}
 }
 

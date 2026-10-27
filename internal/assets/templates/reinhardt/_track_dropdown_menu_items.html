@@ -149,7 +149,6 @@
     <a up-history="false"
        up-layer="new"
        up-accept-location="{{ call .url "index" }}"
-       up-on-dismissed="up.reload('main');up.reload('footer')"
        up-on-accepted="up.reload('main');up.reload('footer')"
        class="dropdown-item"
        href="{{ call .url "track_details_modal" .music_file.id }}">

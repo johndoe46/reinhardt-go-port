@@ -17,7 +17,14 @@
     <hr>
     <div>
     <p>{{ call .translate_literal "latest additions" }} :</p>
-    {{ template "reinhardt/_music_files_list.html" . }}
+    {{ template "reinhardt/_music_files_list.html" (scope . "list_id" "latest-additions") }}
+    <div id="latest-additions-more" class="text-center my-3">
+        {{ if .latest_additions_next }}
+        <a class="btn btn-outline-secondary" href="{{ .latest_additions_next }}"
+           up-target="#latest-additions:after, #latest-additions-more" up-history="false"
+           up-scroll="false" up-preload="false">{{ call .translate_literal "Load more" }}</a>
+        {{ end }}
+    </div>
     </div>
 {{ end }}
 {{ template "reinhardt/_base.html" . }}

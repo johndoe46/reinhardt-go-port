@@ -107,7 +107,7 @@ func (connection *measuredConn) QueryContext(ctx context.Context, query string, 
 	if query == "SELECT DISTINCT artist FROM reinhardt_musicfile" {
 		connection.stats.artistLoads.Add(1)
 	}
-	if query == tracksSQL+latestAdditionsClause {
+	if strings.HasPrefix(query, tracksSQL+latestAdditionsClause) || query == latestAdditionsIDsSQL {
 		connection.stats.homeLoads.Add(1)
 	}
 	start := time.Now()

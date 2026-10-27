@@ -48,9 +48,21 @@ func (app *App) invite(responseWriter http.ResponseWriter, request *http.Request
 
 func (app *App) indexPage(responseWriter http.ResponseWriter, request *http.Request, user *User) error {
 	ctx := TemplateContext{}
-	tracks, err := app.latestAdditions(request.Context())
+	offset := 0
+	if value := request.URL.Query().Get("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return bad("Invalid offset")
+		}
+		offset = parsed
+	}
+	tracks, err := app.latestAdditionsAt(request.Context(), offset)
 	if err != nil {
 		return err
+	}
+	if len(tracks) > latestAdditionsPageSize {
+		tracks = tracks[:latestAdditionsPageSize]
+		ctx["latest_additions_next"] = app.Store.URL("index") + "?offset=" + strconv.Itoa(offset+len(tracks))
 	}
 	// Discovery does not change the cached home metadata revision. Refresh the
 	// artwork references in a batch at render time if the page displays images.

@@ -203,7 +203,9 @@ differ.
 ### Browse, search, and play
 
 Use the search box to find music, or open **Explorer** to browse **Artists**,
-**Genres**, **Favorites**, and **Tags**. The home page shows recent additions.
+**Genres**, **Favorites**, and **Tags**. The home page shows recent additions,
+with one track per album. Select **Load more** below the list to append the next
+25 entries.
 
 ![Explorer menu beside an artist's album and tracks](docs/images/user-manual/browse.png)
 

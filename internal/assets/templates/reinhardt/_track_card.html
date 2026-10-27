@@ -7,15 +7,6 @@
     <div class="track-card-line track-grid-artist" tabindex="0" title="{{ .music_file.artist }}"><span>{{ .music_file.artist }}</span></div>
     <div class="track-card-line track-grid-title" tabindex="0" title="{{ .music_file.title }}"><span>{{ .music_file.title }}</span></div>
     <div class="track-card-actions">
-        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
-            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
-            <input type="hidden" name="add_type" value="music_file">
-            <input type="hidden" name="tag" value="queue">
-            <input type="hidden" name="q" value="{{ .music_file.pk }}">
-            <button type="submit" class="btn btn-sm btn-outline-secondary" title="{{ call .translate_literal "add to queue" }}" aria-label="{{ call .translate_literal "add to queue" }}">
-                <i class="bi bi-plus-lg" aria-hidden="true"></i>
-            </button>
-        </form>
         <button type="button" class="btn btn-sm btn-primary" data-track-action="listen" title="{{ call .translate_literal "play now" }}" aria-label="{{ call .translate_literal "play now" }}">
             <i class="bi bi-play-fill" aria-hidden="true"></i>
         </button>
@@ -25,5 +16,14 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-{{ .music_file.pk }}"></ul>
         </div>
+        <form up-target="#alert_space" method="post" action="{{ call .url "add_to_tag" }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+            <input type="hidden" name="add_type" value="music_file">
+            <input type="hidden" name="tag" value="queue">
+            <input type="hidden" name="q" value="{{ .music_file.pk }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="{{ call .translate_literal "add to queue" }}" aria-label="{{ call .translate_literal "add to queue" }}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
+        </form>
     </div>
 </track-card>
