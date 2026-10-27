@@ -52,6 +52,11 @@ SELECT 1,printf('page-%d.mp3',id),'Artist',printf('Track %d',id),printf('Album %
 						if hasMore && (!strings.Contains(body, fmt.Sprintf(`href="/?offset=%d"`, end)) || !strings.Contains(body, `up-target="#latest-additions:after, #latest-additions-more"`) || !strings.Contains(body, `up-history="false"`)) {
 							test.Fatal("load more must append the next page and replace its button without navigation")
 						}
+						// Unpoly cannot revalidate appended fragments. Reusing an expired
+						// response after a preference change would mix list and grid rows.
+						if hasMore && !strings.Contains(body, `up-cache="false"`) {
+							test.Fatal("load more must fetch fresh rows using the current display preference")
+						}
 						if !strings.Contains(body, `id="latest-additions"`) || !strings.Contains(body, `id="latest-additions-more"`) || !strings.Contains(body, `value="home"`) {
 							test.Fatal("home fragment lost its append targets or page context")
 						}

@@ -22,7 +22,7 @@
         {{ if .latest_additions_next }}
         <a class="btn btn-outline-secondary" href="{{ .latest_additions_next }}"
            up-target="#latest-additions:after, #latest-additions-more" up-history="false"
-           up-scroll="false" up-preload="false">{{ call .translate_literal "Load more" }}</a>
+           up-scroll="false" up-preload="false" up-cache="false">{{ call .translate_literal "Load more" }}</a>
         {{ end }}
     </div>
     </div>
