@@ -468,9 +468,9 @@ yt-dlp can refresh it. Keep the file private and outside version control.
 
 Reviewing and retrying failed downloads requires a **superuser** account. Use
 the **Failed downloads** button or open `/ytrip/failures/` directly to review
-failures and retry them after fixing the cause. Other users can ask an
-administrator to do this. Terminal messages can help identify missing tools or
-network errors.
+failures and retry them after fixing the cause, or dismiss entries you no
+longer want to track. Other users can ask an administrator to do this. Terminal
+messages can help identify missing tools or network errors.
 
 ## Optional media tools
 

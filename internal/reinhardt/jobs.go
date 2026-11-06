@@ -555,6 +555,27 @@ func (app *App) youtubeView(responseWriter http.ResponseWriter, request *http.Re
 	}
 	return app.render(responseWriter, request, user, "reinhardt/ytrip.html", ctx, 200)
 }
+func (app *App) dismissYouTubeFailure(responseWriter http.ResponseWriter, request *http.Request, user *User, id string) error {
+	if err := postOnly(request); err != nil {
+		return err
+	}
+	if !user.IsSuperuser {
+		return forbidden()
+	}
+	result, err := app.Store.DB.ExecContext(request.Context(), "DELETE FROM reinhardt_youtuberipfailure WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	app.redirect(responseWriter, request, app.Store.URL("ytrip_failures"))
+	return nil
+}
 func (app *App) retryYouTube(responseWriter http.ResponseWriter, request *http.Request, user *User, id string) error {
 	if err := postOnly(request); err != nil {
 		return err

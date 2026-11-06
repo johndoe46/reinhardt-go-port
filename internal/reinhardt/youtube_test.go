@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -202,6 +203,35 @@ func TestYouTubeMissingMusicDirectoryReportsConfiguration(test *testing.T) {
 	if err != nil || count.N("n") != 1 {
 		test.Fatalf("retry queued another job without a destination: %#v, %v", count, err)
 	}
+}
+
+func TestYouTubeFailureDismissal(test *testing.T) {
+	app := testApp(test)
+	result, err := app.Store.DB.Exec(`INSERT INTO reinhardt_youtuberipfailure(url,artist,title,form_fingerprint,failure_message,created_at,modified_at) VALUES(?,?,?,?,?,?,?)`,
+		"https://youtu.be/abcdefghijk", "Artist", "Title", "fingerprint", "download failed", now(), now())
+	if err != nil {
+		test.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		test.Fatal(err)
+	}
+	path := fmt.Sprintf("/ytrip/failures/%d/dismiss/", id)
+	requireCode(test, call(app, "POST", path, 2, url.Values{}, true), 403)
+	count, err := app.Store.One(test.Context(), "SELECT count(*) n FROM reinhardt_youtuberipfailure")
+	if err != nil || count.N("n") != 1 {
+		test.Fatalf("non-superuser dismissed the failure: %#v, %v", count, err)
+	}
+	response := call(app, "POST", path, 1, url.Values{}, true)
+	requireCode(test, response, 302)
+	if location := response.Header().Get("Location"); location != "/ytrip/failures/" {
+		test.Fatalf("dismissal redirected to %q", location)
+	}
+	count, err = app.Store.One(test.Context(), "SELECT count(*) n FROM reinhardt_youtuberipfailure")
+	if err != nil || count.N("n") != 0 {
+		test.Fatalf("failure was not dismissed: %#v, %v", count, err)
+	}
+	requireCode(test, call(app, "POST", path, 1, url.Values{}, true), 404)
 }
 
 func TestYouTubeSubmissionNeedsDestinationBeforeEnqueuing(test *testing.T) {

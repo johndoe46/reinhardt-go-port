@@ -91,6 +91,9 @@ func (app *App) routes() *http.ServeMux {
 	route("POST", "ytrip/failures/{id}/retry/", func(writer http.ResponseWriter, request *http.Request, user *User) error {
 		return app.retryYouTube(writer, request, user, request.PathValue("id"))
 	})
+	route("POST", "ytrip/failures/{id}/dismiss/", func(writer http.ResponseWriter, request *http.Request, user *User) error {
+		return app.dismissYouTubeFailure(writer, request, user, request.PathValue("id"))
+	})
 
 	route("GET", "stream/{id}/", func(writer http.ResponseWriter, request *http.Request, user *User) error {
 		return app.audio(writer, request, false)

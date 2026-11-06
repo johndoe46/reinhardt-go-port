@@ -504,6 +504,9 @@
   "details": {
     "other": "details"
   },
+  "dismiss": {
+    "other": "dismiss"
+  },
   "download": {
     "other": "download"
   },

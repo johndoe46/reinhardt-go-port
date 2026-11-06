@@ -340,6 +340,8 @@ func (store *Store) URL(name string, args ...any) string {
 		path = "ytrip/failures/"
 	case "retry_ytrip_failure":
 		path = "ytrip/failures/" + arg(0) + "/retry/"
+	case "dismiss_ytrip_failure":
+		path = "ytrip/failures/" + arg(0) + "/dismiss/"
 	case "rename_tag", "track_details_modal":
 		path = name + "/" + arg(0)
 	case "artwork_hash":

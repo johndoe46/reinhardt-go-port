@@ -45,13 +45,22 @@
                             <td>{{ .failure.retry_count }}</td>
                             <td>{{ .failure.modified_at }}</td>
                             <td class="text-end">
-                                <form method="post" action="{{ call .url "retry_ytrip_failure" .failure.pk }}">
-                                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
-                                    <button type="submit" class="btn btn-sm btn-primary">
-                                        <i class="bi bi-arrow-repeat"></i>
-                                        {{ call .translate_literal "retry" }}
-                                    </button>
-                                </form>
+                                <div class="d-flex gap-1 justify-content-end">
+                                    <form method="post" action="{{ call .url "retry_ytrip_failure" .failure.pk }}">
+                                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-arrow-repeat"></i>
+                                            {{ call .translate_literal "retry" }}
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{{ call .url "dismiss_ytrip_failure" .failure.pk }}">
+                                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ .csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-x-lg"></i>
+                                            {{ call .translate_literal "dismiss" }}
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     {{ end }}{{ end }}
